@@ -289,9 +289,8 @@ function y() {
     [ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
     \rm -f -- "$tmp" >/dev/null 2>&1
 }
+gh() { command gh "$@" }
 
-# re-recolor Papirus folders to match whatever `wal -i` last generated,
-# without a full nixos rebuild — for quick wallpaper testing
 recolor-icons() {
   local colors_file="$HOME/.cache/wal/colors"
   if [ ! -s "$colors_file" ]; then
