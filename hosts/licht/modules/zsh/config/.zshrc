@@ -129,10 +129,10 @@ alias catp='bat --plain'
 # NH_FLAKE itself is set declaratively in configuration.nix (environment.variables),
 # not here — same convention as EDITOR/VISUAL.
 
-alias u='nh os switch'      # rebuild + switch now
+alias u='nh os switch && rb'      # rebuild + switch now
 alias ub='nh os boot'       # build for next boot, don't switch now
 alias ut='nh os test'       # activate temporarily, don't persist to boot
-alias uu='nix flake update "$NH_FLAKE" && u'   # bump all inputs, then rebuild
+alias uu='nix flake update "$NH_FLAKE" && u && rb'   # bump all inputs, then rebuild
 alias nhc='nh clean all'    # gc old generations
 alias nhs='nh search'       # package search
 alias rb='/etc/nixos/rebuild'

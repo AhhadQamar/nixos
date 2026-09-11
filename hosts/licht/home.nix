@@ -21,6 +21,7 @@
     nh
     vesktop
     playerctl
+    obsidian
   ];
 
   services.udiskie = {
