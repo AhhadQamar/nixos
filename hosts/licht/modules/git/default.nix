@@ -3,6 +3,10 @@
   pkgs,
   ...
 }: {
+  home.packages = with pkgs; [
+    gitleaks
+  ];
+
   programs.git = {
     enable = true;
 
