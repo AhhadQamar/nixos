@@ -1,0 +1,10 @@
+-- Sourcing files
+require("modules.monitors")
+require("modules.autostart")
+require("modules.binds")
+require("modules.env")
+require("modules.input")
+require("modules.decorations")
+require("modules.layout")
+require("modules.misc")
+require("modules.windowrules")

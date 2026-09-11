@@ -1,0 +1,13 @@
+result
+result-*
+
+.direnv/
+.envrc.local
+
+.DS_Store
+*.swp
+*.hm-backup
+
+*.pem
+id_ed25519*
+id_rsa*
