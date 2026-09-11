@@ -135,7 +135,7 @@ alias ut='nh os test'       # activate temporarily, don't persist to boot
 alias uu='nix flake update "$NH_FLAKE" && u'   # bump all inputs, then rebuild
 alias nhc='nh clean all'    # gc old generations
 alias nhs='nh search'       # package search
-
+alias rb='/etc/nixos/rebuild'
 # 'i' = try a package in a throwaway shell (does NOT persist — nothing
 # to uninstall after, just exit the shell). Closest thing to `pacman -S`
 # for "let me just try this" without touching your config.

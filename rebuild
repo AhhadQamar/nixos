@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e
+
+cd /etc/nixos
+
+echo "Formatting..."
+alejandra . &>/dev/null
+
+echo "Scanning for secrets before commit..."
+nix shell nixpkgs#gitleaks -c gitleaks detect --source . -v
+
+echo "NixOS Rebuilding..."
+nh os switch &>nh-switch.log || (cat nh-switch.log | grep --color error && false)
+
+gen=$(nixos-rebuild list-generations | grep current)
+git add -A
+git commit -m "$gen" || echo "Nothing to commit"
+git push

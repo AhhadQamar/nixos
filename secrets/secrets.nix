@@ -5,8 +5,7 @@ let
     licht
     recovery
   ];
-in
-{
+in {
   "aria2-rpc-secret.age".publicKeys = allKeys;
   "qbittorrent-webui-password.age".publicKeys = allKeys;
 }

@@ -3,8 +3,7 @@
   pkgs,
   lib,
   ...
-}:
-let
+}: let
   walCacheDir = "${config.home.homeDirectory}/.cache/wal";
 
   # Closest-match a wal hex color to one of papirus-folders' fixed preset
@@ -46,8 +45,7 @@ let
     done
     echo "$best"
   '';
-in
-{
+in {
   home.packages = with pkgs; [
     papirus-folders
   ];
@@ -116,7 +114,7 @@ in
 
   # Make sure the imported files exist before the first `wal -i` run,
   # otherwise GTK apps will refuse to load gtk.css at all.
-  home.activation.ensureWalGtkCss = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.ensureWalGtkCss = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "${walCacheDir}"
     [ -f "${walCacheDir}/colors-gtk3.css" ] || touch "${walCacheDir}/colors-gtk3.css"
     [ -f "${walCacheDir}/colors-gtk4.css" ] || touch "${walCacheDir}/colors-gtk4.css"
@@ -124,7 +122,7 @@ in
 
   # Recolor Papirus folder icons to whichever preset is closest to wal's
   # accent color (color4), so icons roughly follow your wallpaper too.
-  home.activation.recolorFolders = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.recolorFolders = lib.hm.dag.entryAfter ["writeBoundary"] ''
     iconsDir="${config.home.homeDirectory}/.local/share/icons"
     mkdir -p "$iconsDir"
     for variant in Papirus Papirus-Dark; do

@@ -3,9 +3,7 @@
   lib,
   pkgs,
   ...
-}:
-
-{
+}: {
   imports = [
     ./hardware-configuration.nix
   ];
@@ -46,7 +44,7 @@
 
   services.xserver.xkb.layout = "us";
 
-  age.identityPaths = [ "/var/lib/agenix/key.txt" ];
+  age.identityPaths = ["/var/lib/agenix/key.txt"];
 
   age.secrets = {
     aria2-rpc-secret = {
@@ -79,7 +77,7 @@
   programs.zsh.enable = true;
 
   programs.dconf.enable = true;
-  security.pam.services.hyprlock = { };
+  security.pam.services.hyprlock = {};
 
   security.rtkit.enable = true;
   services.pipewire = {

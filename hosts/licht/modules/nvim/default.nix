@@ -2,9 +2,7 @@
   config,
   pkgs,
   ...
-}:
-
-{
+}: {
   home.packages = with pkgs; [
     neovim
     lazygit
@@ -13,7 +11,8 @@
     gcc
     lua
     nil
-    nixfmt
+    # nixfmt
+    alejandra
 
     # LSP servers
     vscode-langservers-extracted # html, css, json, eslint

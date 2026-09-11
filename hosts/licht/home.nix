@@ -2,8 +2,7 @@
   config,
   pkgs,
   ...
-}:
-{
+}: {
   home.username = "licht";
   home.homeDirectory = "/home/licht";
   home.stateVersion = "26.05";
@@ -64,7 +63,7 @@
       OnCalendar = "weekly";
       Persistent = true;
     };
-    Install.WantedBy = [ "timers.target" ];
+    Install.WantedBy = ["timers.target"];
   };
 
   imports = [

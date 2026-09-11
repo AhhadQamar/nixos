@@ -3,8 +3,7 @@
   pkgs,
   lib,
   ...
-}:
-{
+}: {
   home.packages = with pkgs; [
     hyprlock
     hypridle
@@ -23,7 +22,7 @@
     recursive = true;
   };
 
-  home.activation.ensureCurrentWallpaper = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.ensureCurrentWallpaper = lib.hm.dag.entryAfter ["writeBoundary"] ''
     WALLPAPER_LINK="$HOME/Pictures/Wallpapers/.current_wallpaper"
     if [ ! -e "$WALLPAPER_LINK" ]; then
       DEFAULT_WALLPAPER="$HOME/Pictures/Wallpapers/moon.jpg"
@@ -33,7 +32,7 @@
     fi
   '';
 
-  home.activation.ensureWalHyprFiles = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.ensureWalHyprFiles = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.cache/wal"
     [ -f "$HOME/.cache/wal/colors-hyprland.lua" ] || touch "$HOME/.cache/wal/colors-hyprland.lua"
     [ -f "$HOME/.cache/wal/colors-hyprlock.conf" ] || touch "$HOME/.cache/wal/colors-hyprlock.conf"
@@ -42,11 +41,11 @@
   systemd.user.services.polkit-gnome-authentication-agent-1 = {
     Unit = {
       Description = "polkit-gnome-authentication-agent-1";
-      Wants = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
+      Wants = ["graphical-session.target"];
+      After = ["graphical-session.target"];
     };
     Install = {
-      WantedBy = [ "graphical-session.target" ];
+      WantedBy = ["graphical-session.target"];
     };
     Service = {
       Type = "simple";

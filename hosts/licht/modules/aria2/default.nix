@@ -4,9 +4,8 @@
   lib,
   osConfig,
   ...
-}:
-{
-  home.packages = [ pkgs.aria2 ];
+}: {
+  home.packages = [pkgs.aria2];
 
   xdg.configFile."aria2/aria2.conf".source = ./config/aria2.conf;
   xdg.configFile."aria2p/config.toml".source = ./config/config.toml;
@@ -21,6 +20,6 @@
       '';
       Restart = "on-failure";
     };
-    Install.WantedBy = [ "default.target" ];
+    Install.WantedBy = ["default.target"];
   };
 }
