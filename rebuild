@@ -12,7 +12,7 @@ nix shell nixpkgs#gitleaks -c gitleaks detect --source . -v
 echo "NixOS Rebuilding..."
 nh os switch &>nh-switch.log || (cat nh-switch.log | grep --color error && false)
 
-gen=$(nixos-rebuild list-generations | grep current)
+gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 git add -A
-git commit -m "$gen" || echo "Nothing to commit"
+git commit -m "NixOS generation $gen" || echo "Nothing to commit"
 git push
