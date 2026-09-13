@@ -121,7 +121,6 @@ alias cat='bat --style=numbers,changes'
 alias catp='bat --plain'
 
 # ─── ALIASES — NIX ───────────────────────────────────────────────
-# Replaces the old pacman/yay aliases with NixOS equivalents.
 # nh takes a plain path to the flake dir and auto-detects the hostname
 # (matches against $(hostname), which is "licht" here) — no "#licht"
 # needed, which is good because zsh's EXTENDED_GLOB treats a bare '#'
@@ -132,7 +131,7 @@ alias catp='bat --plain'
 alias u='nh os switch && rb'      # rebuild + switch now
 alias ub='nh os boot'       # build for next boot, don't switch now
 alias ut='nh os test'       # activate temporarily, don't persist to boot
-alias uu='nix flake update "$NH_FLAKE" && u && rb'   # bump all inputs, then rebuild
+alias uu='nix flake update --flake "$NH_FLAKE" && u && rb'   # bump all inputs, then rebuild
 alias nhc='nh clean all'    # gc old generations
 alias nhs='nh search'       # package search
 alias rb='/etc/nixos/rebuild'
