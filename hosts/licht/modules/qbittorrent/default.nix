@@ -8,8 +8,14 @@
 }: {
   home.packages = [pkgs.qbittorrent-nox];
 
-  # qBittorrent.conf's password is already a PBKDF2 hash — fine as-is
-  xdg.configFile."qBittorrent/qBittorrent.conf".source = ./config/qBittorrent.conf;
+  home.activation.seedQbittorrentConf = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    confDir="$HOME/.config/qBittorrent"
+    mkdir -p "$confDir"
+    if [ ! -e "$confDir/qBittorrent.conf" ]; then
+      cp ${./config/qBittorrent.conf} "$confDir/qBittorrent.conf"
+      chmod 600 "$confDir/qBittorrent.conf"
+    fi
+  '';
 
   home.activation.qbittorrentuiConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.config/qbittorrentui"
