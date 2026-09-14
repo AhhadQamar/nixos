@@ -23,8 +23,6 @@
     ];
   };
 
-  # "Silent boot" — without this, Plymouth's splash gets interrupted by
-  # kernel/systemd log spam scrolling over it, which defeats the point.
   boot.consoleLogLevel = 3;
   boot.initrd.verbose = false;
   boot.kernelParams = [
@@ -35,9 +33,7 @@
     "rd.systemd.show_status=auto"
   ];
 
-  # Hide the systemd-boot menu unless a key is pressed during boot —
-  # otherwise you'd see the boot menu flash before Plymouth even starts.
-  boot.loader.timeout = 0;
+  boot.loader.timeout = 3;
 
   networking.hostName = "licht";
   networking.networkmanager.enable = true;
