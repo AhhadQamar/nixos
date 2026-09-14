@@ -1,8 +1,8 @@
 import Quickshell.Hyprland
 import QtQuick
 
-Rectangle { 
-      id:root
+Rectangle {
+    id: root
     property string targetMonitor: ""
     readonly property int dotSize: 28
     readonly property int hoverSize: 46

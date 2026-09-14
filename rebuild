@@ -14,5 +14,15 @@ nh os switch &>nh-switch.log || (cat nh-switch.log | grep --color error && false
 
 gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 git add -A
-git commit -m "NixOS generation $gen" || echo "Nothing to commit"
+
+if git diff --cached --quiet; then
+  echo "Nothing to commit"
+else
+  changed=$(git diff --cached --name-only)
+  read -p "Commit message (leave blank for generation number): " msg
+  subject="${msg:-NixOS generation $gen}"
+  git commit -m "$subject" -m "Changed:
+$changed"
+fi
+
 git push
