@@ -22,6 +22,7 @@
     vesktop
     playerctl
     obsidian
+    bombsquad
   ];
 
   services.udiskie = {
