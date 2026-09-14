@@ -12,6 +12,32 @@
   boot.loader.systemd-boot.configurationLimit = 3;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  boot.plymouth = {
+    enable = true;
+    theme = "circle_hud";
+    themePackages = with pkgs; [
+      (adi1090x-plymouth-themes.override {
+        selected_themes = ["circle_hud"];
+      })
+    ];
+  };
+
+  # "Silent boot" — without this, Plymouth's splash gets interrupted by
+  # kernel/systemd log spam scrolling over it, which defeats the point.
+  boot.consoleLogLevel = 3;
+  boot.initrd.verbose = false;
+  boot.kernelParams = [
+    "quiet"
+    "splash"
+    "boot.shell_on_fail"
+    "udev.log_priority=3"
+    "rd.systemd.show_status=auto"
+  ];
+
+  # Hide the systemd-boot menu unless a key is pressed during boot —
+  # otherwise you'd see the boot menu flash before Plymouth even starts.
+  boot.loader.timeout = 0;
+
   networking.hostName = "licht";
   networking.networkmanager.enable = true;
 
