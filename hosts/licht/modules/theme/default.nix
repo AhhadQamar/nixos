@@ -16,30 +16,47 @@
     g=$((16#''${hex:2:2}))
     b=$((16#''${hex:4:2}))
 
-    declare -A presets=(
-      [black]="30 30 30"
-      [blue]="26 128 196"
-      [bluegrey]="96 125 139"
-      [brown]="93 64 55"
-      [cyan]="0 172 193"
-      [green]="76 175 80"
-      [grey]="158 158 158"
-      [magenta]="216 27 96"
-      [orange]="245 124 0"
-      [red]="211 47 47"
-      [teal]="0 121 107"
-      [violet]="123 31 162"
-      [yellow]="251 192 45"
+    max=$r; min=$r
+    [ $g -gt $max ] && max=$g
+    [ $g -lt $min ] && min=$g
+    [ $b -gt $max ] && max=$b
+    [ $b -lt $min ] && min=$b
+    diff=$((max - min))
+
+    if [ $max -eq 0 ]; then sat=0; else sat=$(( diff * 1000 / max )); fi
+
+    # Genuinely low-saturation input — a hue match would be meaningless,
+    # fall back to black/grey based on brightness instead.
+    if [ "$sat" -lt 120 ]; then
+      if [ "$max" -lt 100 ]; then echo "black"; else echo "grey"; fi
+      exit 0
+    fi
+
+    if [ "$max" -eq "$r" ]; then
+      hue=$(( ((60 * (g - b) / diff) + 360) % 360 ))
+    elif [ "$max" -eq "$g" ]; then
+      hue=$(( (60 * (b - r) / diff) + 120 ))
+    else
+      hue=$(( (60 * (r - g) / diff) + 240 ))
+    fi
+    hue=$(( (hue + 360) % 360 ))
+
+    declare -A presetHues=(
+      [red]=0 [orange]=30 [yellow]=43 [brown]=14
+      [green]=122 [teal]=173 [cyan]=187
+      [blue]=204 [bluegrey]=200
+      [violet]=282 [magenta]=338
     )
 
     best="grey"
-    bestDist=999999
-    for name in "''${!presets[@]}"; do
-      read -r pr pg pb <<< "''${presets[$name]}"
-      dr=$((r - pr)); dg=$((g - pg)); db=$((b - pb))
-      dist=$((dr*dr + dg*dg + db*db))
-      if [ "$dist" -lt "$bestDist" ]; then
-        bestDist=$dist
+    bestDist=99999
+    for name in "''${!presetHues[@]}"; do
+      phue=''${presetHues[$name]}
+      d=$(( hue - phue ))
+      [ $d -lt 0 ] && d=$(( -d ))
+      [ $d -gt 180 ] && d=$(( 360 - d ))
+      if [ $d -lt $bestDist ]; then
+        bestDist=$d
         best=$name
       fi
     done
