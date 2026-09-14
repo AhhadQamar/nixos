@@ -37,7 +37,7 @@
     "rd.systemd.show_status=auto"
   ];
 
-  boot.loader.timeout = 3;
+  boot.loader.timeout = 0;
 
   networking.hostName = "licht";
   networking.networkmanager.enable = true;
