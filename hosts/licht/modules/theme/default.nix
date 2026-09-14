@@ -45,12 +45,42 @@
     done
     echo "$best"
   '';
+
+  # Mirrors Colors.qml's _pickAccent(): among color1..color6, pick
+  # whichever is most saturated AND closest to mid-brightness (value
+  # ~0.65) — same scoring, so icon accent matches the workspace dot
+  # accent exactly, not just "some wal color".
+  pywalAccentPick = pkgs.writeShellScript "pywal-accent-pick" ''
+    #!/usr/bin/env bash
+    colors_file="$1"
+    best=""
+    bestScore="-1"
+    for i in 1 2 3 4 5 6; do
+      hex=$(${pkgs.gawk}/bin/awk -v n=$((i+1)) 'NR==n' "$colors_file")
+      hex="''${hex#\#}"
+      r=$((16#''${hex:0:2})); g=$((16#''${hex:2:2})); b=$((16#''${hex:4:2}))
+
+      max=$r; [ $g -gt $max ] && max=$g; [ $b -gt $max ] && max=$b
+      min=$r; [ $g -lt $min ] && min=$g; [ $b -lt $min ] && min=$b
+      value=$max
+      if [ $max -eq 0 ]; then sat=0; else sat=$(( (max - min) * 1000 / max )); fi
+
+      distFrom65=$(( value > 166 ? value - 166 : 166 - value ))
+      distFrom65Scaled=$(( distFrom65 * 1000 / 255 ))
+      score=$(( sat * (1000 - distFrom65Scaled) / 1000 ))
+
+      if [ "$score" -gt "$bestScore" ]; then
+        bestScore=$score
+        best="#$hex"
+      fi
+    done
+    echo "$best"
+  '';
 in {
   home.packages = with pkgs; [
     papirus-folders
   ];
 
-  # Dark base theme (structure/chrome), colors get overridden by pywal below
   gtk = {
     enable = true;
 
@@ -80,7 +110,6 @@ in {
       extraConfig = {
         gtk-application-prefer-dark-theme = 1;
       };
-      # Pulls in whatever `wal -i` last generated
       extraCss = ''
         @import url("file://${walCacheDir}/colors-gtk3.css");
       '';
@@ -112,16 +141,12 @@ in {
     };
   };
 
-  # Make sure the imported files exist before the first `wal -i` run,
-  # otherwise GTK apps will refuse to load gtk.css at all.
   home.activation.ensureWalGtkCss = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "${walCacheDir}"
     [ -f "${walCacheDir}/colors-gtk3.css" ] || touch "${walCacheDir}/colors-gtk3.css"
     [ -f "${walCacheDir}/colors-gtk4.css" ] || touch "${walCacheDir}/colors-gtk4.css"
   '';
 
-  # Recolor Papirus folder icons to whichever preset is closest to wal's
-  # accent color (color4), so icons roughly follow your wallpaper too.
   home.activation.recolorFolders = lib.hm.dag.entryAfter ["writeBoundary"] ''
     iconsDir="${config.home.homeDirectory}/.local/share/icons"
     mkdir -p "$iconsDir"
@@ -132,7 +157,7 @@ in {
       fi
     done
     if [ -s "${walCacheDir}/colors" ]; then
-      accent=$(${pkgs.gawk}/bin/awk 'NR==5' "${walCacheDir}/colors")
+      accent=$(${pywalAccentPick} "${walCacheDir}/colors")
       nearest=$(${nearestPapirusColor} "$accent")
       PATH="${pkgs.gawk}/bin:${pkgs.coreutils}/bin:$PATH" HOME="${config.home.homeDirectory}" ${pkgs.papirus-folders}/bin/papirus-folders -C "$nearest" --theme Papirus || true
       ${pkgs.gtk3}/bin/gtk-update-icon-cache -f "$iconsDir/Papirus" 2>/dev/null || true
