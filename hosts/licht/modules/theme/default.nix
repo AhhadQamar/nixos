@@ -48,8 +48,8 @@
 
   # Mirrors Colors.qml's _pickAccent(): among color1..color6, pick
   # whichever is most saturated AND closest to mid-brightness (value
-  # ~0.65) — same scoring, so icon accent matches the workspace dot
-  # accent exactly, not just "some wal color".
+  # ~0.65) — so icon accent matches the workspace-dot accent exactly,
+  # instead of a fixed color line that may not be the "accent" one.
   pywalAccentPick = pkgs.writeShellScript "pywal-accent-pick" ''
     #!/usr/bin/env bash
     colors_file="$1"
@@ -79,8 +79,24 @@
 in {
   home.packages = with pkgs; [
     papirus-folders
+    (writeShellScriptBin "recolor-icons" ''
+      colors_file="$HOME/.cache/wal/colors"
+      [ -s "$colors_file" ] || { echo "No wal colors found — run 'wal -i <wallpaper>' first."; exit 1; }
+
+      accent=$(${pywalAccentPick} "$colors_file")
+      nearest=$(${nearestPapirusColor} "$accent")
+      echo "Accent: $accent -> nearest preset: $nearest"
+
+      iconsDir="$HOME/.local/share/icons"
+      ${papirus-folders}/bin/papirus-folders -C "$nearest" --theme Papirus
+      ${gtk3}/bin/gtk-update-icon-cache -f "$iconsDir/Papirus" 2>/dev/null || true
+      ${gtk3}/bin/gtk-update-icon-cache -f "$iconsDir/Papirus-Dark" 2>/dev/null || true
+      pkill nautilus 2>/dev/null || true
+      echo "Done."
+    '')
   ];
 
+  # Dark base theme (structure/chrome), colors get overridden by pywal below
   gtk = {
     enable = true;
 
@@ -110,6 +126,7 @@ in {
       extraConfig = {
         gtk-application-prefer-dark-theme = 1;
       };
+      # Pulls in whatever `wal -i` last generated
       extraCss = ''
         @import url("file://${walCacheDir}/colors-gtk3.css");
       '';
@@ -141,12 +158,17 @@ in {
     };
   };
 
+  # Make sure the imported files exist before the first `wal -i` run,
+  # otherwise GTK apps will refuse to load gtk.css at all.
   home.activation.ensureWalGtkCss = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "${walCacheDir}"
     [ -f "${walCacheDir}/colors-gtk3.css" ] || touch "${walCacheDir}/colors-gtk3.css"
     [ -f "${walCacheDir}/colors-gtk4.css" ] || touch "${walCacheDir}/colors-gtk4.css"
   '';
 
+  # Recolor Papirus folder icons to match the same accent Colors.qml
+  # computes for the workspace dot, so icons stay visually consistent
+  # with the rest of the rice, not just "some wal color".
   home.activation.recolorFolders = lib.hm.dag.entryAfter ["writeBoundary"] ''
     iconsDir="${config.home.homeDirectory}/.local/share/icons"
     mkdir -p "$iconsDir"
