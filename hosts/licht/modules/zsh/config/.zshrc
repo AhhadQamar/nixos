@@ -291,42 +291,6 @@ function y() {
 gh() { command gh "$@" }
 
 recolor-icons() {
-  local colors_file="$HOME/.cache/wal/colors"
-  if [ ! -s "$colors_file" ]; then
-    echo "No wal colors found — run 'wal -i <wallpaper>' first."
-    return 1
-  fi
-
-  local accent
-  accent=$(awk 'NR==5' "$colors_file")
-  accent="${accent#\#}"
-  local hexr="${accent:0:2}" hexg="${accent:2:2}" hexb="${accent:4:2}"
-  local r=$((16#$hexr))
-  local g=$((16#$hexg))
-  local b=$((16#$hexb))
-
-  declare -A presets=(
-    [black]="30 30 30"     [blue]="26 128 196"   [bluegrey]="96 125 139"
-    [brown]="93 64 55"     [cyan]="0 172 193"    [green]="76 175 80"
-    [grey]="158 158 158"   [magenta]="216 27 96" [orange]="245 124 0"
-    [red]="211 47 47"      [teal]="0 121 107"    [violet]="123 31 162"
-    [yellow]="251 192 45"
-  )
-
-  local best="grey" bestDist=999999
-  for name in "${(@k)presets}"; do
-    read -r pr pg pb <<< "${presets[$name]}"
-    local dr=$((r-pr)) dg=$((g-pg)) db=$((b-pb))
-    local dist=$((dr*dr + dg*dg + db*db))
-    if [ "$dist" -lt "$bestDist" ]; then bestDist=$dist; best=$name; fi
-  done
-
-  echo "Nearest preset: $best"
-  papirus-folders -C "$best" --theme Papirus
-  gtk-update-icon-cache -f "$HOME/.local/share/icons/Papirus" 2>/dev/null
-  gtk-update-icon-cache -f "$HOME/.local/share/icons/Papirus-Dark" 2>/dev/null
-  pkill nautilus 2>/dev/null
-  echo "Done — reopen Files to see it."
 }
 # ─── AUTOSUGGESTIONS TWEAKS ─────────────────────────────────────
 bindkey '^ ' autosuggest-accept
