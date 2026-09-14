@@ -88,7 +88,7 @@ in {
       echo "Accent: $accent -> nearest preset: $nearest"
 
       iconsDir="$HOME/.local/share/icons"
-      ${papirus-folders}/bin/papirus-folders -C "$nearest" --theme Papirus
+      PATH="${gtk3}/bin:$PATH" ${papirus-folders}/bin/papirus-folders -C "$nearest" --theme Papirus
       ${gtk3}/bin/gtk-update-icon-cache -f "$iconsDir/Papirus" 2>/dev/null || true
       ${gtk3}/bin/gtk-update-icon-cache -f "$iconsDir/Papirus-Dark" 2>/dev/null || true
       pkill nautilus 2>/dev/null || true
