@@ -182,19 +182,5 @@
     noto-fonts-color-emoji
     rubik
   ];
-  # hosts/licht/configuration.nix
-  environment.systemPackages = with pkgs; [
-    gnome-network-displays
-  ];
-  services.avahi = {
-    enable = true;
-    nssmdns4 = true;
-    openFirewall = true;
-  };
-  networking.firewall = {
-    trustedInterfaces = ["p2p-wl+"];
-    allowedTCPPorts = [7236 7250];
-    allowedUDPPorts = [7236 5353];
-  };
   system.stateVersion = "26.05";
 }

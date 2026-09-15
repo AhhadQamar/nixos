@@ -22,7 +22,6 @@
     vesktop
     playerctl
     obsidian
-    iw
     bombsquad
   ];
 
