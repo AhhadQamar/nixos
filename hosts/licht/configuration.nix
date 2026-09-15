@@ -39,8 +39,11 @@
 
   boot.loader.timeout = 0;
 
+  boot.tmp.cleanOnBoot = true;
+
   networking.hostName = "licht";
   networking.networkmanager.enable = true;
+  networking.firewall.enable = true;
 
   time.timeZone = "Asia/Karachi";
   i18n.defaultLocale = "en_US.UTF-8";
@@ -55,6 +58,9 @@
       "flakes"
     ];
     auto-optimise-store = true;
+    trusted-users = ["licht"];
+    substituters = ["https://hyprland.cachix.org"];
+    trusted-public-keys = ["hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc="];
   };
 
   nix.gc = {
@@ -64,10 +70,17 @@
 
   nixpkgs.config.allowUnfree = true;
 
+  documentation.man.generateCaches = false;
+  documentation.nixos.enable = false;
+  documentation.doc.enable = false;
+
   programs.nix-ld.enable = true;
   programs.nix-ld.libraries = with pkgs; [
     stdenv.cc.cc.lib
   ];
+
+  programs.nix-index.enable = true;
+  programs.direnv.enable = true;
 
   services.xserver.xkb.layout = "us";
 
@@ -99,6 +112,8 @@
       size = 4096;
     }
   ];
+
+  services.fstrim.enable = true;
 
   programs.hyprland.enable = true;
   programs.zsh.enable = true;
@@ -136,6 +151,10 @@
       intel-media-driver
     ];
   };
+
+  services.power-profiles-daemon.enable = true;
+  services.thermald.enable = true;
+  services.fwupd.enable = true;
 
   environment.sessionVariables = {
     LIBVA_DRIVER_NAME = "iHD";
