@@ -1,4 +1,4 @@
-cd "/etc/nixos"
+cd "$NH_FLAKE"
 gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 git add -A
 
