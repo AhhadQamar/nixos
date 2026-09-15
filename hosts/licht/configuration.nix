@@ -186,7 +186,11 @@
   environment.systemPackages = with pkgs; [
     gnome-network-displays
   ];
-
+  services.avahi = {
+    enable = true;
+    nssmdns4 = true;
+    openFirewall = true;
+  };
   networking.firewall = {
     trustedInterfaces = ["p2p-wl+"];
     allowedTCPPorts = [7236 7250];
