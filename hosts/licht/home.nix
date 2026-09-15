@@ -23,6 +23,7 @@
     playerctl
     obsidian
     bombsquad
+    github-copilot-cli
   ];
 
   services.udiskie = {
