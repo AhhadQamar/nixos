@@ -1,3 +1,4 @@
+cd "/etc/nixos"
 gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 git add -A
 
