@@ -93,5 +93,5 @@ hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
 hl.bind("SUPER + A", hl.dsp.exec_cmd("qs ipc call notifications toggle"))
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("qs ipc call wallpaper toggle"))
 
-hl.bind(mainMod .. " + F12", hl.dsp.exec_cmd("hyprshot -m output -m"))
+hl.bind(mainMod .. " + F12", hl.dsp.exec_cmd("hyprshot -m output "))
 hl.bind(mainMod .. " + SHIFT + F12", hl.dsp.exec_cmd("hyprshot -m region"))

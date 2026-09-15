@@ -288,10 +288,7 @@ function y() {
     [ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
     \rm -f -- "$tmp" >/dev/null 2>&1
 }
-gh() { command gh "$@" }
 
-recolor-icons() {
-}
 # ─── AUTOSUGGESTIONS TWEAKS ─────────────────────────────────────
 bindkey '^ ' autosuggest-accept
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
