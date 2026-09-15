@@ -1,17 +1,3 @@
-#!/usr/bin/env bash
-set -e
-
-cd /etc/nixos
-
-echo "Formatting..."
-alejandra . &>/dev/null
-
-echo "Scanning for secrets before commit..."
-nix shell nixpkgs#gitleaks -c gitleaks detect --source . -v
-
-echo "NixOS Rebuilding..."
-nh os switch &>nh-switch.log || (cat nh-switch.log | grep --color error && false)
-
 gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 git add -A
 
@@ -19,7 +5,32 @@ if git diff --cached --quiet; then
   echo "Nothing to commit"
 else
   changed=$(git diff --cached --name-only)
-  read -p "Commit message (leave blank for generation number): " msg
+
+  read -p "Commit message: [a]i-generate, [m]anual, or type your own: " choice
+
+  case "$choice" in
+    a|A)
+      diff_text=$(git diff --cached)
+      echo "Asking Copilot for a commit message..."
+      msg=$(copilot -p "Write a single concise git commit subject line (no quotes, no prefix like 'feat:' unless genuinely warranted, under 72 chars) summarizing this diff:
+
+$diff_text" -s --no-ask-user 2>/dev/null)
+      if [ -z "$msg" ]; then
+        echo "Copilot didn't return anything."
+        read -p "Commit message (leave blank for generation number): " msg
+      else
+        echo "Copilot suggests: $msg"
+      fi
+      ;;
+    m|M|"")
+      read -p "Commit message (leave blank for generation number): " msg
+      ;;
+    *)
+      # anything else typed is treated as the message itself — no second prompt
+      msg="$choice"
+      ;;
+  esac
+
   subject="${msg:-NixOS generation $gen}"
   git commit -m "$subject" -m "Changed:
 $changed"
