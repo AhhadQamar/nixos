@@ -120,6 +120,7 @@
 
   programs.dconf.enable = true;
   security.pam.services.hyprlock = {};
+  security.pam.services.login.enableGnomeKeyring = true;
 
   security.rtkit.enable = true;
   services.pipewire = {
@@ -136,6 +137,7 @@
     ];
   };
 
+  services.gnome.gnome-keyring.enable = true;
   security.polkit.enable = true;
   services.udisks2.enable = true;
   services.gvfs.enable = true;
