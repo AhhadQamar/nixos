@@ -12,18 +12,17 @@
     confDir="$HOME/.config/qBittorrent"
     mkdir -p "$confDir"
     if [ ! -e "$confDir/qBittorrent.conf" ]; then
-      cp ${./config/qBittorrent.conf} "$confDir/qBittorrent.conf"
-      chmod 600 "$confDir/qBittorrent.conf"
+      ${pkgs.coreutils}/bin/install -m 600 ${./config/qBittorrent.conf} "$confDir/qBittorrent.conf"
     fi
   '';
 
   home.activation.qbittorrentuiConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.config/qbittorrentui"
+    ${pkgs.coreutils}/bin/install -m 600 /dev/null "$HOME/.config/qbittorrentui/default.ini"
     ${pkgs.gnused}/bin/sed \
       "s|@QBT_PASSWORD@|$(cat ${osConfig.age.secrets.qbittorrent-webui-password.path})|" \
       ${./config/default.ini.tmpl} \
       > "$HOME/.config/qbittorrentui/default.ini"
-    chmod 600 "$HOME/.config/qbittorrentui/default.ini"
   '';
 
   systemd.user.services.qbittorrent-nox = {
