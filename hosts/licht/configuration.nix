@@ -45,6 +45,9 @@
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
 
+  networking.firewall.allowedTCPPorts = [28987];
+  networking.firewall.allowedUDPPorts = [28987];
+
   time.timeZone = "Asia/Karachi";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -59,8 +62,6 @@
     ];
     auto-optimise-store = true;
     trusted-users = ["licht"];
-    substituters = ["https://hyprland.cachix.org"];
-    trusted-public-keys = ["hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc="];
   };
 
   nix.gc = {

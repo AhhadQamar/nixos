@@ -10,9 +10,7 @@
   home.packages = with pkgs; [
     firefox
     brave
-    yazi
     nautilus
-    btop
     python3
     (pipx.overrideAttrs (old: {
       doCheck = false;

@@ -10,8 +10,6 @@
     fzf
     ripgrep
     zoxide
-    btop
-    yazi
     trash-cli
     mpv
     python3Packages.edge-tts
