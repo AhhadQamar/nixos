@@ -11,7 +11,7 @@ hl.env("HYPRCURSOR_THEME", "Bibata-Modern-Classic")
 hl.env("GDK_BACKEND", "wayland,x11,*")
 hl.env("QT_QPA_PLATFORM", "wayland;xcb")
 hl.env("SDL_VIDEODRIVER", "wayland")
-hl.env("CLLUTER_BACKEND", "wayland")
+hl.env("CLUTER_BACKEND", "wayland")
 -- #XDG
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_TYPE", "wayland")
