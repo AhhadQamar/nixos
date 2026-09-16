@@ -4,5 +4,5 @@
     ffmpeg
   ];
 
-  xdg.configFile."yt-dlp/config".source = ./config;
+  xdg.configFile."yt-dlp".source = ./config;
 }

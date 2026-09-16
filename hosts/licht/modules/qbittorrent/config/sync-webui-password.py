@@ -35,7 +35,13 @@ USERNAME_LINE_RE = re.compile(r"^WebUI\\Username=.*$", re.MULTILINE)
 def make_hash(password: bytes) -> str:
     salt = os.urandom(SALT_SIZE)
     digest = hashlib.pbkdf2_hmac("sha512", password, salt, ITERATIONS)
-    return "@ByteArray(" + base64.b64encode(salt).decode() + ":" + base64.b64encode(digest).decode() + ")"
+    return (
+        "@ByteArray("
+        + base64.b64encode(salt).decode()
+        + ":"
+        + base64.b64encode(digest).decode()
+        + ")"
+    )
 
 
 def verifies(password: bytes, existing_value: str) -> bool:
@@ -62,7 +68,9 @@ def main() -> None:
     if existing:
         conf = PBKDF2_LINE_RE.sub(lambda _: new_line, conf, count=1)
     elif USERNAME_LINE_RE.search(conf):
-        conf = USERNAME_LINE_RE.sub(lambda mo: mo.group(0) + "\n" + new_line, conf, count=1)
+        conf = USERNAME_LINE_RE.sub(
+            lambda mo: mo.group(0) + "\n" + new_line, conf, count=1
+        )
     else:
         conf = conf.rstrip("\n") + "\n" + new_line + "\n"
 
