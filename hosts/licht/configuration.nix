@@ -9,13 +9,11 @@
   ];
 
   boot.loader.systemd-boot.enable = true;
-  boot.loader.systemd-boot.configurationLimit = 3;
+  boot.loader.systemd-boot.configurationLimit = 5;
   boot.loader.systemd-boot.consoleMode = "max";
   boot.loader.systemd-boot.editor = false;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.initrd.systemd.enable = true;
-
-  system.nixos.label = "licht";
 
   boot.plymouth = {
     enable = true;
@@ -60,13 +58,20 @@
       "nix-command"
       "flakes"
     ];
-    auto-optimise-store = true;
-    trusted-users = ["licht"];
+    auto-optimise-store = false;
+    warn-dirty = false;
+  };
+
+  nix.optimise = {
+    automatic = true;
+    dates = ["weekly"];
   };
 
   nix.gc = {
     automatic = true;
-    dates = "daily";
+    dates = "weekly";
+    options = "--delete-older-than 14d";
+    randomizedDelaySec = "45min";
   };
 
   nixpkgs.config.allowUnfree = true;
@@ -80,7 +85,8 @@
     stdenv.cc.cc.lib
   ];
 
-  programs.nix-index.enable = true;
+  programs.nix-index-database.comma.enable = true;
+
   programs.direnv.enable = true;
 
   services.xserver.xkb.layout = "us";
@@ -117,10 +123,10 @@
   services.fstrim.enable = true;
 
   programs.hyprland.enable = true;
+  programs.hyprlock.enable = true;
   programs.zsh.enable = true;
 
   programs.dconf.enable = true;
-  security.pam.services.hyprlock = {};
   security.pam.services.login.enableGnomeKeyring = true;
 
   security.rtkit.enable = true;
@@ -167,7 +173,7 @@
   environment.variables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    NH_FLAKE = "/etc/nixos";
+    NH_FLAKE = "/home/licht/nixos";
   };
 
   users.users.licht = {

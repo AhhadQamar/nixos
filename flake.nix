@@ -10,6 +10,12 @@
     agenix = {
       url = "github:ryantm/agenix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+      inputs.darwin.follows = "";
+    };
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -18,18 +24,22 @@
     nixpkgs,
     home-manager,
     agenix,
+    nix-index-database,
     ...
-  }: {
+  }: let
+    system = "x86_64-linux";
+  in {
+    formatter.${system} = nixpkgs.legacyPackages.${system}.alejandra;
+
     nixosConfigurations.licht = nixpkgs.lib.nixosSystem {
       modules = [
-        {nixpkgs.hostPlatform = "x86_64-linux";}
         ./hosts/licht/configuration.nix
         agenix.nixosModules.default
+        nix-index-database.nixosModules.nix-index
         home-manager.nixosModules.home-manager
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
-          home-manager.backupFileExtension = "hm-backup";
           home-manager.users.licht = import ./hosts/licht/home.nix;
         }
       ];

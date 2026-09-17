@@ -11,7 +11,6 @@
     gcc
     lua
     nil
-    # nixfmt
     alejandra
 
     # LSP servers
@@ -31,11 +30,7 @@
     python3Packages.isort
   ];
 
-  # ~/.config/nvim points directly at the repo checkout instead of a
-  # read-only copy in the Nix store, so lazy.nvim (and anything else that
-  # writes into "nvim config") can actually write there -- lazy-lock.json
-  # included. This is the flake root on this machine; update the path if
-  # the repo ever moves.
   xdg.configFile."nvim".source =
-    config.lib.file.mkOutOfStoreSymlink "/etc/nixos/hosts/licht/modules/nvim/config";
+    config.lib.file.mkOutOfStoreSymlink
+    "${config.home.homeDirectory}/nixos/hosts/licht/modules/nvim/config";
 }

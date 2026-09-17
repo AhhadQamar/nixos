@@ -1,30 +1,3 @@
-# ╔══════════════════════════════════════════════════════════════╗
-# ║                    ZSH POWER USER CONFIG                     ║
-# ║                  NixOS · Hyprland · Kitty                    ║
-# ╚══════════════════════════════════════════════════════════════╝
-#
-# ─── ZINIT BOOTSTRAP ────────────────────────────────────────────
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-
-if [ ! -d "$ZINIT_HOME" ]; then
-    mkdir -p "$(dirname "$ZINIT_HOME")"
-    git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
-fi
-
-source "${ZINIT_HOME}/zinit.zsh"
-
-# ─── PLUGINS ────────────────────────────────────────────────────
-# Syntax highlighting — must be LAST among these three
-zinit light zsh-users/zsh-syntax-highlighting
-
-# Autosuggestions — grey ghost text from history
-zinit light zsh-users/zsh-autosuggestions
-
-# Extra completions (docker, cargo, npm, git, and more)
-zinit light zsh-users/zsh-completions
-
-# fzf-tab — fuzzy Tab completion (needs fzf, provided via Nix)
-zinit light Aloxaf/fzf-tab
 
 # ─── HISTORY ────────────────────────────────────────────────────
 HISTSIZE=50000
@@ -36,23 +9,7 @@ setopt HIST_IGNORE_SPACE
 setopt SHARE_HISTORY
 setopt HIST_VERIFY
 
-# ─── COMPLETION SYSTEM ──────────────────────────────────────────
-autoload -Uz compinit
-# Only rebuild + audit the completion dump once every 24h.
-# On every other launch, just trust the cached dump (-C skips
-# the fpath scan/compaudit entirely) — this is what's costing
-# ~1.5s per shell right now.
-zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump"
-mkdir -p "${zcompdump:h}"
-if [[ -n ${zcompdump}(#qN.mh+24) ]]; then
-    compinit -d "$zcompdump"
-else
-    compinit -C -d "$zcompdump"
-fi
-
-{ zcompile "$zcompdump" } &!
-
-
+# ─── COMPLETION STYLES ──────────────────────────────────────────
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' menu no
@@ -79,12 +36,6 @@ eval "$(starship init zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
 # ─── FZF ────────────────────────────────────────────────────────
-# Nix's fzf package ships its own zsh integration; if home-manager's
-# programs.fzf.enableZshIntegration handles sourcing for you, these
-# two lines are redundant but harmless to leave commented for reference.
-# source "${pkgs.fzf}/share/fzf/key-bindings.zsh"
-# source "${pkgs.fzf}/share/fzf/completion.zsh"
-
 export FZF_DEFAULT_COMMAND='rg --files --hidden --follow --glob "!.git"'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 
@@ -97,10 +48,6 @@ export FZF_DEFAULT_OPTS='
   --bind=ctrl-d:half-page-down,ctrl-u:half-page-up
 '
 
-# ─── ENVIRONMENT VARIABLES ──────────────────────────────────────
-# EDITOR/VISUAL/BROWSER/PAGER and PATH entries are set declaratively
-# in default.nix via home.sessionVariables / home.sessionPath, so
-# they're intentionally not duplicated here.
 
 # ─── ALIASES — NAVIGATION ───────────────────────────────────────
 alias ..='cd ..'
@@ -121,29 +68,19 @@ alias cat='bat --style=numbers,changes'
 alias catp='bat --plain'
 
 # ─── ALIASES — NIX ───────────────────────────────────────────────
-# nh takes a plain path to the flake dir and auto-detects the hostname
-# (matches against $(hostname), which is "licht" here) — no "#licht"
-# needed, which is good because zsh's EXTENDED_GLOB treats a bare '#'
-# as a glob operator and mangles it anyway.
-# NH_FLAKE itself is set declaratively in configuration.nix (environment.variables),
-# not here — same convention as EDITOR/VISUAL.
 
-alias u='nh os switch && rb'      # rebuild + switch now
+alias u='"$NH_FLAKE"/rebuild'  # format, scan for secrets, switch, commit, push
 alias ub='nh os boot'       # build for next boot, don't switch now
 alias ut='nh os test'       # activate temporarily, don't persist to boot
-alias uu='nix flake update --flake "$NH_FLAKE" && u '   # bump all inputs, then rebuild
+alias uu='nix flake update --flake "$NH_FLAKE" && u'    # bump all inputs, then rebuild
 alias nhc='nh clean all'    # gc old generations
 alias nhs='nh search'       # package search
-alias rb='/etc/nixos/rebuild'
 # 'i' = try a package in a throwaway shell (does NOT persist — nothing
 # to uninstall after, just exit the shell). Closest thing to `pacman -S`
 # for "let me just try this" without touching your config.
 i() { nix shell "nixpkgs#$1"; }
 
-# no real 'pacr' equivalent exists — removing a package means deleting
-# it from home.nix/configuration.nix and rebuilding. This just jumps
-# you to the file so it's a one-command habit instead of two.
-rmconf() { $EDITOR /etc/nixos/hosts/licht/home.nix }
+rmconf() { $EDITOR $HOME/nixos/hosts/licht/home.nix }
 
 # ─── ALIASES — GIT ──────────────────────────────────────────────
 alias g='git'
@@ -167,9 +104,9 @@ alias gri='git rebase -i'
 # ─── ALIASES — SYSTEM ───────────────────────────────────────────
 alias grep='grep --color=auto'
 alias df='df -h'
-alias du='du -sh'
+alias dus='du -sh'   # don't shadow `du`; `du -sh *` would become `du -sh -sh *`
 alias free='free -h'
-alias ps='ps auxf'
+alias psa='ps auxf'  # don't shadow `ps`; it would break `ps -p <pid>`
 alias top='btop'
 alias mkdir='mkdir -pv'
 alias cp='cp -iv'
@@ -178,7 +115,7 @@ alias rm='rm -Iv'
 alias ln='ln -iv'
 
 # Quick config edits
-alias zshrc='$EDITOR /etc/nixos/hosts/licht/modules/zsh/config/.zshrc'
+alias zshrc='$EDITOR $HOME/nixos/hosts/licht/modules/zsh/config/.zshrc'
 alias zshrcs='source ~/.zshrc'
 alias hyprconf='$EDITOR ~/.config/hypr/'
 alias kittyconf='$EDITOR ~/.config/kitty/kitty.conf'
@@ -292,22 +229,7 @@ function y() {
 # ─── AUTOSUGGESTIONS TWEAKS ─────────────────────────────────────
 bindkey '^ ' autosuggest-accept
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-ZSH_AUTOSUGGEST_USE_ASYNC=true
-ZSH_AUTOSUGGEST_STRATEGY=(history completion)
-
-# ─── SYNTAX HIGHLIGHTING TWEAKS ─────────────────────────────────
-ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
-typeset -A ZSH_HIGHLIGHT_STYLES
-ZSH_HIGHLIGHT_STYLES[command]='fg=cyan,bold'
-ZSH_HIGHLIGHT_STYLES[alias]='fg=cyan,bold'
-ZSH_HIGHLIGHT_STYLES[builtin]='fg=cyan,bold'
-ZSH_HIGHLIGHT_STYLES[function]='fg=cyan,bold'
-ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=red,bold'
-ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=yellow'
-ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=yellow'
-ZSH_HIGHLIGHT_STYLES[path]='fg=green'
-ZSH_HIGHLIGHT_STYLES[comment]='fg=8'
-ZSH_HIGHLIGHT_STYLES[option]='fg=magenta'
+# strategy + async are set via programs.zsh.autosuggestion in default.nix
 
 # ─── MISCELLANEOUS OPTIONS ──────────────────────────────────────
 setopt AUTO_CD
@@ -342,3 +264,4 @@ precmd() {
 # ─── LOCAL OVERRIDES ────────────────────────────────────────────
 # Machine-specific / secret config, not tracked in the flake repo
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
+

@@ -5,7 +5,6 @@
   ...
 }: {
   home.packages = with pkgs; [
-    hyprlock
     hypridle
     hyprsunset
     hyprshot

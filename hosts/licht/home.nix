@@ -50,23 +50,6 @@
 
   programs.home-manager.enable = true;
 
-  systemd.user.services.hm-backup-cleanup = {
-    Unit.Description = "Delete stale Home Manager backup files";
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${pkgs.findutils}/bin/find %h -name '*.hm-backup' -mtime +30 -delete";
-    };
-  };
-
-  systemd.user.timers.hm-backup-cleanup = {
-    Unit.Description = "Weekly sweep of stale Home Manager backup files";
-    Timer = {
-      OnCalendar = "weekly";
-      Persistent = true;
-    };
-    Install.WantedBy = ["timers.target"];
-  };
-
   imports = [
     ./modules/git
     ./modules/zsh
