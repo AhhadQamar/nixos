@@ -41,10 +41,13 @@ It uses:
 1. **Boot the installer**, partition and format the disk as usual,
    then mount your target filesystems under `/mnt`.
 
-2. **Clone this repo** into place:
+2. **Clone this repo** into place. `/mnt/home/licht` doesn't exist as a
+   real home directory yet at this point (user creation happens during
+   activation below), so create the parent first:
 
 ```bash
-   git clone git@github.com:AhhadQamar/nixos.git /mnt/etc/nixos
+   mkdir -p /mnt/home/licht
+   git clone git@github.com:AhhadQamar/nixos.git /mnt/home/licht/nixos
 ```
 
 3. **Provide a private key for `agenix` before the first rebuild.**
@@ -93,7 +96,7 @@ Commit and push the updated `secrets.nix` and the re-encrypted `.age` files.
 
 ```bash
    nixos-generate-config --root /mnt
-   cp /mnt/etc/nixos/hardware-configuration.nix /mnt/etc/nixos/hosts/licht/hardware-configuration.nix
+   cp /mnt/etc/nixos/hardware-configuration.nix /mnt/home/licht/nixos/hosts/licht/hardware-configuration.nix
 ```
 
 Review it — disk device paths, filesystem UUIDs, and CPU microcode
@@ -102,23 +105,35 @@ settings will differ from the original.
 5. **Install:**
 
 ```bash
-   nixos-install --root /mnt --flake /mnt/etc/nixos#licht
+   nixos-install --root /mnt --flake /mnt/home/licht/nixos#licht
 ```
 
 With the key already in place from step 3, secret decryption during
 activation succeeds and the build completes cleanly.
 
-6. **Reboot**, log in, and switch to the normal workflow below.
+6. **Reboot, log in, and fix ownership.** The repo was cloned as root
+   before the `licht` user existed, so `useradd` won't have taken
+   ownership of it on its own:
+
+```bash
+   sudo chown -R licht:users ~/nixos
+```
+
+Then switch to the normal workflow below.
 
 ### Existing, already-installed system
 
 ```bash
-cd /etc/nixos
+cd ~/nixos
 ./rebuild
 ```
 
-or just `u` for a plain rebuild without the format/commit/push steps.
-Requires `NH_FLAKE=/etc/nixos`, already declared in `configuration.nix`.
+or just `u`, which runs the same script.
+Requires `NH_FLAKE=/home/licht/nixos`, already declared in
+`configuration.nix`. That variable is set via `environment.variables`,
+which is only re-sourced at login — after changing it, log out and
+back in (not just open a new terminal) before `u` will resolve to the
+new path.
 
 ## Features
 
@@ -230,19 +245,19 @@ It runs, in order:
 
 Defined in the `zsh` module (`.zshrc`):
 
-| Alias           | What it does                                              |
-| --------------- | --------------------------------------------------------- |
-| `u`             | `nh os switch` — rebuild and activate now                 |
-| `ub`            | `nh os boot` — build for next boot only                   |
-| `ut`            | `nh os test` — activate now, don't persist to boot        |
-| `uu`            | update all flake inputs, then rebuild                     |
-| `nhc`           | `nh clean all` — garbage collect old generations          |
-| `nhs`           | `nh search` — search nixpkgs                              |
-| `i <pkg>`       | try a package in a throwaway shell, nothing persists      |
-| `rmconf`        | jump straight to `home.nix` for editing                   |
-| `recolor-icons` | re-match Papirus folder colors to the current wal palette |
+| Alias           | What it does                                                  |
+| --------------- | ------------------------------------------------------------- |
+| `u`             | runs `./rebuild` — format, scan, `nh os switch`, commit, push |
+| `ub`            | `nh os boot` — build for next boot only                       |
+| `ut`            | `nh os test` — activate now, don't persist to boot            |
+| `uu`            | update all flake inputs, then rebuild                         |
+| `nhc`           | `nh clean all` — garbage collect old generations              |
+| `nhs`           | `nh search` — search nixpkgs                                  |
+| `i <pkg>`       | try a package in a throwaway shell, nothing persists          |
+| `rmconf`        | jump straight to `home.nix` for editing                       |
+| `recolor-icons` | re-match Papirus folder colors to the current wal palette     |
 
-All of these rely on `NH_FLAKE=/etc/nixos`, set declaratively in `configuration.nix`.
+All of these rely on `NH_FLAKE=/home/licht/nixos`, set declaratively in `configuration.nix`.
 
 ## Requirements
 
@@ -253,6 +268,11 @@ All of these rely on `NH_FLAKE=/etc/nixos`, set declaratively in `configuration.
 
 ## Notes
 
+- This repo lives at `/home/licht/nixos`, not `/etc/nixos`. `/etc/nixos`
+  is left absent — nothing in this repo hardcodes it, everything reads
+  `NH_FLAKE` instead — but `sudo nixos-rebuild` without `--flake`
+  defaults to `/etc/nixos` and will fail if run out of habit; use the
+  `u`/`ub`/`ut` aliases or pass `--flake ~/nixos#licht` explicitly.
 - This repo is tailored to the `licht` host.
 - The `home-manager` config is imported from `hosts/licht/home.nix`.
 - Theme colors are driven by Pywal and propagated into GTK, icon
