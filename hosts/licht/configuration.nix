@@ -6,6 +6,7 @@
 }: {
   imports = [
     ./hardware-configuration.nix
+    ./sddm.nix
   ];
 
   boot.loader.systemd-boot.enable = true;
@@ -113,7 +114,10 @@
 
   services.fstrim.enable = true;
 
-  programs.hyprland.enable = true;
+  programs.hyprland = {
+    enable = true;
+    withUWSM = true;
+  };
   programs.hyprlock.enable = true;
   programs.zsh.enable = true;
 

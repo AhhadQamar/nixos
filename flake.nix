@@ -17,6 +17,7 @@
       url = "github:nix-community/nix-index-database";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pixie-sddm.url = "github:xCaptaiN09/pixie-sddm";
   };
 
   outputs = {
@@ -26,12 +27,14 @@
     agenix,
     nix-index-database,
     ...
-  }: let
+  } @ inputs: let
     system = "x86_64-linux";
   in {
     formatter.${system} = nixpkgs.legacyPackages.${system}.alejandra;
 
     nixosConfigurations.licht = nixpkgs.lib.nixosSystem {
+      specialArgs = {inherit inputs;};
+
       modules = [
         ./hosts/licht/configuration.nix
         agenix.nixosModules.default
