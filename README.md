@@ -51,8 +51,8 @@ It uses:
 ```
 
 3. **Provide a private key for `agenix` before the first rebuild.**
-   The secrets in `secrets/` (`aria2-rpc-secret.age`,
-   `qbittorrent-webui-password.age`) are encrypted against two age
+   The secrets in `secrets/` (currently just `aria2-rpc-secret.age`)
+   are encrypted against two age
    public keys — `licht` and `recovery` — defined in
    `secrets/secrets.nix`. Activation reads
    `age.identityPaths = ["/var/lib/agenix/key.txt"]` from
@@ -85,7 +85,6 @@ one):
 
 ```bash
    agenix -e aria2-rpc-secret.age
-   agenix -e qbittorrent-webui-password.age
 ```
 
 Commit and push the updated `secrets.nix` and the re-encrypted `.age` files.
@@ -174,7 +173,6 @@ new path.
 ### Utilities
 
 - `aria2`
-- `qBittorrent`
 - `yt-dlp`
 - `udiskie` automount
 - custom wallpaper and theme helpers
@@ -198,7 +196,6 @@ hosts/
       nvim/
       pyprland/
       pywal/
-      qbittorrent/
       quickshell/
       theme/
       vscodium/
@@ -215,7 +212,6 @@ Encrypted secrets are managed with `agenix` and stored in `secrets/`.
 Current secrets:
 
 - `aria2-rpc-secret.age`
-- `qbittorrent-webui-password.age`
 
 Both are encrypted against two age public keys, defined in
 `secrets/secrets.nix`:
