@@ -45,7 +45,7 @@
       fi
     fi
     if [ -e "$WALLPAPER_LINK" ]; then
-      ln -sf "$(readlink -f "$WALLPAPER_LINK")" /var/lib/wallpaper/current
+      cp -f "$(readlink -f "$WALLPAPER_LINK")" /var/lib/wallpaper/current
     fi
   '';
   home.activation.ensureWalHyprFiles = lib.hm.dag.entryAfter ["writeBoundary"] ''

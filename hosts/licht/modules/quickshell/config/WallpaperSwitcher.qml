@@ -44,33 +44,27 @@ PanelWindow {
         if (q.length === 0)
             filtered = wallpapers;
         else
-            filtered = wallpapers.filter((w) => {
-            return w.path.toLowerCase().includes(q);
-        });
+            filtered = wallpapers.filter(w => {
+                return w.path.toLowerCase().includes(q);
+            });
         selectedIndex = 0;
     }
 
     function scan(force) {
         if (scanned && !force)
-            return ;
+            return;
 
         scanner.running = true;
     }
 
-  function setWallpaper(entry) {
-    if (!entry)
-        return;
+    function setWallpaper(entry) {
+        if (!entry)
+            return;
 
-    applyingPath = entry.path;
-    Quickshell.execDetached(["bash", "-c",
-        "wal -i \"" + entry.path + "\" -n; " +
-        "ln -sf \"" + entry.path + "\" ~/Pictures/Wallpapers/.current_wallpaper; " +
-        "ln -sf \"" + entry.path + "\" /var/lib/wallpaper/current; " +
-        "awww img \"" + entry.path + "\" --transition-type simple --transition-fps 30; " +
-        "hyprctl reload"
-    ]);
-    currentPath = entry.path;
-    appliedTimer.start();
+        applyingPath = entry.path;
+        Quickshell.execDetached(["bash", "-c", "wal -i \"" + entry.path + "\" -n; " + "ln -sf \"" + entry.path + "\" ~/Pictures/Wallpapers/.current_wallpaper; " + "awww img \"" + entry.path + "\" --transition-type simple --transition-fps 30; " + "hyprctl reload"]);
+        currentPath = entry.path;
+        appliedTimer.start();
     }
 
     function open() {
@@ -150,7 +144,7 @@ PanelWindow {
 
         stdout: StdioCollector {
             onStreamFinished: {
-                const lines = text.split("\n").filter((l) => {
+                const lines = text.split("\n").filter(l => {
                     return l.trim().length > 0;
                 });
                 const entries = [];
@@ -174,7 +168,6 @@ PanelWindow {
                 previewDebounce.restart();
             }
         }
-
     }
 
     // Global keyboard nav, active while the panel is open.
@@ -234,24 +227,20 @@ PanelWindow {
                             Keys.onRightPressed: {
                                 if (selectedIndex < filtered.length - 1)
                                     selectedIndex++;
-
                             }
                             Keys.onLeftPressed: {
                                 if (selectedIndex > 0)
                                     selectedIndex--;
-
                             }
                             Keys.onDownPressed: {
                                 if (selectedIndex + grid.columns < filtered.length)
                                     selectedIndex += grid.columns;
-
                             }
                             Keys.onUpPressed: {
                                 if (selectedIndex - grid.columns >= 0)
                                     selectedIndex -= grid.columns;
-
                             }
-                            Keys.onPressed: (event) => {
+                            Keys.onPressed: event => {
                                 if (event.key === Qt.Key_Home) {
                                     selectedIndex = 0;
                                     event.accepted = true;
@@ -267,9 +256,7 @@ PanelWindow {
                             color: Colors.muted
                             font.pixelSize: 11
                         }
-
                     }
-
                 }
 
                 Rectangle {
@@ -290,9 +277,7 @@ PanelWindow {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: switcher.scan(true)
                     }
-
                 }
-
             }
 
             RowLayout {
@@ -382,9 +367,7 @@ PanelWindow {
                                         NumberAnimation {
                                             duration: 150
                                         }
-
                                     }
-
                                 }
 
                                 Text {
@@ -416,9 +399,7 @@ PanelWindow {
                                     NumberAnimation {
                                         duration: 120
                                     }
-
                                 }
-
                             }
 
                             MouseArea {
@@ -428,7 +409,6 @@ PanelWindow {
                                 onEntered: switcher.selectedIndex = index
                                 onClicked: switcher.setWallpaper(modelData)
                             }
-
                         }
 
                         Behavior on scale {
@@ -436,11 +416,8 @@ PanelWindow {
                                 duration: 100
                                 easing.type: Easing.OutQuad
                             }
-
                         }
-
                     }
-
                 }
 
                 // ---- Preview sidebar ----
@@ -486,16 +463,13 @@ PanelWindow {
                                 font.pixelSize: 11
                                 elide: Text.ElideMiddle
                             }
-
                         }
 
                         Behavior on opacity {
                             NumberAnimation {
                                 duration: 150
                             }
-
                         }
-
                     }
 
                     Text {
@@ -505,9 +479,7 @@ PanelWindow {
                         color: Colors.muted
                         font.pixelSize: 12
                     }
-
                 }
-
             }
 
             // ---- Footer hint bar ----
@@ -542,11 +514,7 @@ PanelWindow {
                     color: Colors.muted
                     font.pixelSize: 11
                 }
-
             }
-
         }
-
     }
-
 }

@@ -46,8 +46,6 @@
 
   programs.home-manager.enable = true;
 
-  home.file.".face.icon".source = config.lib.file.mkOutOfStoreSymlink "/home/licht/Pictures/avatar.png";
-
   imports = [
     ./modules/git
     ./modules/zsh
