@@ -17,6 +17,7 @@
     playerctl
     obsidian
     bombsquad
+    htop
     github-copilot-cli
   ];
 
