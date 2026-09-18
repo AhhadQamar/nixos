@@ -62,8 +62,7 @@ PanelWindow {
             return;
 
         applyingPath = entry.path;
-        Quickshell.execDetached(["bash", "-c", "wal -i \"" + entry.path + "\" -n; " + "ln -sf \"" + entry.path + "\" ~/Pictures/Wallpapers/.current_wallpaper; " + "awww img \"" + entry.path + "\" --transition-type simple --transition-fps 30; " + "hyprctl reload"]);
-        currentPath = entry.path;
+        Quickshell.execDetached(["bash", "-c", "wal -i \"$1\" -n; ln -sf \"$1\" ~/Pictures/Wallpapers/.current_wallpaper; awww img \"$1\" --transition-type simple --transition-fps 30; hyprctl reload", "_", entry.path]);
         appliedTimer.start();
     }
 

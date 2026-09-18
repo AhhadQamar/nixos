@@ -8,8 +8,8 @@
     {
       fontFamily = "Rubik";
       autoColor = true;
-      background = ./assets/wallpaper.jpg;
-      avatar = ./assets/avatar.jpg;
+      background = ./assets/wallpaper.png;
+      avatar = ./assets/avatar.png;
     };
 in {
   services.displayManager.sddm = {
