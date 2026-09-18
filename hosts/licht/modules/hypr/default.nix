@@ -14,11 +14,26 @@
     brightnessctl
     pywalfox-native
     awww
+    dbus # for dbus-update-activation-environment in autostart.lua
   ];
 
   xdg.configFile."hypr" = {
     source = ./config;
     recursive = true;
+  };
+
+  # See autostart.lua for why this exists -- short version: your polkit
+  # prompt already working suggests something (most likely Hyprland's own
+  # native systemd integration on this nixpkgs build) is already getting
+  # graphical-session.target active without this. This is added as a
+  # cheap, idempotent safety net, not because anything is confirmed broken.
+  systemd.user.targets.hyprland-session = {
+    Unit = {
+      Description = "Hyprland compositor session";
+      BindsTo = ["graphical-session.target"];
+      Wants = ["graphical-session-pre.target"];
+      After = ["graphical-session-pre.target"];
+    };
   };
 
   home.activation.ensureCurrentWallpaper = lib.hm.dag.entryAfter ["writeBoundary"] ''

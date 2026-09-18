@@ -12,10 +12,6 @@
     brave
     nautilus
     python3
-    (pipx.overrideAttrs (old: {
-      doCheck = false;
-      doInstallCheck = false;
-    }))
     nh
     vesktop
     playerctl
@@ -63,7 +59,6 @@
     ./modules/theme
     ./modules/cava
     ./modules/aria2
-    ./modules/qbittorrent
     ./modules/yt-dlp
     ./modules/fetch
   ];

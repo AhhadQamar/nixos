@@ -43,9 +43,6 @@
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
 
-  networking.firewall.allowedTCPPorts = [28987];
-  networking.firewall.allowedUDPPorts = [28987];
-
   time.timeZone = "Asia/Karachi";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -96,12 +93,6 @@
   age.secrets = {
     aria2-rpc-secret = {
       file = ../../secrets/aria2-rpc-secret.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    qbittorrent-webui-password = {
-      file = ../../secrets/qbittorrent-webui-password.age;
       owner = "licht";
       group = "users";
       mode = "0400";

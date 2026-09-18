@@ -81,10 +81,6 @@ hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(browser1))
 
 hl.bind(
-	"SUPER + T",
-	hl.dsp.exec_cmd("kitty --title qbt -e qbittorrentui --config_file ~/.config/qbittorrentui/default.ini")
-)
-hl.bind(
 	mainMod .. " + D",
 	hl.dsp.exec_cmd("kitty --title aria2p -e sh -c 'aria2p --secret \"$(cat /run/agenix/aria2-rpc-secret)\"'")
 )
