@@ -65,6 +65,7 @@ PanelWindow {
     Quickshell.execDetached(["bash", "-c",
         "wal -i \"" + entry.path + "\" -n; " +
         "ln -sf \"" + entry.path + "\" ~/Pictures/Wallpapers/.current_wallpaper; " +
+        "ln -sf \"" + entry.path + "\" /var/lib/wallpaper/current; " +
         "awww img \"" + entry.path + "\" --transition-type simple --transition-fps 30; " +
         "hyprctl reload"
     ]);

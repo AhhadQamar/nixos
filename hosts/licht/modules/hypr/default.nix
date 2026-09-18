@@ -44,8 +44,10 @@
         ln -sf "$DEFAULT_WALLPAPER" "$WALLPAPER_LINK"
       fi
     fi
+    if [ -e "$WALLPAPER_LINK" ]; then
+      ln -sf "$(readlink -f "$WALLPAPER_LINK")" /var/lib/wallpaper/current
+    fi
   '';
-
   home.activation.ensureWalHyprFiles = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.cache/wal"
     [ -f "$HOME/.cache/wal/colors-hyprland.lua" ] || touch "$HOME/.cache/wal/colors-hyprland.lua"

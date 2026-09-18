@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Format -> scan for leaked secrets -> rebuild -> commit -> push.
-#
-# The README used to claim this script ran alejandra and gitleaks. It
-# didn't; it only committed and pushed, so gitleaks had never actually
-# scanned anything. It does now, and a leak aborts before the push.
+
 set -euo pipefail
 
 cd "${NH_FLAKE:?NH_FLAKE is not set}"

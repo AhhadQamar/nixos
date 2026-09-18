@@ -8,6 +8,7 @@
     {
       fontFamily = "Rubik";
       autoColor = true;
+      background = /var/lib/wallpaper/current;
     };
 in {
   services.displayManager.sddm = {

@@ -114,6 +114,10 @@
 
   services.fstrim.enable = true;
 
+  systemd.tmpfiles.rules = [
+    "d /var/lib/wallpaper 0755 licht users -"
+  ];
+
   programs.hyprland = {
     enable = true;
     withUWSM = true;
