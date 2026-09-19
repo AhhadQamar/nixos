@@ -51,10 +51,10 @@
 
   services.vaultwarden = {
     enable = true;
-    backupDir = "/var/backup/vaultwarden";
+    backupDir = "/var/lib/vaultwarden-backup";
     environmentFile = config.age.secrets.vaultwarden-admin-token.path;
     config = {
-      DOMAIN = "http://127.0.0.1:8000";
+      DOMAIN = "https://licht.possum-fir.ts.net";
       ROCKET_ADDRESS = "127.0.0.1";
       ROCKET_PORT = 8000;
       SIGNUPS_ALLOWED = false;
