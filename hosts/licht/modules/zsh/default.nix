@@ -15,6 +15,12 @@
     python3Packages.edge-tts
     unzip
     btop
+
+    qrencode
+    tealdeer
+    jq
+    dust
+    ncdu
   ];
 
   programs.zsh = {
