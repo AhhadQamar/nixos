@@ -51,11 +51,12 @@
 
   services.vaultwarden = {
     enable = true;
+    environmentFile = config.age.secrets.vaultwarden-admin-token.path;
     config = {
       DOMAIN = "http://127.0.0.1:8000";
       ROCKET_ADDRESS = "127.0.0.1";
       ROCKET_PORT = 8000;
-      SIGNUPS_ALLOWED = false;
+      SIGNUPS_ALLOWED = true;
     };
   };
 
@@ -111,6 +112,10 @@
       file = ../../secrets/aria2-rpc-secret.age;
       owner = "licht";
       group = "users";
+      mode = "0400";
+    };
+    vaultwarden-admin-token = {
+      file = ../../secrets/vaultwarden-admin-token.age;
       mode = "0400";
     };
   };

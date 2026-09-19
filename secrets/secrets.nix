@@ -7,4 +7,5 @@ let
   ];
 in {
   "aria2-rpc-secret.age".publicKeys = allKeys;
+  "vaultwarden-admin-token.age".publicKeys = allKeys;
 }
