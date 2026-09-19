@@ -18,6 +18,7 @@
     obsidian
     bombsquad
     github-copilot-cli
+    rclone
   ];
 
   services.udiskie = {

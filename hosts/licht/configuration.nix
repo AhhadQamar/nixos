@@ -51,6 +51,7 @@
 
   services.vaultwarden = {
     enable = true;
+    backupDir = "/var/backup/vaultwarden";
     environmentFile = config.age.secrets.vaultwarden-admin-token.path;
     config = {
       DOMAIN = "http://127.0.0.1:8000";
