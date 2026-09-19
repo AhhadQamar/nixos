@@ -44,23 +44,6 @@
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
 
-  services.tailscale.enable = true;
-
-  networking.firewall.trustedInterfaces = ["tailscale0"];
-  networking.firewall.allowedUDPPorts = [config.services.tailscale.port];
-
-  services.vaultwarden = {
-    enable = true;
-    backupDir = "/var/backup/vaultwarden";
-    environmentFile = config.age.secrets.vaultwarden-admin-token.path;
-    config = {
-      DOMAIN = "https://licht.possum-fir.ts.net";
-      ROCKET_ADDRESS = "127.0.0.1";
-      ROCKET_PORT = 8000;
-      SIGNUPS_ALLOWED = false;
-    };
-  };
-
   time.timeZone = "Asia/Karachi";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -113,10 +96,6 @@
       file = ../../secrets/aria2-rpc-secret.age;
       owner = "licht";
       group = "users";
-      mode = "0400";
-    };
-    vaultwarden-admin-token = {
-      file = ../../secrets/vaultwarden-admin-token.age;
       mode = "0400";
     };
   };

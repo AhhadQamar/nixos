@@ -179,16 +179,6 @@ new path.
 - custom wallpaper and theme helpers
 - `qrencode`, `tealdeer`, `jq`, `dust`, `ncdu` — see [Shell utilities](#shell-utilities)
 
-### Remote access & password management
-
-- `tailscale` — mesh VPN, used to reach this machine without opening any
-  ports on the regular firewall (`tailscale0` is a trusted interface;
-  nothing else is)
-- `vaultwarden` — self-hosted, Bitwarden-compatible password manager,
-  bound to `127.0.0.1` only and reached exclusively through Tailscale.
-  See [Notes](#notes) for the one manual step this needs beyond
-  `nixos-rebuild`.
-
 ## Repository structure
 
 ```text
@@ -224,14 +214,8 @@ Encrypted secrets are managed with `agenix` and stored in `secrets/`.
 Current secrets:
 
 - `aria2-rpc-secret.age`
-- `vaultwarden-admin-token.age` — `ADMIN_TOKEN` for Vaultwarden's `/admin`
-  page, injected via `services.vaultwarden.environmentFile`. Owned by
-  `root:root` on purpose, not `vaultwarden:vaultwarden` — systemd reads
-  `EnvironmentFile=` itself, before dropping privileges to the service's
-  configured user, so root ownership is correct here and doesn't need
-  loosening.
 
-Both are encrypted against two age public keys, defined in
+It's encrypted against two age public keys, defined in
 `secrets/secrets.nix`:
 
 - `licht` — this machine's identity, private key at `/var/lib/agenix/key.txt`
@@ -311,17 +295,6 @@ Also defined in the `zsh` module, not specific to the Nix workflow:
   scoring), via the `recolor-icons` script and a build-time activation
   step — not a live symlink, since `papirus-folders` needs a writable
   theme copy outside the Nix store.
-- Vaultwarden's `DOMAIN` (`https://licht.possum-fir.ts.net`) only
-  actually resolves to anything if Tailscale's HTTPS reverse proxy has
-  been pointed at it at least once. This lives in `tailscaled`'s own
-  runtime state, not in this repo, so `nixos-rebuild` alone won't set it
-  up — run once per machine (it persists across reboots after that):
-  ```bash
-  sudo tailscale serve https / http://127.0.0.1:8000
-  ```
-  `tailscale serve status` confirms whether this is already in place.
-  `SIGNUPS_ALLOWED` should stay `false` day to day; it's only flipped to
-  `true` long enough to create a new account, then back off.
 
 ## License
 
