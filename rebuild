@@ -7,15 +7,16 @@ cd "${NH_FLAKE:?NH_FLAKE is not set}"
 echo ">>> Formatting"
 nix fmt . >/dev/null
 
-echo ">>> Scanning for secrets"
-gitleaks detect --no-banner --redact
+git add -A
+
+echo ">>> Scanning staged changes for secrets"
+gitleaks git --staged --redact --no-banner
 
 echo ">>> Rebuilding"
 nh os switch
 
 gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
 
-git add -A
 if git diff --cached --quiet; then
   echo "Nothing to commit"
   exit 0

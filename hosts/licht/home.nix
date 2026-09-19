@@ -8,8 +8,6 @@
   home.stateVersion = "26.05";
 
   home.packages = with pkgs; [
-    firefox
-    brave
     nautilus
     python3
     nh
@@ -47,19 +45,8 @@
   programs.home-manager.enable = true;
 
   imports = [
-    ./modules/git
-    ./modules/zsh
-    ./modules/hypr
-    ./modules/pyprland
-    ./modules/kitty
-    ./modules/nvim
-    ./modules/vscodium
-    ./modules/quickshell
-    ./modules/pywal
-    ./modules/theme
-    ./modules/cava
-    ./modules/aria2
-    ./modules/yt-dlp
-    ./modules/fetch
+    ./modules/desktop
+    ./modules/shell
+    ./modules/programs
   ];
 }

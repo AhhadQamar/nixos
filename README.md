@@ -142,7 +142,7 @@ new path.
 - systemd-boot
 - NetworkManager
 - zram swap
-- daily Nix store optimisation and garbage collection
+- weekly Nix store optimisation and garbage collection (generations older than 14 days are deleted)
 - Intel graphics acceleration
 - PipeWire audio
 - XDG portals for Hyprland
@@ -179,16 +179,6 @@ new path.
 - custom wallpaper and theme helpers
 - `qrencode`, `tealdeer`, `jq`, `dust`, `ncdu` — see [Shell utilities](#shell-utilities)
 
-### Remote access & password management
-
-- `tailscale` — mesh VPN, used to reach this machine without opening any
-  ports on the regular firewall (`tailscale0` is a trusted interface;
-  nothing else is)
-- `vaultwarden` — self-hosted, Bitwarden-compatible password manager,
-  bound to `127.0.0.1` only and reached exclusively through Tailscale.
-  See [Notes](#notes) for the one manual step this needs beyond
-  `nixos-rebuild`.
-
 ## Repository structure
 
 ```text
@@ -198,21 +188,36 @@ hosts/
     configuration.nix
     hardware-configuration.nix
     home.nix
-    modules/
-      aria2/
-      cava/
-      fetch/
-      git/
-      hypr/
-      kitty/
-      nvim/
-      pyprland/
-      pywal/
-      quickshell/
-      theme/
-      vscodium/
-      yt-dlp/
-      zsh/
+    assets/
+system/
+boot.nix
+nix.nix
+netowrking.nix
+hardware.nix
+desktop.nix
+sddm.nix
+modules/
+    desktop/
+        hypr/
+        quickshell/
+       pywal/
+        theme/
+        cava/
+        pyprland/
+      shell/
+        zsh/
+        tmux/
+        git/
+        fetch/
+     programs/
+        kitty/
+        nvim/
+        mpv/
+        vscodium/
+        firefox/
+        chromium/
+        yt-dlp/
+        aria2/
 secrets/
 rebuild
 ```
@@ -224,14 +229,8 @@ Encrypted secrets are managed with `agenix` and stored in `secrets/`.
 Current secrets:
 
 - `aria2-rpc-secret.age`
-- `vaultwarden-admin-token.age` — `ADMIN_TOKEN` for Vaultwarden's `/admin`
-  page, injected via `services.vaultwarden.environmentFile`. Owned by
-  `root:root` on purpose, not `vaultwarden:vaultwarden` — systemd reads
-  `EnvironmentFile=` itself, before dropping privileges to the service's
-  configured user, so root ownership is correct here and doesn't need
-  loosening.
 
-Both are encrypted against two age public keys, defined in
+It's encrypted against two age public keys, defined in
 `secrets/secrets.nix`:
 
 - `licht` — this machine's identity, private key at `/var/lib/agenix/key.txt`
@@ -242,7 +241,7 @@ a fresh install.
 
 ## Rebuild script
 
-The `rebuild` script formats the config, checks for secrets, rebuilds the system, and commits the new generation:
+The `rebuild` script formats the config, stages it, scans the staged changes for secrets, rebuilds the system, and commits the new generation:
 
 ```bash
 ./rebuild
@@ -251,25 +250,26 @@ The `rebuild` script formats the config, checks for secrets, rebuilds the system
 It runs, in order:
 
 1. `alejandra` — formats all `.nix` files
-2. `gitleaks detect` — scans for accidentally-committed secrets before anything is pushed
-3. `nh os switch` — rebuilds and activates
-4. Prompts for a commit message (falls back to the NixOS generation number if left blank), attaches the list of changed files as the commit body, then pushes
+2. `git add -A` — stages everything (flakes only see git-tracked files, so this also makes new files visible to the build)
+3. `gitleaks git --staged` — scans exactly what is about to be committed for secrets; the script stops here if anything is found, before building, committing or pushing
+4. `nh os switch` — rebuilds and activates
+5. Prompts for a commit message: `a` asks Copilot to write one from the staged diff, `m` or blank types one manually, and anything else typed is used as the message itself. If the message is left blank it falls back to the NixOS generation number. The list of changed files is attached as the commit body, then the commit is pushed
 
 ## Useful aliases
 
 Defined in the `zsh` module (`.zshrc`):
 
-| Alias           | What it does                                                  |
-| --------------- | ------------------------------------------------------------- |
-| `u`             | runs `./rebuild` — format, scan, `nh os switch`, commit, push |
-| `ub`            | `nh os boot` — build for next boot only                       |
-| `ut`            | `nh os test` — activate now, don't persist to boot            |
-| `uu`            | update all flake inputs, then rebuild                         |
-| `nhc`           | `nh clean all` — garbage collect old generations              |
-| `nhs`           | `nh search` — search nixpkgs                                  |
-| `i <pkg>`       | try a package in a throwaway shell, nothing persists          |
-| `rmconf`        | jump straight to `home.nix` for editing                       |
-| `recolor-icons` | re-match Papirus folder colors to the current wal palette     |
+| Alias           | What it does                                                         |
+| --------------- | -------------------------------------------------------------------- |
+| `u`             | runs `./rebuild` — format, stage, scan, `nh os switch`, commit, push |
+| `ub`            | `nh os boot` — build for next boot only                              |
+| `ut`            | `nh os test` — activate now, don't persist to boot                   |
+| `uu`            | update all flake inputs, then rebuild                                |
+| `nhc`           | `nh clean all` — garbage collect old generations                     |
+| `nhs`           | `nh search` — search nixpkgs                                         |
+| `i <pkg>`       | try a package in a throwaway shell, nothing persists                 |
+| `rmconf`        | jump straight to `home.nix` for editing                              |
+| `recolor-icons` | re-match Papirus folder colors to the current wal palette            |
 
 All of these rely on `NH_FLAKE=/home/licht/nixos`, set declaratively in `configuration.nix`.
 
@@ -277,12 +277,12 @@ All of these rely on `NH_FLAKE=/home/licht/nixos`, set declaratively in `configu
 
 Also defined in the `zsh` module, not specific to the Nix workflow:
 
-| Command                | What it does                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `qr [text]`            | prints a scannable QR code in the terminal — argument or piped stdin               |
-| `cheat <cmd>`          | → `tldr` — example-first man pages                                                 |
-| `json`                 | → `jq .` — pretty-print JSON piped in                                              |
-| `dust` / `ncdu`        | visual disk-usage tools, run directly rather than aliased (`du` stays untouched so `dus` keeps working) |
+| Command         | What it does                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `qr [text]`     | prints a scannable QR code in the terminal — argument or piped stdin                                    |
+| `cheat <cmd>`   | → `tldr` — example-first man pages                                                                      |
+| `json`          | → `jq .` — pretty-print JSON piped in                                                                   |
+| `dust` / `ncdu` | visual disk-usage tools, run directly rather than aliased (`du` stays untouched so `dus` keeps working) |
 
 ## Requirements
 
@@ -311,17 +311,6 @@ Also defined in the `zsh` module, not specific to the Nix workflow:
   scoring), via the `recolor-icons` script and a build-time activation
   step — not a live symlink, since `papirus-folders` needs a writable
   theme copy outside the Nix store.
-- Vaultwarden's `DOMAIN` (`https://licht.possum-fir.ts.net`) only
-  actually resolves to anything if Tailscale's HTTPS reverse proxy has
-  been pointed at it at least once. This lives in `tailscaled`'s own
-  runtime state, not in this repo, so `nixos-rebuild` alone won't set it
-  up — run once per machine (it persists across reboots after that):
-  ```bash
-  sudo tailscale serve https / http://127.0.0.1:8000
-  ```
-  `tailscale serve status` confirms whether this is already in place.
-  `SIGNUPS_ALLOWED` should stay `false` day to day; it's only flipped to
-  `true` long enough to create a new account, then back off.
 
 ## License
 
