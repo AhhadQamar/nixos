@@ -51,7 +51,7 @@
 
   services.vaultwarden = {
     enable = true;
-    backupDir = "/var/lib/vaultwarden-backup";
+    backupDir = "/var/backup/vaultwarden";
     environmentFile = config.age.secrets.vaultwarden-admin-token.path;
     config = {
       DOMAIN = "https://licht.possum-fir.ts.net";
