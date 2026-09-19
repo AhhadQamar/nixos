@@ -7,7 +7,7 @@
     inputs.pixie-sddm.packages.${pkgs.stdenv.hostPlatform.system}.pixie-sddm.override
     {
       fontFamily = "Rubik";
-      autoColor = true;
+      autoColor = false;
       background = ./assets/wallpaper.png;
       avatar = ./assets/avatar.png;
     };
