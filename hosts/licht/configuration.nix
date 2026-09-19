@@ -56,7 +56,7 @@
       DOMAIN = "http://127.0.0.1:8000";
       ROCKET_ADDRESS = "127.0.0.1";
       ROCKET_PORT = 8000;
-      SIGNUPS_ALLOWED = true;
+      SIGNUPS_ALLOWED = false;
     };
   };
 
