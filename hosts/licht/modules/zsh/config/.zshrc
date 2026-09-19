@@ -227,33 +227,6 @@ qr() {
     fi
 }
 
-# Quick weather. No args = auto-detected by IP; `weather lahore` for a city.
-# https:// is explicit and not optional here -- curl's scheme-guessing
-# defaults to plain http for a hostname like "wttr.in" that doesn't start
-# with a recognized prefix (ftp., smtp., ...), so leaving the scheme off
-# would send this in cleartext.
-weather() {
-    curl -s "https://wttr.in/${1:-}"
-}
-
-# Serve $PWD over the LAN, e.g. to grab a file on your phone.
-# Binds only to the detected LAN address, not every interface -- python's
-# http.server defaults to 0.0.0.0, which would also answer on a VPN/Tailscale
-# tunnel or public wifi, not just the LAN you have in mind. If the address
-# can't be detected, this refuses rather than silently falling back to
-# exposing every interface.
-serve() {
-    local port="${1:-8000}"
-    local ip
-    ip=$(localip 2>/dev/null)
-    if [ -z "$ip" ]; then
-        echo "Could not detect a LAN address -- refusing to bind to all interfaces."
-        echo "Bind one explicitly if you're sure: python3 -m http.server $port --bind <ip>"
-        return 1
-    fi
-    echo "Serving $PWD on http://$ip:$port  (Ctrl-C to stop)"
-    python3 -m http.server "$port" --bind "$ip"
-}
 
 # Yazi shell wrapper — cd into last dir on exit
 function y() {
@@ -263,74 +236,6 @@ function y() {
     IFS= read -r -d '' cwd < "$tmp"
     [ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
     \rm -f -- "$tmp" >/dev/null 2>&1
-}
-
-# ─── SECURITY / GENERATORS ──────────────────────────────────────
-
-# Random password. Charset avoids quotes, backslashes, `$`, `;`, `|`, `<`, `>`
-# on purpose -- those are the characters most likely to break something when
-# the result gets pasted into a URL, a shell, or a config file.
-genpass() {
-    local len="${1:-20}"
-    # The trailing "-" is a literal hyphen only because it's the LAST char in
-    # this set; anywhere else, tr reads "x-y" as a range. "+-=" earlier here
-    # was a real bug (a hidden range covering , . / : ; < too) caught by
-    # testing this against real output rather than just reading the line.
-    LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*()_+=-' < /dev/urandom | head -c "$len"
-    echo
-}
-
-# Numeric PIN, e.g. for a phone lock code or a 2FA-adjacent form.
-genpin() {
-    local len="${1:-6}"
-    LC_ALL=C tr -dc '0-9' < /dev/urandom | head -c "$len"
-    echo
-}
-
-# Clipboard variants of genpass/genpin, for when you don't want the secret
-# ever hitting the screen.
-#
-# The complication: autostart.lua runs `wl-paste --watch cliphist store`,
-# which writes EVERY clipboard change to cliphist's on-disk history --
-# unconditionally. cliphist has no built-in way to exclude sensitive content
-# (a patch for the x-kde-passwordManagerHint convention that KeePassXC etc.
-# use was proposed upstream and never merged), so there's no clean "don't
-# record this one" signal to give it.
-#
-# So this does what `pass` does instead:
-#   1. Put the value on the clipboard.
-#   2. Race cliphist's watcher to scrub the entry back out of its history.
-#      This is a genuine race, not a guarantee -- if the watcher wins, the
-#      entry sits in cliphist until you delete it yourself (open the
-#      clipboard manager and remove that one entry, or `cliphist wipe` for
-#      everything).
-#   3. After 45s, clear the clipboard -- but only if it still holds exactly
-#      what we put there, so this never wipes something you copied since.
-_clip_then_scrub() {
-    local val="$1"
-    printf '%s' "$val" | wl-copy
-    (
-        sleep 0.3
-        cliphist delete-query -- "$val" >/dev/null 2>&1
-    ) &!
-    (
-        sleep 45
-        [ "$(wl-paste -n 2>/dev/null)" = "$val" ] && wl-copy --clear
-    ) &!
-}
-
-genpassc() {
-    local val
-    val=$(genpass "$@")
-    _clip_then_scrub "$val"
-    echo "password copied -- clears in 45s if untouched"
-}
-
-genpinc() {
-    local val
-    val=$(genpin "$@")
-    _clip_then_scrub "$val"
-    echo "PIN copied -- clears in 45s if untouched"
 }
 
 # ─── ALIASES — HANDY EXTRAS ─────────────────────────────────────
