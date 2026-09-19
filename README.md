@@ -142,7 +142,7 @@ new path.
 - systemd-boot
 - NetworkManager
 - zram swap
-- daily Nix store optimisation and garbage collection
+- weekly Nix store optimisation and garbage collection (generations older than 14 days are deleted)
 - Intel graphics acceleration
 - PipeWire audio
 - XDG portals for Hyprland
@@ -188,6 +188,8 @@ hosts/
     configuration.nix
     hardware-configuration.nix
     home.nix
+    sddm.nix
+    assets/
     modules/
       aria2/
       cava/
@@ -226,7 +228,7 @@ a fresh install.
 
 ## Rebuild script
 
-The `rebuild` script formats the config, checks for secrets, rebuilds the system, and commits the new generation:
+The `rebuild` script formats the config, stages it, scans the staged changes for secrets, rebuilds the system, and commits the new generation:
 
 ```bash
 ./rebuild
@@ -235,25 +237,26 @@ The `rebuild` script formats the config, checks for secrets, rebuilds the system
 It runs, in order:
 
 1. `alejandra` — formats all `.nix` files
-2. `gitleaks detect` — scans for accidentally-committed secrets before anything is pushed
-3. `nh os switch` — rebuilds and activates
-4. Prompts for a commit message (falls back to the NixOS generation number if left blank), attaches the list of changed files as the commit body, then pushes
+2. `git add -A` — stages everything (flakes only see git-tracked files, so this also makes new files visible to the build)
+3. `gitleaks git --staged` — scans exactly what is about to be committed for secrets; the script stops here if anything is found, before building, committing or pushing
+4. `nh os switch` — rebuilds and activates
+5. Prompts for a commit message: `a` asks Copilot to write one from the staged diff, `m` or blank types one manually, and anything else typed is used as the message itself. If the message is left blank it falls back to the NixOS generation number. The list of changed files is attached as the commit body, then the commit is pushed
 
 ## Useful aliases
 
 Defined in the `zsh` module (`.zshrc`):
 
-| Alias           | What it does                                                  |
-| --------------- | ------------------------------------------------------------- |
-| `u`             | runs `./rebuild` — format, scan, `nh os switch`, commit, push |
-| `ub`            | `nh os boot` — build for next boot only                       |
-| `ut`            | `nh os test` — activate now, don't persist to boot            |
-| `uu`            | update all flake inputs, then rebuild                         |
-| `nhc`           | `nh clean all` — garbage collect old generations              |
-| `nhs`           | `nh search` — search nixpkgs                                  |
-| `i <pkg>`       | try a package in a throwaway shell, nothing persists          |
-| `rmconf`        | jump straight to `home.nix` for editing                       |
-| `recolor-icons` | re-match Papirus folder colors to the current wal palette     |
+| Alias           | What it does                                                         |
+| --------------- | -------------------------------------------------------------------- |
+| `u`             | runs `./rebuild` — format, stage, scan, `nh os switch`, commit, push |
+| `ub`            | `nh os boot` — build for next boot only                              |
+| `ut`            | `nh os test` — activate now, don't persist to boot                   |
+| `uu`            | update all flake inputs, then rebuild                                |
+| `nhc`           | `nh clean all` — garbage collect old generations                     |
+| `nhs`           | `nh search` — search nixpkgs                                         |
+| `i <pkg>`       | try a package in a throwaway shell, nothing persists                 |
+| `rmconf`        | jump straight to `home.nix` for editing                              |
+| `recolor-icons` | re-match Papirus folder colors to the current wal palette            |
 
 All of these rely on `NH_FLAKE=/home/licht/nixos`, set declaratively in `configuration.nix`.
 
@@ -261,12 +264,12 @@ All of these rely on `NH_FLAKE=/home/licht/nixos`, set declaratively in `configu
 
 Also defined in the `zsh` module, not specific to the Nix workflow:
 
-| Command                | What it does                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `qr [text]`            | prints a scannable QR code in the terminal — argument or piped stdin               |
-| `cheat <cmd>`          | → `tldr` — example-first man pages                                                 |
-| `json`                 | → `jq .` — pretty-print JSON piped in                                              |
-| `dust` / `ncdu`        | visual disk-usage tools, run directly rather than aliased (`du` stays untouched so `dus` keeps working) |
+| Command         | What it does                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `qr [text]`     | prints a scannable QR code in the terminal — argument or piped stdin                                    |
+| `cheat <cmd>`   | → `tldr` — example-first man pages                                                                      |
+| `json`          | → `jq .` — pretty-print JSON piped in                                                                   |
+| `dust` / `ncdu` | visual disk-usage tools, run directly rather than aliased (`du` stays untouched so `dus` keeps working) |
 
 ## Requirements
 
