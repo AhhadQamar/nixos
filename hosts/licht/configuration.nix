@@ -44,6 +44,11 @@
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
 
+  services.tailscale.enable = true;
+
+  networking.firewall.trustedInterfaces = ["tailscale0"];
+  networking.firewall.allowedUDPPorts = [config.services.tailscale.port];
+
   time.timeZone = "Asia/Karachi";
   i18n.defaultLocale = "en_US.UTF-8";
 
