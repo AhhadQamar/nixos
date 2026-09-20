@@ -36,19 +36,8 @@ eval "$(starship init zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
 # ─── FZF ────────────────────────────────────────────────────────
-export FZF_DEFAULT_COMMAND='rg --files --hidden --follow --glob "!.git"'
-export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-
-export FZF_DEFAULT_OPTS='
-  --height 40%
-  --layout=reverse
-  --border=rounded
-  --info=inline
-  --preview-window=right:55%:wrap
-  --bind=ctrl-d:half-page-down,ctrl-u:half-page-up
-'
-
-
+# fzf is configured in default.nix (programs.fzf)
+#
 # ─── ALIASES — NAVIGATION ───────────────────────────────────────
 alias ..='cd ..'
 alias ...='cd ../..'
@@ -140,8 +129,6 @@ alias ports='ss -tulnp'
 alias path='echo -e ${PATH//:/\\n}'
 
 # ─── ALIASES — OTHER ─────────────────────────────────────────────
-alias anime='anipy-cli'
-alias calc='daisy'
 alias ytd='yt-dlp'
 
 # ─── FUNCTIONS ──────────────────────────────────────────────────
@@ -164,7 +151,7 @@ extract() {
             *.tgz)       tar xzf "$1"    ;;
             *.zip)       unzip "$1"      ;;
             *.Z)         uncompress "$1" ;;
-            *.7z)        7z x "$1"       ;;
+            *.7z)        7zz x "$1"      ;;
             *.zst)       unzstd "$1"     ;;
             *)           echo "'$1' cannot be extracted via extract()" ;;
         esac

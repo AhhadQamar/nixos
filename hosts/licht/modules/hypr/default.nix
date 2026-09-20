@@ -5,6 +5,7 @@
   ...
 }: {
   home.packages = with pkgs; [
+    libnotify
     hypridle
     hyprsunset
     hyprshot
