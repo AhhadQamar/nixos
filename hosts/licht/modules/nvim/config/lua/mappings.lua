@@ -94,18 +94,34 @@ map("n", "<leader>ls", function()
 		return
 	end
 	local root = vim.fn.expand("%:p:h")
-	live_server_job = vim.fn.jobstart({ "live-server", root, "--host", "127.0.0.1", "--port", "5500", "--open" }, {
-		on_exit = function()
-			live_server_job = nil
-		end,
-	})
+	local page = vim.fn.expand("%:t")
+	if vim.fn.isdirectory(root) == 0 then
+		vim.notify("live-server: folder does not exist: " .. root, vim.log.levels.ERROR)
+		return
+	end
+	local output = {}
+	live_server_job = vim.fn.jobstart(
+		{ "live-server", root, "--host", "127.0.0.1", "--port", "5500", "--open=" .. page },
+		{
+			on_stderr = function(_, data)
+				for _, line in ipairs(data) do
+					if line ~= "" then
+						table.insert(output, line)
+					end
+				end
+			end,
+			on_exit = function(_, code)
+				live_server_job = nil
+				if code ~= 0 then
+					vim.schedule(function()
+						vim.notify(
+							"live-server exited (" .. code .. "):\n" .. table.concat(output, "\n"),
+							vim.log.levels.ERROR
+						)
+					end)
+				end
+			end,
+		}
+	)
 	vim.notify("live-server: http://127.0.0.1:5500")
 end, { desc = "Live server start" })
-
-map("n", "<leader>lx", function()
-	if live_server_job then
-		vim.fn.jobstop(live_server_job)
-		live_server_job = nil
-		vim.notify("live-server stopped")
-	end
-end, { desc = "Live server stop" })
