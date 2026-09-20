@@ -74,18 +74,7 @@ return {
 			"nvim-lua/plenary.nvim",
 		},
 	},
-	-- ─── Live Server ──────────────────────────────────────────────
-	{
-		"barrett-ruth/live-server.nvim",
-		build = "npm install -g live-server",
-		cmd = { "LiveServerStart", "LiveServerStop" },
-		init = function()
-			vim.g.live_server = {
-				port = 5500,
-				browser = true,
-			}
-		end,
-	},
+
 	-- ─── Dashboard (alpha-nvim) ───────────────────────────────────
 	{
 		"goolord/alpha-nvim",

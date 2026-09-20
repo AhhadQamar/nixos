@@ -1,4 +1,4 @@
-require "nvchad.mappings"
+require("nvchad.mappings")
 
 -- add yours here
 
@@ -80,11 +80,32 @@ map("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
 map("n", "<leader>gg", "<cmd>LazyGit<CR>", { desc = "Open LazyGit" })
 -- ─── Copilot ──────────────────────────────────────────────────────
 map("i", "<C-l>", function()
-  vim.fn.feedkeys(vim.fn["copilot#Accept"](), "")
+	vim.fn.feedkeys(vim.fn["copilot#Accept"](), "")
 end, { desc = "Copilot accept", noremap = true, silent = true })
 map("i", "<C-]>", "<Plug>(copilot-dismiss)", { desc = "Copilot dismiss" })
 map("i", "<M-]>", "<Plug>(copilot-next)", { desc = "Copilot next" })
 map("i", "<M-[>", "<Plug>(copilot-previous)", { desc = "Copilot previous" })
 -- ─── Live Server ──────────────────────────────────────────────────
-vim.keymap.set("n", "<leader>ls", ":LiveServerStart<CR>", { desc = "Live Server Start" })
-vim.keymap.set("n", "<leader>lx", ":LiveServerStop<CR>", { desc = "Live Server Stop" })
+local live_server_job = nil
+
+map("n", "<leader>ls", function()
+	if live_server_job then
+		vim.notify("live-server is already running", vim.log.levels.WARN)
+		return
+	end
+	local root = vim.fn.expand("%:p:h")
+	live_server_job = vim.fn.jobstart({ "live-server", root, "--host", "127.0.0.1", "--port", "5500", "--open" }, {
+		on_exit = function()
+			live_server_job = nil
+		end,
+	})
+	vim.notify("live-server: http://127.0.0.1:5500")
+end, { desc = "Live server start" })
+
+map("n", "<leader>lx", function()
+	if live_server_job then
+		vim.fn.jobstop(live_server_job)
+		live_server_job = nil
+		vim.notify("live-server stopped")
+	end
+end, { desc = "Live server stop" })

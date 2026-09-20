@@ -12,6 +12,7 @@
     lua
     nil
     alejandra
+    live-server
 
     # LSP servers
     vscode-langservers-extracted # html, css, json, eslint
