@@ -108,6 +108,7 @@ alias dus='du -sh'   # don't shadow `du`; `du -sh *` would become `du -sh -sh *`
 alias free='free -h'
 alias psa='ps auxf'  # don't shadow `ps`; it would break `ps -p <pid>`
 alias top='btop'
+alias vim='nvim'
 alias mkdir='mkdir -pv'
 alias cp='cp -iv'
 alias mv='mv -iv'
