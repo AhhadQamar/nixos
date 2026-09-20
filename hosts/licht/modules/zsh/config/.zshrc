@@ -107,9 +107,9 @@ alias ln='ln -iv'
 # Quick config edits
 alias zshrc='$EDITOR $HOME/nixos/hosts/licht/modules/zsh/config/.zshrc'
 alias zshrcs='source ~/.zshrc'
-alias hyprconf='$EDITOR ~/.config/hypr/'
-alias kittyconf='$EDITOR ~/.config/kitty/kitty.conf'
-alias starconf='$EDITOR ~/.config/starship.toml'
+alias hyprconf='(cd "$NH_FLAKE/hosts/licht/modules/hypr/config" && $EDITOR .)'
+alias kittyconf='$EDITOR "$NH_FLAKE/hosts/licht/modules/kitty/config/kitty.conf"'
+alias starconf='$EDITOR "$NH_FLAKE/hosts/licht/modules/zsh/config/starship.toml"'
 
 # Hyprland helpers
 alias hyprlog='cat /tmp/hypr/*.log | tail -50'

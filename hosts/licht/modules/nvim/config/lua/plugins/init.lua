@@ -52,7 +52,7 @@ return {
 	-- ─── Auto-close HTML/JSX tags ─────────────────────────────────
 	{
 		"windwp/nvim-ts-autotag",
-		ft = { "html", "javascript", "typescript", "jsx", "tsx" },
+		ft = { "html", "javascript", "typescript", "javascriptreact", "typescriptreact" },
 		opts = {},
 	},
 	-- ─── GitHub Copilot ───────────────────────────────────────────

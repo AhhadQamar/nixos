@@ -35,7 +35,7 @@ local options = {
 		isort = {
 			prepend_args = { "--profile", "black" },
 		},
-		["clang-format"] = {
+		clang_format = {
 			prepend_args = {
 				"-style={ IndentWidth: 4, TabWidth: 4, UseTab: Never }",
 			},
@@ -45,7 +45,7 @@ local options = {
 	-- Format automatically when you save a file
 	format_on_save = {
 		timeout_ms = 2000,
-		lsp_fallback = true,
+		lsp_format = "fallback",
 	},
 }
 
