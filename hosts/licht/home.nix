@@ -17,6 +17,7 @@
     playerctl
     obsidian
     bombsquad
+    libnotify
     github-copilot-cli
   ];
 

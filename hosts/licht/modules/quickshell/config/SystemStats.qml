@@ -34,7 +34,7 @@ Rectangle {
                 font.pixelSize: {
                     return 18;
                 }
-                font.family: "JetBrainsMono Nerd Fonts Mono"
+                font.family: "JetBrainsMono Nerd Font"
                 color: {
                     if (dotMouseArea.hovered)
                         return Colors.accent;
@@ -139,6 +139,3 @@ Rectangle {
         }
     }
 }
-
-
-

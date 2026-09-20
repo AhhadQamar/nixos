@@ -24,7 +24,7 @@ PanelWindow {
         {
             "label": "Logout",
             "icon": "󰍃",
-            "cmd": "hyprctl dispatch exit",
+            "cmd": "uwsm logout",
             "critical": false
         },
         {
