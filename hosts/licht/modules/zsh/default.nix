@@ -10,7 +10,6 @@
     ripgrep
     zoxide
     trash-cli
-    mpv
     python3Packages.edge-tts
     unzip
     _7zz
