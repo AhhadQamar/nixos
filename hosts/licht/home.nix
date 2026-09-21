@@ -53,6 +53,7 @@
     ./modules/pyprland
     ./modules/kitty
     ./modules/nvim
+    ./modules/mpv
     ./modules/vscodium
     ./modules/quickshell
     ./modules/pywal
