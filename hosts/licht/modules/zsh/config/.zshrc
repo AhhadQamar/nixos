@@ -200,19 +200,25 @@ sysinfo() {
     uptime -p
 }
 
-say() {
-    edge-tts --voice en-US-AriaNeural --file "$1" --write-media /dev/stdout | mpv -
+SESSIONIZER_DIRS=("$HOME/nixos" "$HOME/Projects" "$HOME/dev")
+
+ts() {
+  local dir
+  dir=$(find "${SESSIONIZER_DIRS[@]}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | fzf) || return
+  local name
+  name=$(basename "$dir" | tr '.:' '_')
+  if ! tmux has-session -t "$name" 2>/dev/null; then
+    tmux new-session -ds "$name" -c "$dir"
+  fi
+  if [ -n "${TMUX:-}" ]; then
+    tmux switch-client -t "$name"
+  else
+    tmux attach -t "$name"
+  fi
 }
 
-# Terminal QR code. `qr "https://..."` or pipe something in, e.g.
-# `qr "WIFI:T:WPA;S:myssid;P:mypassword;;"` to hand a guest a scannable
-# Wi-Fi code instead of reading the password out loud.
-qr() {
-    if [ -n "$1" ]; then
-        qrencode -t ANSIUTF8 "$1"
-    else
-        qrencode -t ANSIUTF8 < /dev/stdin
-    fi
+say() {
+    edge-tts --voice en-US-AriaNeural --file "$1" --write-media /dev/stdout | mpv -
 }
 
 
