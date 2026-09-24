@@ -8,6 +8,10 @@ map("n", ";", ":", { desc = "CMD enter command mode" })
 map("i", "jk", "<ESC>")
 
 -- ─── Better Navigation ────────────────────────────────────────────
+map("n", "<C-h>", "<cmd>TmuxNavigateLeft<CR>", { desc = "Window left" })
+map("n", "<C-j>", "<cmd>TmuxNavigateDown<CR>", { desc = "Window down" })
+map("n", "<C-k>", "<cmd>TmuxNavigateUp<CR>", { desc = "Window up" })
+map("n", "<C-l>", "<cmd>TmuxNavigateRight<CR>", { desc = "Window right" })
 -- Stay centered when jumping
 map("n", "<C-d>", "<C-d>zz", { desc = "Scroll down centered" })
 map("n", "<C-u>", "<C-u>zz", { desc = "Scroll up centered" })

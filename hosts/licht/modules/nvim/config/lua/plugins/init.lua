@@ -36,7 +36,11 @@ return {
 		event = "BufReadPre",
 		opts = {},
 	},
-
+	{
+		-- ───Tmux Integration ──────────────────────────────────────────
+		"christoomey/vim-tmux-navigator",
+		lazy = false,
+	},
 	-- ─── Color Highlighter (web dev CSS colors) ───────────────────
 	{
 		"NvChad/nvim-colorizer.lua",

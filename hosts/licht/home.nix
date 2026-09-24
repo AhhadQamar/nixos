@@ -62,5 +62,6 @@
     ./modules/aria2
     ./modules/yt-dlp
     ./modules/fetch
+    ./modules/tmux
   ];
 }
