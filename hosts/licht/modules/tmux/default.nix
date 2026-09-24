@@ -10,6 +10,19 @@
     extraConfig = builtins.readFile ./config/tmux.conf;
     plugins = with pkgs.tmuxPlugins; [
       vim-tmux-navigator
+      {
+        plugin = resurrect;
+        extraConfig = ''
+          set -g @resurrect-strategy-nvim 'session'
+        '';
+      }
+      {
+        plugin = continuum;
+        extraConfig = ''
+          set -g @continuum-restore 'on'
+          set -g @continuum-save-interval '15'
+        '';
+      }
     ];
   };
 }
