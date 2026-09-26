@@ -200,7 +200,7 @@ sysinfo() {
     uptime -p
 }
 
-SESSIONIZER_DIRS=("$HOME/nixos" "$HOME/Projects" "$HOME/dev")
+SESSIONIZER_DIRS=("$HOME/nixos" "$HOME/dev/work" "$HOME/dev/personal")
 
 ts() {
   local dir
