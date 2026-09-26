@@ -3,6 +3,6 @@ plugins = ["scratchpads"]
 
 [scratchpads.term]
 animation = "fromTop"
-command = "kitty --class kitty-scratch"
+command = "kitty --class kitty-scratch -e zsh -ic ts"
 class = "kitty-scratch"
 size = "75% 60%"

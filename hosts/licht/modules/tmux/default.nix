@@ -10,6 +10,7 @@
     extraConfig = builtins.readFile ./config/tmux.conf;
     plugins = with pkgs.tmuxPlugins; [
       vim-tmux-navigator
+      tmux-thumbs
       {
         plugin = resurrect;
         extraConfig = ''
