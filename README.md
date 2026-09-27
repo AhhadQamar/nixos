@@ -215,7 +215,7 @@ modules/
         mpv/
         vscodium/
         firefox/
-        chromium/
+        brave/
         yt-dlp/
         aria2/
 secrets/

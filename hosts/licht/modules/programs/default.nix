@@ -1,12 +1,12 @@
 {...}: {
   imports = [
-    ./kitty
-    ./nvim
-    ./mpv
-    ./vscodium
-    ./firefox
-    ./chromium
-    ./yt-dlp
     ./aria2
+    ./brave
+    ./firefox
+    ./kitty
+    ./mpv
+    ./nvim
+    ./vscodium
+    ./yt-dlp
   ];
 }
