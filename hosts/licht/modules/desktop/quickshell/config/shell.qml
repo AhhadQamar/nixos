@@ -2,15 +2,13 @@ import QtQuick
 import Quickshell
 
 ShellRoot {
-    Bar {
-    }
+    Bar {}
 
     AppLauncher {
         id: appLauncher
     }
 
-    NotificationPopups {
-    }
+    NotificationPopups {}
 
     NotificationCenter {
         id: notifCenter
@@ -24,14 +22,12 @@ ShellRoot {
         id: powerMenu
     }
 
-    VolumeBrightnessOSD {
-    }
+    VolumeBrightnessOSD {}
 
     WallpaperSwitcher {
         id: wallpaperSwitcher
     }
 
-    CavaVisualizer {
-    }
-
+    CavaVisualizer {}
+    NightLight {}
 }

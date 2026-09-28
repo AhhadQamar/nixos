@@ -3,15 +3,13 @@
 -------------------
 
 hl.on("hyprland.start", function()
-	-- Idempotent safety net for graphical-session.target -- see the comment
-	-- on systemd.user.targets.hyprland-session in default.nix for why this
-	-- was added despite the polkit prompt already working without it.
 	hl.exec_cmd(
 		"dbus-update-activation-environment --systemd "
 			.. "WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE; "
 			.. "systemctl --user start hyprland-session.target"
 	)
 
+	hl.exec_cmd("hyprsunset")
 	hl.exec_cmd("awww-daemon")
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("quickshell")
