@@ -3,6 +3,12 @@
 // IPC:
 //   qs ipc call nightlight toggle   -> open/close the panel
 //   qs ipc call nightlight power    -> flip the filter on/off, no panel
+//   qs ipc call nightlight reapply  -> re-push the current filter (used by
+//                                      hypridle after the display wakes)
+//
+// The hyprsunset daemon is started and supervised by this file (see the
+// Process below), so the panel state and the daemon always agree: both start
+// "off", and if the daemon dies the panel goes back to "off" and restarts it.
 //
 // Keys while open: h/l or arrows = +-100K, Space/Enter = on/off,
 // 1-4 = presets, mouse wheel over the slider = +-100K, Esc = close.
@@ -39,10 +45,37 @@ PanelWindow {
     ]
 
     // The panel can't read the filter's state back, so it tracks it itself.
-    // After a Quickshell restart it starts "off" until you touch it again.
+    // The daemon below is (re)started with --identity, so "off" is always true
+    // right after a Quickshell restart.
     property bool filterOn: false
     property int temperature: 3500
     property int lastSent: -1
+    property int crashCount: 0
+
+    // hyprsunset daemon. Runs with Quickshell's environment, so it always sees
+    // HYPRLAND_INSTANCE_SIGNATURE (needed for `hyprctl hyprsunset ...`).
+    // pkill first so a stray instance can't hold the IPC socket.
+    Process {
+        id: daemon
+
+        command: ["sh", "-c", "pkill -x hyprsunset; exec hyprsunset --identity"]
+        running: true
+        onExited: (exitCode, exitStatus) => {
+            nightLight.filterOn = false;
+            nightLight.crashCount += 1;
+            if (nightLight.crashCount <= 5)
+                restartTimer.start();
+            else
+                console.warn("NightLight: hyprsunset keeps exiting (code " + exitCode + "), giving up. Run `hyprsunset --identity` in a terminal to see why.");
+        }
+    }
+
+    Timer {
+        id: restartTimer
+
+        interval: 2000
+        onTriggered: daemon.running = true
+    }
 
     function snap(v) {
         return Math.max(minTemp, Math.min(maxTemp, Math.round(v / step) * step));
@@ -65,6 +98,12 @@ PanelWindow {
     function togglePower() {
         filterOn = !filterOn;
         apply();
+    }
+
+    // Some drivers drop the colour matrix when a display is powered off/on.
+    function reapply() {
+        if (filterOn)
+            apply();
     }
 
     function open() {
@@ -109,6 +148,10 @@ PanelWindow {
 
         function power() {
             nightLight.togglePower();
+        }
+
+        function reapply() {
+            nightLight.reapply();
         }
 
         target: "nightlight"

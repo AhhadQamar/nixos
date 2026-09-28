@@ -155,6 +155,7 @@ new path.
 - Pyprland
 - Quickshell
 - Pywal-based theming
+- Night light: `hyprsunset` driven by a Quickshell panel (`Super+N` opens it, `Super+Shift+N` toggles the filter). The panel starts and supervises the daemon itself
 - GTK, Qt, and icon theme integration
 
 ### User environment

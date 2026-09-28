@@ -9,7 +9,6 @@ hl.on("hyprland.start", function()
 			.. "systemctl --user start hyprland-session.target"
 	)
 
-	hl.exec_cmd("hyprsunset")
 	hl.exec_cmd("awww-daemon")
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("quickshell")
