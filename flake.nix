@@ -21,6 +21,10 @@
       url = "github:xCaptaiN09/pixie-sddm";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    claude-desktop = {
+      url = "github:poeck/claude-desktop-nix-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -29,6 +33,7 @@
     home-manager,
     agenix,
     nix-index-database,
+    claude-desktop,
     ...
   } @ inputs: let
     system = "x86_64-linux";
@@ -41,6 +46,7 @@
       modules = [
         ./hosts/licht/configuration.nix
         agenix.nixosModules.default
+        claude-desktop.nixosModules.default
         nix-index-database.nixosModules.nix-index
         home-manager.nixosModules.home-manager
         {
