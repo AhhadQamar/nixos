@@ -12,6 +12,7 @@
     ./system/hardware.nix
     ./system/desktop.nix
     ./system/sddm.nix
+    ./system/claude.nix
   ];
 
   programs.zsh.enable = true;
