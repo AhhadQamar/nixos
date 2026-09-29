@@ -1,18 +1,3 @@
-// NightLight.qml
-//
-// IPC:
-//   qs ipc call nightlight toggle   -> open/close the panel
-//   qs ipc call nightlight power    -> flip the filter on/off, no panel
-//   qs ipc call nightlight reapply  -> re-push the current filter (used by
-//                                      hypridle after the display wakes)
-//
-// The hyprsunset daemon is started and supervised by this file (see the
-// Process below), so the panel state and the daemon always agree: both start
-// "off", and if the daemon dies the panel goes back to "off" and restarts it.
-//
-// Keys while open: h/l or arrows = +-100K, Space/Enter = on/off,
-// 1-4 = presets, mouse wheel over the slider = +-100K, Esc = close.
-
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -60,7 +45,10 @@ PanelWindow {
 
         command: ["sh", "-c", "pkill -x hyprsunset; exec hyprsunset --identity"]
         running: true
+        onRunningChanged: if (running)
+            stableTimer.restart()
         onExited: (exitCode, exitStatus) => {
+            stableTimer.stop();
             nightLight.filterOn = false;
             nightLight.crashCount += 1;
             if (nightLight.crashCount <= 5)
@@ -75,6 +63,17 @@ PanelWindow {
 
         interval: 2000
         onTriggered: daemon.running = true
+    }
+
+    Timer {
+        id: stableTimer
+
+        // If the daemon survives this long without exiting, forgive past
+        // crashes -- five failures spread across weeks shouldn't count the
+        // same as five in a row.
+        interval: 30000
+        running: true
+        onTriggered: nightLight.crashCount = 0
     }
 
     function snap(v) {
