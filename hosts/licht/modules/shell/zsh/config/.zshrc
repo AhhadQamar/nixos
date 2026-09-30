@@ -220,6 +220,9 @@ say() {
     edge-tts --voice en-US-AriaNeural --file "$1" --write-media /dev/stdout | mpv -
 }
 
+cdt(){
+    docx2txt "$1" > "${1%.*}.txt"
+}
 
 # Yazi shell wrapper — cd into last dir on exit
 function y() {
