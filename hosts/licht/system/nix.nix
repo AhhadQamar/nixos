@@ -1,8 +1,4 @@
-{
-  pkgs,
-  inputs,
-  ...
-}: {
+{pkgs, ...}: {
   nix.settings = {
     experimental-features = [
       "nix-command"
@@ -25,16 +21,6 @@
   };
 
   nixpkgs.config.allowUnfree = true;
-
-  nixpkgs.overlays = [
-    (final: prev: {
-      stremio-linux-shell =
-        (import inputs.nixpkgs-unstable {
-          system = final.stdenv.hostPlatform.system;
-          config.allowUnfree = true;
-        }).stremio-linux-shell;
-    })
-  ];
 
   documentation.man.cache.enable = false;
   documentation.nixos.enable = false;

@@ -95,22 +95,6 @@
         "type": "github"
       }
     },
-    "nixpkgs-unstable": {
-      "locked": {
-        "lastModified": 1791034499,
-        "narHash": "sha256-VCQEXc9GOZ15Vz0fJbD1SN3+racCy8dhJDqRbddJPas=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "0ce79c8cdee228b51ed61c35765c46403f20819b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "master",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "pixie-sddm": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -138,7 +122,6 @@
         "home-manager": "home-manager",
         "nix-index-database": "nix-index-database",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstable": "nixpkgs-unstable",
         "pixie-sddm": "pixie-sddm"
       }
     },
