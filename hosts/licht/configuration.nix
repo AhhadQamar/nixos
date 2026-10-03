@@ -2,7 +2,6 @@
   config,
   lib,
   pkgs,
-  inputs,
   ...
 }: {
   imports = [
@@ -17,15 +16,6 @@
 
   programs.zsh.enable = true;
 
-  nixpkgs.overlays = [
-    (final: prev: {
-      stremio-linux-shell =
-        (import inputs.nixpkgs-unstable {
-          system = final.stdenv.hostPlatform.system;
-          config.allowUnfree = true;
-        }).stremio-linux-shell;
-    })
-  ];
   age.identityPaths = ["/var/lib/agenix/key.txt"];
 
   age.secrets = {
