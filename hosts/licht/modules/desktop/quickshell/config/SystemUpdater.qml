@@ -1,6 +1,6 @@
 // System updater panel, in the bar's card style.
-//   qs ipc call sysupd toggle | open | close | check | preview | apply
-// Keys: r check   p preview   a apply (press twice)   1 2 3 tabs   esc close
+//   qs ipc call sysupd toggle | open | close | check | preview | apply | cancel
+// Keys: r check   p preview   a apply (press twice)   c cancel   1 2 3 tabs   esc close
 // State and actions live in Updater.qml; this file is only the interface.
 
 import QtQuick
@@ -74,6 +74,10 @@ PanelWindow {
             Updater.apply();
         }
 
+        function cancel() {
+            Updater.cancel();
+        }
+
         target: "sysupd"
     }
 
@@ -134,6 +138,8 @@ PanelWindow {
                 Updater.preview();
             else if (event.key === Qt.Key_A)
                 Updater.apply();
+            else if (event.key === Qt.Key_C)
+                Updater.cancel();
             else if (event.key === Qt.Key_1)
                 panel.tab = 0;
             else if (event.key === Qt.Key_2)
@@ -295,8 +301,52 @@ PanelWindow {
 
                     Btn {
                         text: "Check"
+                        visible: !Updater.cancellable
                         enabled: !Updater.busy
                         onClicked: Updater.check()
+                    }
+                    Btn {
+                        text: "Cancel"
+                        visible: Updater.cancellable
+                        onClicked: Updater.cancel()
+                    }
+                }
+            }
+
+            // Moving bar while something is running; it always takes its
+            // space so the card does not jump when work starts or stops
+            Rectangle {
+                width: parent.width
+                height: 3
+                radius: 1.5
+                clip: true
+                color: Qt.alpha(Colors.foreground, 0.06)
+
+                Rectangle {
+                    id: sweep
+
+                    width: parent.width * 0.3
+                    height: parent.height
+                    radius: 1.5
+                    color: Colors.accent
+                    opacity: Updater.busy ? 1 : 0
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 200
+                        }
+                    }
+
+                    SequentialAnimation on x {
+                        running: Updater.busy
+                        loops: Animation.Infinite
+
+                        NumberAnimation {
+                            from: -sweep.width
+                            to: sweep.parent.width
+                            duration: 1100
+                            easing.type: Easing.InOutQuad
+                        }
                     }
                 }
             }
@@ -346,7 +396,7 @@ PanelWindow {
                 // Nothing to do
                 Item {
                     width: parent.width
-                    height: 78
+                    height: 96
                     visible: !Updater.available
 
                     Column {
@@ -361,6 +411,13 @@ PanelWindow {
                         T {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Updater.lastChecked !== "" ? "Last checked " + Updater.lastChecked : "Not checked yet"
+                            color: Colors.muted
+                            font.pixelSize: 12
+                        }
+                        T {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: Updater.currentGen !== null
+                            text: Updater.currentGen ? "Running generation #" + Updater.currentGen.id + ", built " + Updater.age(Updater.currentGen.time) : ""
                             color: Colors.muted
                             font.pixelSize: 12
                         }
@@ -468,6 +525,13 @@ PanelWindow {
                     }
                 }
 
+                Note {
+                    width: parent.width
+                    visible: Updater.kernelChange
+                    text: "Includes a new kernel: reboot after applying"
+                    tint: Colors.accent
+                }
+
                 Row {
                     spacing: 8
 
@@ -499,6 +563,8 @@ PanelWindow {
                     model: Updater.generations
 
                     delegate: Rectangle {
+                        id: gen
+
                         required property var modelData
 
                         width: ListView.view.width
@@ -512,16 +578,20 @@ PanelWindow {
                             text: "#" + parent.modelData.id
                             font.bold: true
                         }
+                        HoverHandler {
+                            id: genHover
+                        }
+
                         T {
-                            x: 70
+                            x: 60
                             anchors.verticalCenter: parent.verticalCenter
                             text: Qt.formatDateTime(new Date(parent.modelData.time), "d MMM yyyy, h:mm AP")
                             font.pixelSize: 12
                         }
                         T {
-                            x: 260
+                            x: 225
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 190
+                            width: 180
                             text: (parent.modelData.version || "") + (parent.modelData.kernel ? "  ·  linux " + parent.modelData.kernel : "")
                             color: Colors.muted
                             font.pixelSize: 12
@@ -534,6 +604,32 @@ PanelWindow {
                             text: "current"
                             color: Colors.accent
                             font.pixelSize: 12
+                        }
+
+                        // Roll back: shown on hover, or while waiting for the second press
+                        Rectangle {
+                            readonly property bool armed: Updater.rollbackArmed === gen.modelData.id
+
+                            visible: !gen.modelData.current && !Updater.busy && (genHover.hovered || armed)
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitHeight: 26
+                            implicitWidth: rbLabel.implicitWidth + 22
+                            radius: 13
+                            color: armed ? Qt.alpha(Colors.critical, 0.25) : Qt.alpha(Colors.foreground, 0.1)
+
+                            T {
+                                id: rbLabel
+
+                                anchors.centerIn: parent
+                                text: parent.armed ? "Press again" : "Switch to"
+                                font.pixelSize: 12
+                            }
+
+                            TapHandler {
+                                onTapped: Updater.rollback(gen.modelData.id)
+                            }
                         }
                     }
                 }
@@ -578,6 +674,20 @@ PanelWindow {
                         }
                     }
                 }
+            }
+
+            Btn {
+                visible: panel.tab === 2
+                enabled: Updater.logLines.length > 0
+                text: "Copy log"
+                onClicked: Quickshell.execDetached(["wl-copy", Updater.logLines.join("\n")])
+            }
+
+            // Key hints
+            T {
+                text: "r check  ·  p preview  ·  a apply  ·  c cancel  ·  1 2 3 tabs  ·  esc close"
+                color: Colors.muted
+                font.pixelSize: 11
             }
         }
     }

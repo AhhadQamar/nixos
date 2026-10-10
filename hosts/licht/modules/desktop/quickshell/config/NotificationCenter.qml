@@ -32,9 +32,12 @@ PanelWindow {
     exclusiveZone: 0
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-    onVisibleChanged: if (visible) {
-        fadeIn.restart();
-        NotificationServer.markRead();
+    onVisibleChanged: {
+        NotificationServer.centerOpen = visible;
+        if (visible) {
+            fadeIn.restart();
+            NotificationServer.markRead();
+        }
     }
 
     Connections {

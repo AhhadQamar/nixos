@@ -18,7 +18,11 @@ Singleton {
         const e = Quickshell.env("SYS_FLAKE") || Quickshell.env("NH_FLAKE");
         return e && e.length > 0 ? e : home + "/nixos";
     }
-    readonly property string host: "licht"
+    // Name of the nixosConfigurations entry to build. Starts as a fallback and
+    // is replaced by this machine's hostname once `hostname` answers.
+    property string host: "licht"
+    // Commit the new flake.lock (that file only, never pushed) after a good switch
+    readonly property bool commitLock: true
     readonly property int checkEveryHours: 6
     readonly property int keepDays: 14
     readonly property string work: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/sysupd"
@@ -48,9 +52,23 @@ Singleton {
 
     property bool applyArmed: false
     property bool cleanArmed: false
+    // Generation number waiting for its second press, or -1
+    property int rollbackArmed: -1
+    property int rollbackTarget: 0
+    // Set by cancel(); tells the exit handlers that a stop was asked for
+    property bool cancelled: false
+    // sha256 of the candidate lock the panel is showing, and of the one the
+    // package preview was built from
+    property string candidateHash: ""
+    property string previewHash: ""
     property string notifiedSig: ""
 
     readonly property bool busy: phase !== "idle"
+    // Checking and building only read; stopping them is safe. Switching is not.
+    readonly property bool cancellable: phase === "checking" || phase === "building"
+    readonly property var currentGen: generations.find(g => g.current) ?? null
+    // A new kernel in the preview means the next boot differs from this one
+    readonly property bool kernelChange: previewed && diff.some(r => /^linux(-\d|$)/.test(r.name))
     readonly property int count: changes.length
     readonly property bool available: count > 0
     readonly property string summary: {
@@ -78,9 +96,19 @@ Singleton {
             return;
         phase = "checking";
         error = "";
-        previewed = false;
-        diff = [];
+        cancelled = false;
         checkProc.running = true;
+    }
+
+    // Stop a check or a build. Never applies to the switch itself.
+    function cancel() {
+        if (!cancellable)
+            return;
+        cancelled = true;
+        if (phase === "checking")
+            checkProc.running = false;
+        else
+            buildProc.running = false;
     }
 
     // Build the updated system and list what would change. Heavy, so manual.
@@ -89,6 +117,7 @@ Singleton {
             return;
         phase = "building";
         error = "";
+        cancelled = false;
         logLines = [];
         diff = [];
         previewed = false;
@@ -109,6 +138,31 @@ Singleton {
         error = "";
         logLines = [];
         applyProc.running = true;
+    }
+
+    // Switch to an older generation. Two presses, like apply.
+    function rollback(id) {
+        if (busy)
+            return;
+        if (rollbackArmed !== id) {
+            rollbackArmed = id;
+            armTimer.restart();
+            return;
+        }
+        rollbackArmed = -1;
+        rollbackTarget = id;
+        phase = "applying";
+        error = "";
+        logLines = [];
+        rollbackProc.running = true;
+    }
+
+    // "today", "yesterday", "5 days ago"
+    function age(ms) {
+        const d = Math.floor((Date.now() - ms) / 86400000);
+        if (d <= 0)
+            return "today";
+        return d === 1 ? "yesterday" : d + " days ago";
     }
 
     function collect() {
@@ -206,6 +260,10 @@ Singleton {
 
     function onCheck(text) {
         phase = "idle";
+        if (cancelled) {
+            cancelled = false;
+            return;
+        }
         lastChecked = Qt.formatDateTime(new Date(), "h:mm AP");
         const e = text.indexOf("###ERR");
         if (e >= 0) {
@@ -223,6 +281,14 @@ Singleton {
         } catch (err) {
             error = "Check failed: could not read flake.lock";
             return;
+        }
+        const h = text.match(/###HASH ([0-9a-f]{64})/);
+        candidateHash = h ? h[1] : "";
+        // A preview stays while the candidate is exactly the one it was built
+        // from, so a background check cannot wipe what you are reading.
+        if (!available || candidateHash === "" || candidateHash !== previewHash) {
+            previewed = false;
+            diff = [];
         }
         // One toast per distinct set of updates, not one per check
         const sig = changes.map(c => c.name + c.to).join(",");
@@ -262,13 +328,16 @@ Singleton {
             notify(doneTitle, "");
         } else {
             // pkexec: 126 = dialog dismissed, 127 = not authorised
-            error = code === 126 || code === 127 ? "Authentication cancelled" : failMessage;
+            error = code === 126 || code === 127 ? "Authentication cancelled" : (code === 3 ? "The update changed since the check; check again" : failMessage);
             notify(failMessage, "Open the updater and check the Log tab.");
         }
         refreshMeta();
     }
 
-    Component.onCompleted: refreshMeta()
+    Component.onCompleted: {
+        hostProc.running = true;
+        refreshMeta();
+    }
 
     // ---- Schedule -------------------------------------------------------
     // First check a little after login so it doesn't compete with startup
@@ -291,6 +360,7 @@ Singleton {
         onTriggered: {
             root.applyArmed = false;
             root.cleanArmed = false;
+            root.rollbackArmed = -1;
         }
     }
 
@@ -301,6 +371,19 @@ Singleton {
         command: ["bash", Quickshell.shellPath("sysupd/check.sh"), root.flakeDir, root.newLock]
         stdout: StdioCollector {
             onStreamFinished: root.onCheck(text)
+        }
+    }
+
+    Process {
+        id: hostProc
+
+        command: ["hostname"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const h = text.trim();
+                if (h !== "")
+                    root.host = h;
+            }
         }
     }
 
@@ -321,6 +404,12 @@ Singleton {
             onRead: data => root.pushLog(data)
         }
         onExited: (exitCode, exitStatus) => {
+            if (root.cancelled) {
+                root.cancelled = false;
+                root.phase = "idle";
+                root.pushLog("Cancelled.");
+                return;
+            }
             if (exitCode === 0)
                 diffProc.running = true;
             else
@@ -340,6 +429,7 @@ Singleton {
                 root.added = d.add;
                 root.removed = d.rem;
                 root.previewed = true;
+                root.previewHash = root.candidateHash;
                 root.phase = "idle";
             }
         }
@@ -348,7 +438,7 @@ Singleton {
     Process {
         id: applyProc
 
-        command: ["bash", Quickshell.shellPath("sysupd/apply.sh"), root.flakeDir, root.available ? root.newLock : "", root.work, root.host]
+        command: ["bash", Quickshell.shellPath("sysupd/apply.sh"), root.flakeDir, root.available ? root.newLock : "", root.work, root.host, root.commitLock ? "1" : "0", root.changes.map(c => c.name + " " + c.from + " -> " + c.to).join("\n"), root.available ? root.candidateHash : ""]
         stdout: SplitParser {
             onRead: data => root.pushLog(data)
         }
@@ -360,6 +450,16 @@ Singleton {
             }
             root.finish(exitCode === 0, "System updated", "Switch failed", exitCode);
         }
+    }
+
+    Process {
+        id: rollbackProc
+
+        command: ["bash", Quickshell.shellPath("sysupd/rollback.sh"), String(root.rollbackTarget)]
+        stdout: SplitParser {
+            onRead: data => root.pushLog(data)
+        }
+        onExited: (exitCode, exitStatus) => root.finish(exitCode === 0, "Switched to generation " + root.rollbackTarget, "Rollback failed", exitCode)
     }
 
     Process {

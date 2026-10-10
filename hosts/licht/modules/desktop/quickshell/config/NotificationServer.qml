@@ -12,6 +12,9 @@ Singleton {
     readonly property int maxHistory: 100
     // Arrived since the notification centre was last opened (drives the bell dot)
     property int unread: 0
+    // Set by NotificationCenter while it is on screen: anything that arrives
+    // then is seen right away, so it must not light the bell dot.
+    property bool centerOpen: false
 
     function markRead() {
         unread = 0;
@@ -31,6 +34,7 @@ Singleton {
 
     function clearHistory() {
         history = [];
+        unread = 0;
     }
 
     function invokeAction(entry, actionId) {
@@ -104,7 +108,8 @@ Singleton {
                 "ref": notif
             };
             root.history = [entry].concat(root.history).slice(0, root.maxHistory);
-            root.unread += 1;
+            if (!root.centerOpen)
+                root.unread += 1;
             if (!root.doNotDisturb) {
                 root.active = [entry].concat(root.active);
                 const timeout = entry.urgency === NotificationUrgency.Critical ? 10000 : 5000;
