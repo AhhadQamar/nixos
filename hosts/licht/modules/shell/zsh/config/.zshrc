@@ -70,6 +70,19 @@ i() { nix shell "nixpkgs#$1"; }
 
 rmconf() { $EDITOR $HOME/nixos/hosts/licht/home.nix }
 
+# ─── ALIASES — MUSIC ─────────────────────────────────────────────
+
+# Download audio for the Quickshell player: m4a with tags and a square cover,
+# filed as ~/Music/Artist/Album/Title. Settings: ~/.config/yt-dlp/music.conf.
+# The player is told to rescan afterwards, so new tracks show up on their own.
+_ytm() {
+  yt-dlp --ignore-config --config-locations ~/.config/yt-dlp/music.conf "$@" || return
+  qs ipc call music rescan >/dev/null 2>&1 || true
+}
+alias ytm='_ytm --no-playlist'                                                        # one track (URL)
+alias ytal='_ytm --yes-playlist --parse-metadata "playlist_index:%(track_number)s"'   # album / playlist, numbered in order
+ytms() { _ytm --no-playlist "ytsearch1:$*"; }                                         # search, take the top result
+
 # ─── ALIASES — GIT ──────────────────────────────────────────────
 alias g='git'
 alias ga='git add'

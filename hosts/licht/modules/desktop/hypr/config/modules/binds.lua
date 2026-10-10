@@ -81,6 +81,7 @@ hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
 --   W      wallpaper       N  night light       Shift+N  night light on / off
 --   T      screen time     D  downloads         I  capture
 --   U      system updates  Shift+U  check for updates now (opens the panel)
+--   P      music player    Shift+P  play / pause
 -- Applying an update is deliberately not bound: press "a" twice inside the
 -- updater panel, so a stray key can never start a switch.
 local function qs(target, fn)
@@ -100,6 +101,8 @@ hl.bind(mainMod .. " + D", qs("downloads", "toggle"))
 hl.bind(mainMod .. " + I", qs("capture", "toggle"))
 hl.bind(mainMod .. " + U", qs("sysupd", "toggle"))
 hl.bind(mainMod .. " + SHIFT + U", qs("sysupd", "check"))
+hl.bind(mainMod .. " + P", qs("music", "toggle"))
+hl.bind(mainMod .. " + SHIFT + P", qs("music", "playpause"))
 
 -- Session --------------------------------------------------------------------
 -- Goes through logind so hypridle's lock_cmd runs. That keeps one hyprlock
@@ -129,7 +132,7 @@ hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ to
 hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true })
 hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"), { locked = true, repeating = true })
 hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"), { locked = true, repeating = true })
-hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
-hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true })
+hl.bind("XF86AudioNext", hl.dsp.exec_cmd("qs ipc call music media next || playerctl next"), { locked = true })
+hl.bind("XF86AudioPause", hl.dsp.exec_cmd("qs ipc call music media playpause || playerctl play-pause"), { locked = true })
+hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("qs ipc call music media playpause || playerctl play-pause"), { locked = true })
+hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("qs ipc call music media prev || playerctl previous"), { locked = true })

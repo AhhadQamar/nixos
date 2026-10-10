@@ -7,9 +7,12 @@
 #   $5 commit flag (1 = commit flake.lock locally after a good switch; never pushes)
 #   $6 summary of the moved inputs, used as the commit body
 #   $7 expected sha256 of the candidate lock (refuses to apply a different one)
+#   $8 mode: switch (default) or test. test activates the system without making
+#      it the boot default and leaves flake.lock alone, like `nh os test`
 exec 2>&1
 set -eo pipefail
-flake=$1 lock=$2 work=$3 host=$4 commit=${5:-0} summary=${6:-} expect=${7:-}
+flake=$1 lock=$2 work=$3 host=$4 commit=${5:-0} summary=${6:-} expect=${7:-} mode=${8:-switch}
+case "$mode" in switch|test) ;; *) echo "bad mode: $mode"; exit 1 ;; esac
 mkdir -p "$work"
 
 # One apply at a time
@@ -30,7 +33,7 @@ git ls-files --others --exclude-standard -z | xargs -0 -r git add --intent-to-ad
 echo "==> building"
 nix build "$flake#nixosConfigurations.$host.config.system.build.toplevel" "${args[@]}"
 out=$(readlink -f "$work/result")
-echo "==> switching (authentication required)"
+echo "==> activating ($mode, authentication required)"
 # The switch runs as a transient system unit (the way nixos-rebuild does it),
 # so closing or reloading the shell cannot cut it off half way. Root only
 # accepts a real system closure from the store.
@@ -43,10 +46,13 @@ pkexec /run/current-system/sw/bin/systemd-run --collect --pipe --quiet \
       *) echo "refusing to switch: not a system closure: $1"; exit 1 ;;
     esac
     [ -x "$1/bin/switch-to-configuration" ] || { echo "refusing to switch: no switch-to-configuration in $1"; exit 1; }
-    /run/current-system/sw/bin/nix-env -p /nix/var/nix/profiles/system --set "$1"
-    "$1/bin/switch-to-configuration" switch
-  ' _ "$out"
-if [ -n "$lock" ]; then
+    case "$2" in switch | test) ;; *) exit 1 ;; esac
+    if [ "$2" = switch ]; then
+      /run/current-system/sw/bin/nix-env -p /nix/var/nix/profiles/system --set "$1"
+    fi
+    "$1/bin/switch-to-configuration" "$2"
+  ' _ "$out" "$mode"
+if [ -n "$lock" ] && [ "$mode" = switch ]; then
   cp flake.lock "$work/flake.lock.bak"
   cp "$lock" flake.lock
   echo "==> flake.lock updated (previous copy: $work/flake.lock.bak)"

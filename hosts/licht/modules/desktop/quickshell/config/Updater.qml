@@ -52,6 +52,13 @@ Singleton {
 
     property bool applyArmed: false
     property bool cleanArmed: false
+    // Deleting generations: one id waiting for its second press (or -1), the
+    // "delete all but current" button, and what the running delete is for
+    property int deleteArmed: -1
+    property bool deleteAllArmed: false
+    property string deleteKind: "all"
+    // The running apply is a test (activate without becoming the boot default)
+    property bool testRun: false
     // Generation number waiting for its second press, or -1
     property int rollbackArmed: -1
     property int rollbackTarget: 0
@@ -134,10 +141,58 @@ Singleton {
             return;
         }
         applyArmed = false;
+        testRun = false;
         phase = "applying";
         error = "";
         logLines = [];
         applyProc.running = true;
+    }
+
+    // Activate the new system without making it the boot default, like the
+    // `ut` alias (nh os test). A reboot returns to the previous generation.
+    function tryOut() {
+        if (busy)
+            return;
+        applyArmed = false;
+        testRun = true;
+        phase = "applying";
+        error = "";
+        logLines = [];
+        applyProc.running = true;
+    }
+
+    // Delete one generation. Two presses.
+    function deleteGen(id) {
+        if (busy)
+            return;
+        if (deleteArmed !== id) {
+            deleteArmed = id;
+            armTimer.restart();
+            return;
+        }
+        deleteArmed = -1;
+        deleteKind = String(id);
+        phase = "cleaning";
+        error = "";
+        logLines = [];
+        cleanProc.running = true;
+    }
+
+    // Delete every generation except the current one, then collect garbage.
+    function deleteAll() {
+        if (busy)
+            return;
+        if (!deleteAllArmed) {
+            deleteAllArmed = true;
+            armTimer.restart();
+            return;
+        }
+        deleteAllArmed = false;
+        deleteKind = "all";
+        phase = "cleaning";
+        error = "";
+        logLines = [];
+        cleanProc.running = true;
     }
 
     // Switch to an older generation. Two presses, like apply.
@@ -361,6 +416,8 @@ Singleton {
             root.applyArmed = false;
             root.cleanArmed = false;
             root.rollbackArmed = -1;
+            root.deleteArmed = -1;
+            root.deleteAllArmed = false;
         }
     }
 
@@ -438,17 +495,18 @@ Singleton {
     Process {
         id: applyProc
 
-        command: ["bash", Quickshell.shellPath("sysupd/apply.sh"), root.flakeDir, root.available ? root.newLock : "", root.work, root.host, root.commitLock ? "1" : "0", root.changes.map(c => c.name + " " + c.from + " -> " + c.to).join("\n"), root.available ? root.candidateHash : ""]
+        command: ["bash", Quickshell.shellPath("sysupd/apply.sh"), root.flakeDir, root.available ? root.newLock : "", root.work, root.host, root.commitLock ? "1" : "0", root.changes.map(c => c.name + " " + c.from + " -> " + c.to).join("\n"), root.available ? root.candidateHash : "", root.testRun ? "test" : "switch"]
         stdout: SplitParser {
             onRead: data => root.pushLog(data)
         }
         onExited: (exitCode, exitStatus) => {
-            if (exitCode === 0) {
+            // A test leaves flake.lock alone, so the update is still pending
+            if (exitCode === 0 && !root.testRun) {
                 root.changes = [];
                 root.previewed = false;
                 root.diff = [];
             }
-            root.finish(exitCode === 0, "System updated", "Switch failed", exitCode);
+            root.finish(exitCode === 0, root.testRun ? "System activated for testing" : "System updated", root.testRun ? "Test failed" : "Switch failed", exitCode);
         }
     }
 
@@ -460,6 +518,16 @@ Singleton {
             onRead: data => root.pushLog(data)
         }
         onExited: (exitCode, exitStatus) => root.finish(exitCode === 0, "Switched to generation " + root.rollbackTarget, "Rollback failed", exitCode)
+    }
+
+    Process {
+        id: cleanProc
+
+        command: ["bash", Quickshell.shellPath("sysupd/clean.sh"), root.deleteKind]
+        stdout: SplitParser {
+            onRead: data => root.pushLog(data)
+        }
+        onExited: (exitCode, exitStatus) => root.finish(exitCode === 0, root.deleteKind === "all" ? "Old generations deleted" : "Generation " + root.deleteKind + " deleted", "Delete failed", exitCode)
     }
 
     Process {

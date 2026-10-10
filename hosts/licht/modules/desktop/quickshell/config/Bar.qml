@@ -60,6 +60,8 @@ Variants {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
+            MusicChip {}
+
             Tray {
                 id: tray
             }

@@ -31,6 +31,7 @@ ShellRoot {
 
     CavaVisualizer {}
     SystemUpdater {}
+    MusicPlayer {}
     NightLight {}
     ScreenTime {}
     DownloadManager {}

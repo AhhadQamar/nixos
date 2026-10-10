@@ -8,4 +8,5 @@ import Quickshell
 Singleton {
     signal toggleNotifications
     signal toggleUpdater
+    signal toggleMusic
 }
