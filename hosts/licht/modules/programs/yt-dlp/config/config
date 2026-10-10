@@ -1,0 +1,13 @@
+# Output — Videos folder
+-o ~/Videos/%(uploader)s/%(title)s.%(ext)s
+
+# 1080p max — fallback to best available if 1080 not found
+-f bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best
+
+# Metadata & thumbnail
+--embed-thumbnail
+--embed-metadata
+--add-metadata
+
+# Archive — skips already downloaded videos
+--download-archive ~/Videos/.yt-dlp-archive.txt

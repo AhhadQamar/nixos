@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "${NH_FLAKE:?NH_FLAKE is not set}"
+
+echo ">>> Formatting"
+nix fmt . >/dev/null
+
+git add -A
+
+echo ">>> Scanning staged changes for secrets"
+gitleaks git --staged --redact --no-banner
+
+echo ">>> Rebuilding"
+nh os switch
+
+gen=$(nixos-rebuild list-generations | awk '$NF == "True" {print $1}')
+
+if git diff --cached --quiet; then
+  echo "Nothing to commit"
+  exit 0
+fi
+
+changed=$(git diff --cached --name-only)
+
+read -rp "Commit message: [a]i-generate, [m]anual, or type your own: " choice
+
+case "$choice" in
+  a | A)
+    echo "Asking Copilot for a commit message..."
+    msg=$(copilot -p "Write a single concise git commit subject line (no quotes, no prefix like 'feat:' unless genuinely warranted, under 72 chars) summarizing this diff:
+
+$(git diff --cached)" -s --no-ask-user 2>/dev/null || true)
+    if [ -z "$msg" ]; then
+      echo "Copilot didn't return anything."
+      read -rp "Commit message (leave blank for generation number): " msg
+    else
+      echo "Copilot suggests: $msg"
+    fi
+    ;;
+  m | M | "")
+    read -rp "Commit message (leave blank for generation number): " msg
+    ;;
+  *)
+    # anything else typed is treated as the message itself
+    msg="$choice"
+    ;;
+esac
+
+git commit -m "${msg:-NixOS generation $gen}" -m "Changed:
+$changed"
+git push
