@@ -81,7 +81,8 @@ hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
 --   W      wallpaper       N  night light       Shift+N  night light on / off
 --   T      screen time     D  downloads         I  capture
 --   U      system updates  Shift+U  check for updates now (opens the panel)
---   P      music player    Shift+P  play / pause
+--   P      music player    Shift+P  play / pause    ]  next track    [  previous track
+--   (these go to the music player when it has a track, otherwise to playerctl)
 -- Applying an update is deliberately not bound: press "a" twice inside the
 -- updater panel, so a stray key can never start a switch.
 local function qs(target, fn)
@@ -102,7 +103,9 @@ hl.bind(mainMod .. " + I", qs("capture", "toggle"))
 hl.bind(mainMod .. " + U", qs("sysupd", "toggle"))
 hl.bind(mainMod .. " + SHIFT + U", qs("sysupd", "check"))
 hl.bind(mainMod .. " + P", qs("music", "toggle"))
-hl.bind(mainMod .. " + SHIFT + P", qs("music", "playpause"))
+hl.bind(mainMod .. " + SHIFT + P", qs("music", "media playpause"))
+hl.bind(mainMod .. " + bracketright", qs("music", "media next"))
+hl.bind(mainMod .. " + bracketleft", qs("music", "media prev"))
 
 -- Session --------------------------------------------------------------------
 -- Goes through logind so hypridle's lock_cmd runs. That keeps one hyprlock

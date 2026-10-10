@@ -1,7 +1,10 @@
 // Now-playing chip for the bar. Shows only while a track is loaded.
 //   A small record spins while it plays; click it to play / pause.
 //   hover: previous / play-pause / next appear      scroll: volume
-//   click the title: open the music panel
+//   click the title (or right-click anywhere on the chip): open the music panel
+// On a narrow bar the bar tells it how much room there is (maxWidth): the
+// artist goes first, then the title, then it is just the record, and below
+// that it hides, so it never runs into the workspaces.
 // A thin line along the bottom shows how far into the track you are.
 
 import QtQuick
@@ -9,8 +12,15 @@ import QtQuick
 Island {
     id: root
 
+    // Room the bar can give this chip (set by Bar.qml)
+    property real maxWidth: 100000
+    // Record plus the pill's own padding and the island padding
+    readonly property real fixedWidth: 22 + 24 + 16
+    // What is left for the title and artist (hover adds three buttons)
+    readonly property real labelRoom: Math.max(0, maxWidth - fixedWidth - 6 - (hover.hovered ? 3 * 22 + 3 * 6 : 0))
+
     padding: 8
-    visible: Music.hasTrack
+    visible: Music.hasTrack && maxWidth >= fixedWidth
 
     Rectangle {
         id: pill
@@ -169,7 +179,8 @@ Island {
                 id: label
 
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(230, labelRow.implicitWidth)
+                visible: root.labelRoom >= 44
+                width: labelRow.implicitWidth
                 height: pill.height
 
                 Row {
@@ -179,8 +190,10 @@ Island {
                     spacing: 8
 
                     Text {
+                        id: titleText
+
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, 150)
+                        width: Math.min(implicitWidth, 150, root.labelRoom)
                         text: Music.title
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
@@ -193,8 +206,8 @@ Island {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: Music.artist !== ""
-                        width: Math.min(implicitWidth, 80)
+                        visible: Music.artist !== "" && root.labelRoom - titleText.width - 8 >= 40
+                        width: Math.min(implicitWidth, 80, root.labelRoom - titleText.width - 8)
                         text: Music.artist
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
@@ -225,6 +238,11 @@ Island {
 
         HoverHandler {
             id: hover
+        }
+        // Always a way to the panel, even when the title is hidden
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: Panels.toggleMusic()
         }
         WheelHandler {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad

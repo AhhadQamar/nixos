@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
 # Build as the normal user, then let root only activate the result. Root never
 # evaluates the flake, so git ownership of the repo is not an issue.
-# The new flake.lock is written into the repo only after the switch worked.
+# The new flake.lock is written into the repo only after the activation worked.
 #   $1 flake dir   $2 candidate lock (empty = rebuild with the repo lock)
 #   $3 work dir    $4 host
 #   $5 commit flag (1 = commit flake.lock locally after a good switch; never pushes)
 #   $6 summary of the moved inputs, used as the commit body
 #   $7 expected sha256 of the candidate lock (refuses to apply a different one)
-#   $8 mode: switch (default) or test. test activates the system without making
-#      it the boot default and leaves flake.lock alone, like `nh os test`
+#   $8 mode, like the nh aliases:
+#        switch  activate now and make it the boot default      (u / uu)
+#        test    activate now, boot default unchanged           (ut)
+#        boot    make it the boot default, activate at reboot   (ub)
+#      test leaves flake.lock alone; switch and boot write it.
+# TERM during the build stops it (the panel's Cancel button). Once the build is
+# done TERM is ignored, so a late Cancel cannot leave the system and flake.lock
+# out of step.
 exec 2>&1
 set -eo pipefail
 flake=$1 lock=$2 work=$3 host=$4 commit=${5:-0} summary=${6:-} expect=${7:-} mode=${8:-switch}
-case "$mode" in switch|test) ;; *) echo "bad mode: $mode"; exit 1 ;; esac
+case "$mode" in switch | test | boot) ;; *) echo "bad mode: $mode"; exit 1 ;; esac
+. "$(dirname "$0")/lib.sh"
+require_helper
 mkdir -p "$work"
 
 # One apply at a time
@@ -31,28 +39,19 @@ cd "$flake"
 # (nothing is staged or committed) so they are not silently left out of the build.
 git ls-files --others --exclude-standard -z | xargs -0 -r git add --intent-to-add -- 2>/dev/null || true
 echo "==> building"
-nix build "$flake#nixosConfigurations.$host.config.system.build.toplevel" "${args[@]}"
+# Background + wait so TERM (Cancel) reaches nix straight away
+nix build "$flake#nixosConfigurations.$host.config.system.build.toplevel" "${args[@]}" &
+pid=$!
+trap 'kill "$pid" 2>/dev/null' TERM INT
+wait "$pid"
+# From here on a stop request must not interrupt anything: the switch has to
+# finish so flake.lock below stays in step with the system. Ignored signals are
+# inherited, so pkexec and the helper ignore TERM and INT too.
+trap "" TERM INT
 out=$(readlink -f "$work/result")
 echo "==> activating ($mode, authentication required)"
-# The switch runs as a transient system unit (the way nixos-rebuild does it),
-# so closing or reloading the shell cannot cut it off half way. Root only
-# accepts a real system closure from the store.
-pkexec /run/current-system/sw/bin/systemd-run --collect --pipe --quiet \
-  --service-type=exec --unit=sysupd-switch -- \
-  /run/current-system/sw/bin/bash -c '
-    set -e
-    case "$1" in
-      /nix/store/*-nixos-system-*) ;;
-      *) echo "refusing to switch: not a system closure: $1"; exit 1 ;;
-    esac
-    [ -x "$1/bin/switch-to-configuration" ] || { echo "refusing to switch: no switch-to-configuration in $1"; exit 1; }
-    case "$2" in switch | test) ;; *) exit 1 ;; esac
-    if [ "$2" = switch ]; then
-      /run/current-system/sw/bin/nix-env -p /nix/var/nix/profiles/system --set "$1"
-    fi
-    "$1/bin/switch-to-configuration" "$2"
-  ' _ "$out" "$mode"
-if [ -n "$lock" ] && [ "$mode" = switch ]; then
+pkexec "$helper" activate "$mode" "$out"
+if [ -n "$lock" ] && [ "$mode" != test ]; then
   cp flake.lock "$work/flake.lock.bak"
   cp "$lock" flake.lock
   echo "==> flake.lock updated (previous copy: $work/flake.lock.bak)"

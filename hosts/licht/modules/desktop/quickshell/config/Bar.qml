@@ -13,6 +13,11 @@ Variants {
 
         required property var modelData
 
+        // What the right cluster needs apart from the music chip. Workspaces
+        // reserve room for a bare chip (the record); the chip then takes
+        // whatever is left beside the centred workspaces.
+        readonly property real rightFixed: tray.width + (sep.visible ? sep.width : 0) + stats.width
+
         screen: modelData
         implicitHeight: Style.barHeight
         color: "transparent"
@@ -48,10 +53,12 @@ Variants {
         }
 
         Workspaces {
+            id: workspaces
+
             anchors.centerIn: parent
             targetMonitor: bar.modelData.name
             // Keep clear of the clock and the right cluster, which may differ in width
-            maxWidth: bar.width - 2 * Math.max(clock.width, right.width) - 48
+            maxWidth: bar.width - 2 * Math.max(clock.width, bar.rightFixed + (Music.hasTrack ? 62 : 0)) - 48
         }
 
         Row {
@@ -60,7 +67,11 @@ Variants {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
-            MusicChip {}
+            MusicChip {
+                id: musicChip
+
+                maxWidth: bar.width / 2 - workspaces.width / 2 - 16 - bar.rightFixed
+            }
 
             Tray {
                 id: tray
@@ -68,6 +79,8 @@ Variants {
 
             // Divider between the tray and the status icons
             Item {
+                id: sep
+
                 visible: tray.visible
                 anchors.verticalCenter: parent.verticalCenter
                 width: 9

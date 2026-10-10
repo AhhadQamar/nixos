@@ -1,7 +1,7 @@
 // System updater panel, in the bar's card style.
-//   qs ipc call sysupd toggle | open | close | check | preview | apply | test | cancel
-// Keys: r check   p preview   a apply (press twice)   t test   c cancel
-//       1 2 3 tabs   esc close
+//   qs ipc call sysupd toggle | open | close | check | preview | apply | test | boot | cancel
+// Keys: r check   p preview   a apply (press twice)   t test   b boot (press twice)
+//       c cancel   1 2 3 tabs   / help   esc close
 // State and actions live in Updater.qml; this file is only the interface.
 
 import QtQuick
@@ -16,6 +16,8 @@ PanelWindow {
 
     // 0 = updates, 1 = generations, 2 = log
     property int tab: 0
+    // The key/action cheat sheet (the "/" button), shown instead of the tabs
+    property bool help: false
     readonly property int topGap: Math.round(Screen.height / 8)
 
     // The one colour and glyph that sum up the state (header circle)
@@ -44,9 +46,13 @@ PanelWindow {
     exclusiveZone: 0
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-    onVisibleChanged: if (visible) {
-        fadeIn.restart();
-        Updater.refreshMeta();
+    onVisibleChanged: {
+        if (visible) {
+            fadeIn.restart();
+            Updater.refreshMeta();
+        } else {
+            help = false;
+        }
     }
 
     anchors {
@@ -84,6 +90,11 @@ PanelWindow {
         function test() {
             panel.open();
             Updater.tryOut();
+        }
+
+        function boot() {
+            panel.open();
+            Updater.bootNext();
         }
 
         function cancel() {
@@ -143,8 +154,13 @@ PanelWindow {
         anchors.fill: parent
         focus: panel.visible
         Keys.onPressed: event => {
-            if (event.key === Qt.Key_Escape)
-                panel.close();
+            if (event.key === Qt.Key_Escape) {
+                if (panel.help)
+                    panel.help = false;
+                else
+                    panel.close();
+            } else if (event.key === Qt.Key_Slash)
+                panel.help = !panel.help;
             else if (event.key === Qt.Key_R)
                 Updater.check();
             else if (event.key === Qt.Key_P)
@@ -153,14 +169,20 @@ PanelWindow {
                 Updater.apply();
             else if (event.key === Qt.Key_T)
                 Updater.tryOut();
+            else if (event.key === Qt.Key_B)
+                Updater.bootNext();
             else if (event.key === Qt.Key_C)
                 Updater.cancel();
-            else if (event.key === Qt.Key_1)
+            else if (event.key === Qt.Key_1) {
+                panel.help = false;
                 panel.tab = 0;
-            else if (event.key === Qt.Key_2)
+            } else if (event.key === Qt.Key_2) {
+                panel.help = false;
                 panel.tab = 1;
-            else if (event.key === Qt.Key_3)
+            } else if (event.key === Qt.Key_3) {
+                panel.help = false;
                 panel.tab = 2;
+            }
         }
     }
 
@@ -305,7 +327,10 @@ PanelWindow {
         }
 
         TapHandler {
-            onTapped: panel.tab = tabItem.index
+            onTapped: {
+                panel.help = false;
+                panel.tab = tabItem.index;
+            }
         }
         HoverHandler {
             id: th
@@ -320,18 +345,34 @@ PanelWindow {
 
         property string text: ""
         property color tint: Colors.muted
+        // Optional button on the right (empty = none)
+        property string action: ""
+        property bool actionDanger: false
 
-        implicitHeight: 34
+        signal activated
+
+        implicitHeight: 38
         radius: 10
         color: Qt.alpha(tint, 0.12)
 
         T {
             anchors.verticalCenter: parent.verticalCenter
             x: 12
-            width: parent.width - 24
+            width: parent.width - 24 - (note.action !== "" ? 100 : 0)
             text: note.text
             color: note.tint
             font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+
+        Mini {
+            visible: note.action !== ""
+            anchors.right: parent.right
+            anchors.rightMargin: 5
+            anchors.verticalCenter: parent.verticalCenter
+            text: note.action
+            danger: note.actionDanger
+            onClicked: note.activated()
         }
     }
 
@@ -452,6 +493,7 @@ PanelWindow {
 
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
 
                     Btn {
                         text: "Check"
@@ -463,6 +505,11 @@ PanelWindow {
                         text: "Cancel"
                         visible: Updater.cancellable
                         onClicked: Updater.cancel()
+                    }
+                    Btn {
+                        text: "/"
+                        primary: panel.help
+                        onClicked: panel.help = !panel.help
                     }
                 }
             }
@@ -537,17 +584,74 @@ PanelWindow {
                 }
             }
 
+            // ---- Help (the "/" button) ------------------------------------
+            Column {
+                width: parent.width
+                spacing: 6
+                visible: panel.help
+
+                Repeater {
+                    model: [["r", "Check for updates"], ["p", "Preview what would change (your local edits too)"], ["a", "Switch: activate now and make it the boot default (u). Press twice"], ["t", "Test: activate now, a reboot undoes it (ut)"], ["b", "Boot: use it from the next reboot (ub). Press twice"], ["c", "Cancel a check or a build"], ["1 2 3", "Updates, Generations, Log"], ["/", "This help"], ["esc", "Close"]]
+
+                    delegate: Row {
+                        required property var modelData
+
+                        spacing: 12
+
+                        T {
+                            width: 56
+                            text: parent.modelData[0]
+                            color: Colors.accent
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+                        T {
+                            width: body.width - 68
+                            text: parent.modelData[1]
+                            font.pixelSize: 12
+                            elide: Text.ElideNone
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Rule {
+                    width: parent.width
+                }
+
+                T {
+                    width: parent.width
+                    text: "Generations: hover a row to switch to it or delete it. Delete all but current keeps the current generation, clears your old user profiles, collects garbage and rebuilds the boot menu. A running test build survives."
+                    color: Colors.muted
+                    font.pixelSize: 11
+                    elide: Text.ElideNone
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // ---- Updates tab ----------------------------------------------
             Column {
                 width: parent.width
                 spacing: 8
-                visible: panel.tab === 0
+                visible: !panel.help && panel.tab === 0
 
                 Note {
                     width: parent.width
                     visible: Updater.rebootPending
                     text: "Reboot needed: the running kernel differs from the installed one"
                     tint: Colors.accent
+                    action: Updater.rebootArmed ? "Press again" : "Reboot"
+                    actionDanger: Updater.rebootArmed
+                    onActivated: Updater.reboot()
+                }
+                Note {
+                    width: parent.width
+                    visible: Updater.bootDiffers
+                    text: Updater.runningGen === null ? "Running an unsaved test build. A reboot returns to generation #" + (Updater.currentGen ? Updater.currentGen.id : "?") : "Next boot uses generation #" + (Updater.currentGen ? Updater.currentGen.id : "?") + ", not the running #" + Updater.runningGen.id
+                    tint: Colors.accent
+                    action: Updater.rebootPending ? "" : (Updater.rebootArmed ? "Press again" : "Reboot")
+                    actionDanger: Updater.rebootArmed
+                    onActivated: Updater.reboot()
                 }
                 Note {
                     width: parent.width
@@ -564,14 +668,14 @@ PanelWindow {
                 Note {
                     width: parent.width
                     visible: Updater.failedUnits > 0
-                    text: Updater.failedUnits + " failed systemd unit" + (Updater.failedUnits === 1 ? "" : "s")
+                    text: Updater.failedUnits + " failed systemd unit" + (Updater.failedUnits === 1 ? "" : "s") + (Updater.failedNames.length > 0 ? ": " + Updater.failedNames.slice(0, 3).join(", ") + (Updater.failedNames.length > 3 ? ", …" : "") : "")
                     tint: Colors.critical
                 }
 
                 // Nothing to do
                 Item {
                     width: parent.width
-                    height: 96
+                    height: 112
                     visible: !Updater.available
 
                     Column {
@@ -593,6 +697,13 @@ PanelWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             visible: Updater.currentGen !== null
                             text: Updater.currentGen ? "Running generation #" + Updater.currentGen.id + ", built " + Updater.age(Updater.currentGen.time) : ""
+                            color: Colors.muted
+                            font.pixelSize: 12
+                        }
+                        T {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: Updater.skipped !== ""
+                            text: "Last scheduled check skipped: " + Updater.skipped
                             color: Colors.muted
                             font.pixelSize: 12
                         }
@@ -671,6 +782,21 @@ PanelWindow {
                         text: "− " + Updater.removed + " removed"
                         tint: Colors.critical
                     }
+                    T {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: Updater.previewTag === "local"
+                        text: "your local edits only"
+                        color: Colors.muted
+                        font.pixelSize: 12
+                    }
+                }
+
+                T {
+                    width: parent.width
+                    visible: Updater.previewed && Updater.diff.length === 0
+                    text: "No package changes."
+                    color: Colors.muted
+                    font.pixelSize: 12
                 }
 
                 ListView {
@@ -729,8 +855,8 @@ PanelWindow {
 
                     Btn {
                         anchors.left: parent.left
-                        text: "Preview packages"
-                        enabled: Updater.available && !Updater.busy
+                        text: Updater.available ? "Preview packages" : "Preview local changes"
+                        enabled: !Updater.busy
                         onClicked: Updater.preview()
                     }
 
@@ -742,6 +868,12 @@ PanelWindow {
                             text: "Test"
                             enabled: !Updater.busy
                             onClicked: Updater.tryOut()
+                        }
+                        Btn {
+                            text: Updater.bootArmed ? "Press again" : "Boot"
+                            danger: Updater.bootArmed
+                            enabled: !Updater.busy
+                            onClicked: Updater.bootNext()
                         }
                         Btn {
                             primary: true
@@ -757,7 +889,7 @@ PanelWindow {
             Column {
                 width: parent.width
                 spacing: 8
-                visible: panel.tab === 1
+                visible: !panel.help && panel.tab === 1
 
                 ListView {
                     width: parent.width
@@ -774,6 +906,8 @@ PanelWindow {
 
                         readonly property bool armedSwitch: Updater.rollbackArmed === modelData.id
                         readonly property bool armedDelete: Updater.deleteArmed === modelData.id
+                        // "current" is what boots next, "running" is what runs now; they differ after a test
+                        readonly property string badge: modelData.current ? (modelData.running ? "current" : "next boot") : (modelData.running ? "running" : "")
                         // Roll back / delete show on hover, or while waiting for the second press
                         readonly property bool showActions: !modelData.current && !Updater.busy && (genHover.hovered || armedSwitch || armedDelete)
 
@@ -823,21 +957,21 @@ PanelWindow {
 
                         // Resting: kernel, or "current"
                         Rectangle {
-                            visible: !gen.showActions && (gen.modelData.current || gen.modelData.kernel !== "")
+                            visible: !gen.showActions && (gen.badge !== "" || gen.modelData.kernel !== "")
                             anchors.right: parent.right
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             implicitHeight: 22
                             implicitWidth: kt.implicitWidth + 20
                             radius: 11
-                            color: gen.modelData.current ? Qt.alpha(Colors.accent, 0.2) : Qt.alpha(Colors.foreground, 0.07)
+                            color: gen.badge !== "" ? Qt.alpha(Colors.accent, 0.2) : Qt.alpha(Colors.foreground, 0.07)
 
                             T {
                                 id: kt
 
                                 anchors.centerIn: parent
-                                text: gen.modelData.current ? "current" : "linux " + gen.modelData.kernel
-                                color: gen.modelData.current ? Colors.accent : Colors.muted
+                                text: gen.badge !== "" ? gen.badge : "linux " + gen.modelData.kernel
+                                color: gen.badge !== "" ? Colors.accent : Colors.muted
                                 font.pixelSize: 11
                             }
                         }
@@ -871,16 +1005,16 @@ PanelWindow {
                     width: parent.width
                 }
 
+                T {
+                    width: parent.width
+                    text: Updater.generations.length + (Updater.generations.length === 1 ? " generation" : " generations") + (Updater.removable > 0 ? " · " + Updater.removable + " can go" : "") + (Updater.diskAvail > 0 ? " · " + Updater.fmtBytes(Updater.diskAvail) + " free" : "")
+                    color: Colors.muted
+                    font.pixelSize: 12
+                }
+
                 Item {
                     width: parent.width
                     height: 32
-
-                    T {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Updater.generations.length + (Updater.generations.length === 1 ? " generation" : " generations")
-                        color: Colors.muted
-                        font.pixelSize: 12
-                    }
 
                     Row {
                         anchors.right: parent.right
@@ -893,7 +1027,7 @@ PanelWindow {
                             onClicked: Updater.collect()
                         }
                         Btn {
-                            enabled: !Updater.busy && Updater.generations.length > 1
+                            enabled: !Updater.busy && Updater.removable > 0
                             text: Updater.deleteAllArmed ? "Press again to confirm" : "Delete all but current"
                             danger: Updater.deleteAllArmed
                             onClicked: Updater.deleteAll()
@@ -907,7 +1041,7 @@ PanelWindow {
                 width: parent.width
                 height: 300
                 radius: 10
-                visible: panel.tab === 2
+                visible: !panel.help && panel.tab === 2
                 color: Qt.alpha(Colors.foreground, 0.05)
                 clip: true
 
@@ -938,7 +1072,7 @@ PanelWindow {
             }
 
             Btn {
-                visible: panel.tab === 2
+                visible: !panel.help && panel.tab === 2
                 enabled: Updater.logLines.length > 0
                 text: "Copy log"
                 onClicked: Quickshell.execDetached(["wl-copy", Updater.logLines.join("\n")])

@@ -4,7 +4,8 @@
 //   qs ipc call music toggle | open | close | playpause | next | prev | stop | rescan
 //   qs ipc call music media <playpause|next|prev>   (media keys: falls back to playerctl)
 // In the library: type to filter, Up / Down to move, Enter to play from there,
-// Esc clears the search, then closes.
+// Esc clears the search, then closes. With the search empty, Space plays /
+// pauses and Right / Left skip to the next / previous track.
 // State and mpv live in Music.qml; this file is only the interface.
 
 import QtQuick
@@ -856,6 +857,12 @@ PanelWindow {
                                     text = "";
                                 else
                                     panel.close();
+                            } else if (text === "" && event.key === Qt.Key_Space) {
+                                Music.hasTrack ? Music.playPause() : (view.count > 0 ? panel.playFrom(0) : undefined);
+                            } else if (text === "" && event.key === Qt.Key_Right) {
+                                Music.next();
+                            } else if (text === "" && event.key === Qt.Key_Left) {
+                                Music.prev();
                             } else {
                                 return;
                             }

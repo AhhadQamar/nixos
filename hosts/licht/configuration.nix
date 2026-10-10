@@ -12,6 +12,7 @@
     ./system/hardware.nix
     ./system/desktop.nix
     ./system/sddm.nix
+    ./system/updater.nix
   ];
 
   programs.zsh.enable = true;
