@@ -3,15 +3,15 @@
 ------------------------------------------
 --   Super+1..0               go to slot on this monitor
 --   Super+Shift+1..0         send window there and follow it
---   Super+Alt+1..0           send window there, stay here
---   Super+Ctrl+1..0          go to that slot on the OTHER monitor's block
+--   Super+Shift+Alt+1..0     send window there, stay here
+--   Super+Alt+1..0           go to that slot on the OTHER monitor's block
 --                            (also how you reach workspaces 11..20 while
 --                            only one screen is connected)
---   Super+Ctrl+Left/Right    previous / next open workspace on this monitor
+--   Super+Alt+Left/Right     previous / next open workspace on this monitor
 --   Super+Tab                back to the previous workspace on this monitor
 --   Super+, / Super+.        focus previous / next monitor
 --   Super+Shift+, / .        send window to previous / next monitor and follow
---   Super+Ctrl+, / .         send this whole workspace to previous / next monitor
+--   Super+Alt+, / .          send this whole workspace to previous / next monitor
 --   Super+Alt+Tab            swap the two screens' workspaces
 
 local mainMod = "SUPER"
@@ -102,28 +102,67 @@ for i = 1, SLOTS do
 	hl.bind(mainMod .. " + SHIFT + " .. key, function()
 		hl.dispatch(hl.dsp.window.move({ workspace = slot_id(i), follow = true }))
 	end)
-	hl.bind(mainMod .. " + ALT + " .. key, function()
+	hl.bind(mainMod .. " + SHIFT + ALT + " .. key, function()
 		hl.dispatch(hl.dsp.window.move({ workspace = slot_id(i), follow = false }))
 	end)
-	hl.bind(mainMod .. " + CTRL + " .. key, function()
+	hl.bind(mainMod .. " + ALT + " .. key, function()
 		hl.dispatch(hl.dsp.focus({ workspace = other_slot_id(i) }))
 	end)
 end
 
 -- Open workspaces on the current monitor only ("e" = existing)
-hl.bind(mainMod .. " + CTRL + right", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind(mainMod .. " + CTRL + left", hl.dsp.focus({ workspace = "e-1" }))
+hl.bind(mainMod .. " + ALT + right", hl.dsp.focus({ workspace = "e+1" }))
+hl.bind(mainMod .. " + ALT + left", hl.dsp.focus({ workspace = "e-1" }))
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
 hl.bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }))
 hl.bind(mainMod .. " + Tab", hl.dsp.focus({ workspace = "previous_per_monitor" }))
 
 -- Monitors
+-- The name of the monitor before (-1) or after (+1) the active one, wrapping
+-- around. Window moves go by name: "+" / "-" are not accepted as a monitor by
+-- window.move, which is what raised "Invalid monitor".
+local function neighbour_monitor(step)
+	local monitors = hl.get_monitors()
+	local active = hl.get_active_monitor()
+	if not active or #monitors < 2 then
+		return nil
+	end
+	for i, m in ipairs(monitors) do
+		if m.name == active.name then
+			return monitors[(i - 1 + step) % #monitors + 1].name
+		end
+	end
+	return nil
+end
+
+local function move_window_to_monitor(step)
+	local name = neighbour_monitor(step)
+	if name then
+		hl.dispatch(hl.dsp.window.move({ monitor = name, follow = true }))
+	end
+end
+
+local function move_workspace_to_monitor(step)
+	local name = neighbour_monitor(step)
+	if name then
+		hl.dispatch(hl.dsp.workspace.move({ monitor = name }))
+	end
+end
+
 hl.bind(mainMod .. " + comma", hl.dsp.focus({ monitor = "-" }))
 hl.bind(mainMod .. " + period", hl.dsp.focus({ monitor = "+" }))
-hl.bind(mainMod .. " + SHIFT + comma", hl.dsp.window.move({ monitor = "-", follow = true }))
-hl.bind(mainMod .. " + SHIFT + period", hl.dsp.window.move({ monitor = "+", follow = true }))
-hl.bind(mainMod .. " + CTRL + comma", hl.dsp.workspace.move({ monitor = "-" }))
-hl.bind(mainMod .. " + CTRL + period", hl.dsp.workspace.move({ monitor = "+" }))
+hl.bind(mainMod .. " + SHIFT + comma", function()
+	move_window_to_monitor(-1)
+end)
+hl.bind(mainMod .. " + SHIFT + period", function()
+	move_window_to_monitor(1)
+end)
+hl.bind(mainMod .. " + ALT + comma", function()
+	move_workspace_to_monitor(-1)
+end)
+hl.bind(mainMod .. " + ALT + period", function()
+	move_workspace_to_monitor(1)
+end)
 
 -- Swap whatever two monitors are connected right now. With one monitor (or
 -- three or more) it does nothing instead of naming outputs that may not exist.

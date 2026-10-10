@@ -43,10 +43,11 @@ hl.bind(mainMod .. " + SHIFT + right", hl.dsp.window.swap({ direction = "right" 
 hl.bind(mainMod .. " + SHIFT + up", hl.dsp.window.swap({ direction = "up" }))
 hl.bind(mainMod .. " + SHIFT + down", hl.dsp.window.swap({ direction = "down" }))
 
--- Resize the focused window from the keyboard: Super+Alt + h j k l (or the
--- arrows). Hold to keep going. Left / right change the width, up / down the
--- height, so it behaves the same for tiled and floating windows. (Super+Alt
--- + 1..0 and Super+Alt+Tab belong to workspaces.lua, so these do not clash.)
+-- Resize the focused window from the keyboard: Super+Alt + h j k l, or up /
+-- down for the height. Hold to keep going. Left / right change the width, up /
+-- down the height, so it behaves the same for tiled and floating windows.
+-- (Super+Alt + 1..0, Tab, comma, period and Left / Right belong to workspaces.lua, so those
+-- do not clash; use h / l for the width.)
 local resizeStep = 30
 local function resizeBind(key, dx, dy)
 	hl.bind(
@@ -60,8 +61,6 @@ resizeBind("h", -resizeStep, 0)
 resizeBind("l", resizeStep, 0)
 resizeBind("k", 0, -resizeStep)
 resizeBind("j", 0, resizeStep)
-resizeBind("left", -resizeStep, 0)
-resizeBind("right", resizeStep, 0)
 resizeBind("up", 0, -resizeStep)
 resizeBind("down", 0, resizeStep)
 
@@ -77,16 +76,30 @@ hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:mag
 hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
 
 -- Quickshell panels (workspace keys live in workspaces.lua) ---------------------
-hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd("qs ipc call launcher toggle"))
-hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("qs ipc call powermenu toggle"))
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("qs ipc call clipboard toggle"))
-hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("qs ipc call notifications toggle"))
-hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("qs ipc call wallpaper toggle"))
-hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("qs ipc call nightlight toggle"))
-hl.bind(mainMod .. " + SHIFT + N", hl.dsp.exec_cmd("qs ipc call nightlight power"))
-hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("qs ipc call screentime toggle"))
-hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("qs ipc call downloads toggle"))
-hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("qs ipc call capture toggle"))
+--   Space  launcher        M  power menu        V  clipboard
+--   A      notifications   Shift+A  do not disturb on / off
+--   W      wallpaper       N  night light       Shift+N  night light on / off
+--   T      screen time     D  downloads         I  capture
+--   U      system updates  Shift+U  check for updates now (opens the panel)
+-- Applying an update is deliberately not bound: press "a" twice inside the
+-- updater panel, so a stray key can never start a switch.
+local function qs(target, fn)
+	return hl.dsp.exec_cmd("qs ipc call " .. target .. " " .. fn)
+end
+
+hl.bind(mainMod .. " + Space", qs("launcher", "toggle"))
+hl.bind(mainMod .. " + M", qs("powermenu", "toggle"))
+hl.bind(mainMod .. " + V", qs("clipboard", "toggle"))
+hl.bind(mainMod .. " + A", qs("notifications", "toggle"))
+hl.bind(mainMod .. " + SHIFT + A", qs("notifications", "dnd"))
+hl.bind(mainMod .. " + W", qs("wallpaper", "toggle"))
+hl.bind(mainMod .. " + N", qs("nightlight", "toggle"))
+hl.bind(mainMod .. " + SHIFT + N", qs("nightlight", "power"))
+hl.bind(mainMod .. " + T", qs("screentime", "toggle"))
+hl.bind(mainMod .. " + D", qs("downloads", "toggle"))
+hl.bind(mainMod .. " + I", qs("capture", "toggle"))
+hl.bind(mainMod .. " + U", qs("sysupd", "toggle"))
+hl.bind(mainMod .. " + SHIFT + U", qs("sysupd", "check"))
 
 -- Session --------------------------------------------------------------------
 -- Goes through logind so hypridle's lock_cmd runs. That keeps one hyprlock

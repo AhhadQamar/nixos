@@ -1,5 +1,5 @@
 // Notification history, in the bar's style.
-//   qs ipc call notifications toggle | open | close | clear
+//   qs ipc call notifications toggle | open | close | clear | dnd
 // Esc closes. DND silences new toasts but still records them here.
 
 import QtQuick
@@ -65,6 +65,10 @@ PanelWindow {
 
         function clear() {
             NotificationServer.clearHistory();
+        }
+
+        function dnd() {
+            NotificationServer.toggleDnd();
         }
 
         target: "notifications"
