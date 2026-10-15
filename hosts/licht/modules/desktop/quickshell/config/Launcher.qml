@@ -40,8 +40,6 @@ PanelWindow {
     readonly property int tickCount: Math.ceil(width / tickGap / 10) * 10 + 20
     readonly property int slotHalf: Math.min(22, Math.ceil(width * 0.52 / stepPx) + 1)
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid).
-    readonly property real scrim: 0.95
     readonly property string terminal: Config.terminal
     readonly property string countsPath: Config.home + "/.cache/quickshell/launcher-counts.json"
 

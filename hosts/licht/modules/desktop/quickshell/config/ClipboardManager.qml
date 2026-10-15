@@ -29,9 +29,8 @@
 // over a tight dome and unfurl into the calm dial. Closing plays it in
 // reverse. A deleted disc shrinks away and its neighbours close the gap.
 //
-// Like the other dials this window is only as big as the stage, so the mouse
-// still reaches other windows while it is open (clicks above the stage go
-// through). The keyboard is the clipboard's until it closes (Esc). Only the
+// Like the other dials it dims the screen (Dim.qml) and a click on the dim
+// closes it. The keyboard is the clipboard's until it closes (Esc). Only the
 // discs near the middle exist, so a history of hundreds costs nothing.
 
 import QtQuick
@@ -51,9 +50,8 @@ PanelWindow {
     // ---- Settings -------------------------------------------------------
     readonly property real screenW: targetScreen ? targetScreen.width : 1920
     readonly property int stageW: Math.min(900, Math.round(screenW * 0.9))
-    // The window is this tall always; the stage inside it grows and shrinks
-    // with what is shown (bodyH), so the dial glides up and down instead of
-    // the layer surface being resized.
+    // The stage grows and shrinks with what is shown (bodyH), so the dial
+    // glides up and down; it never gets taller than this.
     readonly property int winH: 600
     readonly property int topY: 56
     readonly property int ruleDrop: 46
@@ -859,7 +857,7 @@ PanelWindow {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: clipboard.stageW
-        height: clipboard.bodyH
+        height: Math.min(clipboard.bodyH, clipboard.winH)
         clip: true
         opacity: Math.min(1, clipboard.reveal * 3)
         transform: Translate {
@@ -898,62 +896,9 @@ PanelWindow {
         // Feathered backing: a soft dark ellipse keeps the words and the scale
         // readable over any wallpaper without a visible panel edge. It is as
         // tall as the stage is, so it never meets the edge of the window.
-        Shape {
+        StageShade {
             id: scrimShape
-
-            readonly property real r: stage.width * 0.5
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: scrimShape.r
-                origin.y: scrimShape.r
-                yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
-            }
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: scrimShape.r
-
-                fillGradient: RadialGradient {
-                    centerX: scrimShape.r
-                    centerY: scrimShape.r
-                    centerRadius: scrimShape.r
-                    focalX: scrimShape.r
-                    focalY: scrimShape.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.background, 0.88)
-                    }
-                    GradientStop {
-                        position: 0.55
-                        color: Qt.alpha(Colors.background, 0.6)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.background, 0)
-                    }
-                }
-
-                PathArc {
-                    x: scrimShape.r * 2
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-                PathArc {
-                    x: 0
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-            }
+            yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
         }
 
         // Low accent light on the horizon

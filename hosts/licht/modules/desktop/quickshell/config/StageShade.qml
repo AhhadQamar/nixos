@@ -10,6 +10,9 @@ Shape {
 
     property real h: parent.height
     property real strength: 1
+    // Vertical squash of the ellipse. The default makes it rise `h` above the
+    // bottom edge; a panel can set its own (a fixed 0.62 for a low, wide one).
+    property real yScale: h * 0.96 / r
     readonly property real r: parent.width * 0.5
 
     x: parent.width / 2 - r
@@ -21,7 +24,7 @@ Shape {
     transform: Scale {
         origin.x: shade.r
         origin.y: shade.r
-        yScale: shade.h * 0.96 / shade.r
+        yScale: shade.yScale
     }
 
     ShapePath {

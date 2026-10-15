@@ -80,8 +80,6 @@ PanelWindow {
     readonly property int tickGap: 12
     readonly property int tickCount: Math.ceil(width / tickGap / 10) * 10 + 20
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid)
-    readonly property real scrim: 0.95
     // How long a pending confirmation stays armed, in ms
     readonly property int confirmMs: 3000
 

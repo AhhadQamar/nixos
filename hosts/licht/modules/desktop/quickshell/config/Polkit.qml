@@ -637,62 +637,9 @@ Scope {
 
             // Feathered backing: a soft dark ellipse keeps the words and the
             // scale readable over any wallpaper without a visible panel edge.
-            Shape {
+            StageShade {
                 id: scrimShape
-
-                readonly property real r: stage.width * 0.5
-
-                x: stage.cx - r
-                y: stage.height - r
-                width: r * 2
-                height: r * 2
-                layer.enabled: true
-                layer.samples: 4
-                transform: Scale {
-                    origin.x: scrimShape.r
-                    origin.y: scrimShape.r
-                    yScale: 0.62
-                }
-
-                ShapePath {
-                    strokeColor: "transparent"
-                    startX: 0
-                    startY: scrimShape.r
-
-                    fillGradient: RadialGradient {
-                        centerX: scrimShape.r
-                        centerY: scrimShape.r
-                        centerRadius: scrimShape.r
-                        focalX: scrimShape.r
-                        focalY: scrimShape.r
-
-                        GradientStop {
-                            position: 0
-                            color: Qt.alpha(Colors.background, 0.88)
-                        }
-                        GradientStop {
-                            position: 0.55
-                            color: Qt.alpha(Colors.background, 0.6)
-                        }
-                        GradientStop {
-                            position: 1
-                            color: Qt.alpha(Colors.background, 0)
-                        }
-                    }
-
-                    PathArc {
-                        x: scrimShape.r * 2
-                        y: scrimShape.r
-                        radiusX: scrimShape.r
-                        radiusY: scrimShape.r
-                    }
-                    PathArc {
-                        x: 0
-                        y: scrimShape.r
-                        radiusX: scrimShape.r
-                        radiusY: scrimShape.r
-                    }
-                }
+                yScale: 0.62
             }
 
             // Low light on the horizon in the colour of the moment: the

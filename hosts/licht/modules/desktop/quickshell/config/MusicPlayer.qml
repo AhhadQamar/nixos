@@ -70,8 +70,6 @@ PanelWindow {
     readonly property int cardH: 74
     readonly property int cardY: rowY + Style.fieldHeight + 10
     readonly property int stageH: cardY + cardH + 22
-    // How dark the shade under the player gets (the launcher's value)
-    readonly property real scrim: 0.95
 
     // ---- State ----------------------------------------------------------
     property bool isOpen: false

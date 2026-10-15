@@ -26,7 +26,7 @@ PopupWindow {
 
     // The bar window this hangs from, and the item it hangs under
     required property var barWindow
-    required property Item target
+    required property var target
 
     readonly property bool open: visible
 
@@ -137,12 +137,16 @@ PopupWindow {
             return;
         offset = 0;
         hoverIndex = -1;
-        anchor.rect = barWindow.contentItem.mapFromItem(target, 0, 0, target.width, target.height + 6);
+        // Under the date, not the whole capsule: the card's top left corner
+        // sits where the date starts, so it reads as growing out of it
+        anchor.rect = barWindow.contentItem.mapFromItem(target, target.dateLeft, 0, target.width - target.dateLeft, target.height + 6);
         visible = true;
     }
 
     // One overlay panel at a time: close when another one opens
     PanelLink {
+        id: link
+
         win: pop
         name: "calendar"
         idleMs: Style.popupIdleMs
@@ -224,7 +228,7 @@ PopupWindow {
         }
     }
 
-    // The card grows out of the clock, which is at its top left corner
+    // The card grows out of the date, which is at its top left corner
     CardFade {
         id: fade
 
@@ -332,6 +336,44 @@ PopupWindow {
         // For the idle close: it waits while the pointer is on the card
         HoverHandler {
             id: idleHover
+        }
+
+        // Keys: esc closes, left / right (or h / l, PgUp / PgDn) turn the month,
+        // t or Home comes back to today. Every key counts as activity for the
+        // idle close.
+        Item {
+            anchors.fill: parent
+            focus: pop.visible
+            Keys.onPressed: event => {
+                const k = event.key;
+                if (k === Qt.Key_Escape)
+                    pop.close();
+                else if (k === Qt.Key_Left || k === Qt.Key_H || k === Qt.Key_PageUp)
+                    pop.go(-1);
+                else if (k === Qt.Key_Right || k === Qt.Key_L || k === Qt.Key_PageDown)
+                    pop.go(1);
+                else if (k === Qt.Key_T || k === Qt.Key_Home)
+                    pop.goToday();
+                else
+                    return;
+                link.poke();
+                event.accepted = true;
+            }
+        }
+
+        // The wheel turns the month, a notch at a time (a touchpad sends many
+        // small steps, so they add up to a notch first)
+        WheelHandler {
+            property real acc: 0
+
+            onWheel: event => {
+                acc += event.angleDelta.y;
+                link.poke();
+                if (Math.abs(acc) >= 120) {
+                    pop.go(acc < 0 ? 1 : -1);
+                    acc = 0;
+                }
+            }
         }
 
         anchors.fill: parent

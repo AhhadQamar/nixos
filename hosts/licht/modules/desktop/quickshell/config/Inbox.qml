@@ -92,9 +92,8 @@ PanelWindow {
     // ---- Settings (layout) ----------------------------------------------
     readonly property real screenW: targetScreen ? targetScreen.width : 1920
     readonly property int stageW: Math.min(720, Math.round(screenW * 0.9))
-    // The window is this tall always; the stage inside it grows and shrinks
-    // with the text box and the recent notes (bodyH), so the dial glides up and
-    // down instead of the layer surface being resized.
+    // The stage grows and shrinks with the text box and the recent notes
+    // (bodyH), so the dial glides up and down; it never gets taller than this.
     readonly property int winH: 520
     readonly property int topY: 56
     readonly property int ruleDrop: 46
@@ -636,7 +635,7 @@ PanelWindow {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: capture.stageW
-        height: capture.bodyH
+        height: Math.min(capture.bodyH, capture.winH)
         clip: true
         opacity: Math.min(1, capture.reveal * 3)
         transform: Translate {
@@ -655,62 +654,8 @@ PanelWindow {
         // Feathered backing: a soft dark ellipse keeps the words and the scale
         // readable over any wallpaper without a visible panel edge. It is as
         // tall as the stage is, so it never meets the edge of the window.
-        Shape {
+        StageShade {
             id: scrimShape
-
-            readonly property real r: stage.width * 0.5
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: scrimShape.r
-                origin.y: scrimShape.r
-                yScale: stage.height * 0.96 / scrimShape.r
-            }
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: scrimShape.r
-
-                fillGradient: RadialGradient {
-                    centerX: scrimShape.r
-                    centerY: scrimShape.r
-                    centerRadius: scrimShape.r
-                    focalX: scrimShape.r
-                    focalY: scrimShape.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.background, 0.88)
-                    }
-                    GradientStop {
-                        position: 0.55
-                        color: Qt.alpha(Colors.background, 0.6)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.background, 0)
-                    }
-                }
-
-                PathArc {
-                    x: scrimShape.r * 2
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-                PathArc {
-                    x: 0
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-            }
         }
 
         // Low accent light on the horizon

@@ -387,7 +387,7 @@ PopupWindow {
     PanelLink {
         win: pop
         name: "network"
-        idleMs: Style.popupIdleMs
+        idleMs: Style.popupIdleLongMs
         hovered: idleHover.hovered
         busy: pop.working || pop.selected !== ""
     }
@@ -415,6 +415,20 @@ PopupWindow {
         // For the idle close: it waits while the pointer is on the card
         HoverHandler {
             id: idleHover
+        }
+
+        // Esc steps back: with a network picked it puts the pick down first
+        // (the password field does the same when it has the keys), then it
+        // closes the popup
+        Item {
+            anchors.fill: parent
+            focus: pop.visible
+            Keys.onEscapePressed: {
+                if (pop.selected !== "")
+                    pop.selected = "";
+                else
+                    pop.close();
+            }
         }
 
         anchors.fill: parent

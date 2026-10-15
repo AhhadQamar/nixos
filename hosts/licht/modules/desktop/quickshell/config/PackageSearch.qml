@@ -54,8 +54,6 @@ PanelWindow {
     readonly property int footY: pillY + Style.fieldHeight + 10
     readonly property int stageH: footY + 34
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid)
-    readonly property real scrim: 0.95
 
     // ---- State ----------------------------------------------------------
     // Opens on the monitor that has focus (set in open())

@@ -48,8 +48,13 @@ Singleton {
     readonly property int barHeight: 44
     readonly property int barRadius: radiusXl
     readonly property int barGap: 8
-    // A bar popup left alone this long closes itself (see PanelLink.qml)
-    readonly property int popupIdleMs: 15000
+    // A bar popup left alone this long closes itself (see PanelLink.qml). The
+    // pointer over it, or a key or the wheel used in it, starts the count again.
+    // popupIdleMs is for the ones you glance at (calendar, tray and volume
+    // menus); popupIdleLongMs for the ones you work in (the clock panel, Wi-Fi),
+    // where a pause to read or think is normal.
+    readonly property int popupIdleMs: 4000
+    readonly property int popupIdleLongMs: 8000
     readonly property int itemHeight: 28
     readonly property int discSize: 24
     // ---- Shape, space and type -------------------------------------------

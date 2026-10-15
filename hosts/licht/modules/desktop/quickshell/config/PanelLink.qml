@@ -8,6 +8,8 @@
 // The countdown runs while the popup is open and is held (and starts again
 // from zero) while the pointer is over it (`hovered`) or it is `busy`
 // (a password being typed, something being joined). idleMs 0 never closes.
+// Keys and the wheel are activity too: a popup used from the keyboard calls
+// `poke()` so the countdown starts again from zero.
 
 import QtQuick
 import Quickshell
@@ -21,7 +23,13 @@ Scope {
     property bool hovered: false
     property bool busy: false
 
+    function poke() {
+        idle.restart();
+    }
+
     Timer {
+        id: idle
+
         interval: link.idleMs
         running: link.idleMs > 0 && link.win.visible && !link.hovered && !link.busy
         onTriggered: link.win.close()
