@@ -19,6 +19,7 @@ ShellRoot {
     PowerMenu {
         id: powerMenu
     }
+    Lock {}
     Polkit {}
     VolumeBrightnessOSD {}
 

@@ -394,9 +394,12 @@ PopupWindow {
 
     // One overlay panel at a time: close when another one opens
     PanelLink {
+        id: link
+
         win: pop
         name: "clock"
-        idleMs: Style.popupIdleMs
+        barPopup: true
+        idleMs: Style.popupIdleLongMs
         hovered: idleHover.hovered
     }
 
@@ -636,6 +639,8 @@ PopupWindow {
             anchors.fill: parent
             focus: pop.visible
             Keys.onPressed: event => {
+                // Typing counts as activity for the idle close
+                link.poke();
                 const k = event.key;
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
                 const plain = event.modifiers === Qt.NoModifier;

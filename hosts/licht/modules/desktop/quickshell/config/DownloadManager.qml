@@ -201,7 +201,7 @@ PanelWindow {
     // A little extra room between the groups of downloads, in disc units
     readonly property real groupGap: 0.35
     readonly property real collapseMs: 200
-    readonly property real topY: 56
+    readonly property real topY: Style.panelTop
     readonly property real ruleDrop: 46
     readonly property real ruleY: topY + ruleDrop
     readonly property int tickN: Math.ceil(stageW / tickGap) + 24
@@ -221,7 +221,7 @@ PanelWindow {
     readonly property int actionsH: Style.buttonCompact
     readonly property int filterH: Style.buttonCompact
     readonly property int speedH: 52
-    readonly property int foot: 16
+    readonly property int foot: Style.panelFoot
     // The add pill grows with what is typed in it
     readonly property real addTarget: Math.min(100, Math.max(Style.fieldHeight, addInput.contentHeight + 17))
     property real addH: addTarget
@@ -388,7 +388,7 @@ PanelWindow {
         if (down)
             return "The panel talks to the aria2 user service on port 6800.";
         if (blank)
-            return rows.length === 0 ? "Paste a link, a magnet or a .torrent path below." : "Try another filter or search.";
+            return "";
         return hasCur ? statusLine(cur) : "";
     }
 
@@ -1874,62 +1874,9 @@ PanelWindow {
         // Feathered backing: a soft dark ellipse keeps the words and the scale
         // readable over any wallpaper without a visible panel edge. It is as
         // tall as the stage is, so it never meets the edge of the window.
-        Shape {
+        StageShade {
             id: scrimShape
-
-            readonly property real r: stage.width * 0.5
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: scrimShape.r
-                origin.y: scrimShape.r
-                yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
-            }
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: scrimShape.r
-
-                fillGradient: RadialGradient {
-                    centerX: scrimShape.r
-                    centerY: scrimShape.r
-                    centerRadius: scrimShape.r
-                    focalX: scrimShape.r
-                    focalY: scrimShape.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.background, 0.88)
-                    }
-                    GradientStop {
-                        position: 0.62
-                        color: Qt.alpha(Colors.background, 0.6)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.background, 0)
-                    }
-                }
-
-                PathArc {
-                    x: scrimShape.r * 2
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-                PathArc {
-                    x: 0
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-            }
+            yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
         }
 
         // A second, flatter backing under the buttons, the speed ruler and the
@@ -3001,7 +2948,6 @@ PanelWindow {
                 primary: true
                 visible: dl.hasCur && (dl.cur.state === "paused" || dl.cur.state === "downloading" || dl.cur.state === "seeding" || dl.cur.state === "checking" || dl.cur.state === "queued")
                 text: dl.hasCur && dl.cur.state === "paused" ? "Resume" : "Pause"
-                hint: "space"
                 onClicked: dl.togglePause(dl.targets())
             }
 
@@ -3010,7 +2956,6 @@ PanelWindow {
                 primary: true
                 visible: dl.hasCur && dl.cur.state === "failed"
                 text: "Retry"
-                hint: "r"
                 onClicked: dl.retryRows(dl.targets())
             }
 
@@ -3018,7 +2963,6 @@ PanelWindow {
                 compact: true
                 visible: dl.hasCur && (dl.cur.state === "done" || dl.cur.state === "seeding")
                 text: "Open"
-                hint: "o"
                 onClicked: dl.openRow(dl.cur)
             }
 
@@ -3026,7 +2970,6 @@ PanelWindow {
                 compact: true
                 visible: dl.hasCur && dl.cur.path !== ""
                 text: "Show in " + Config.fileManager
-                hint: "f"
                 onClicked: dl.revealRow(dl.cur)
             }
 
@@ -3034,7 +2977,6 @@ PanelWindow {
                 compact: true
                 visible: dl.hasCur && dl.cur.link !== ""
                 text: dl.hasCur && dl.cur.isBt ? "Copy magnet" : "Copy link"
-                hint: "y"
                 onClicked: dl.copyLink(dl.cur)
             }
 
@@ -3042,7 +2984,6 @@ PanelWindow {
                 compact: true
                 visible: dl.hasCur && (dl.cur.state === "queued" || dl.cur.state === "paused")
                 text: "To top"
-                hint: "shift+t"
                 onClicked: dl.moveQueue("top")
             }
 
@@ -3050,7 +2991,6 @@ PanelWindow {
                 compact: true
                 visible: dl.hasCur
                 text: dl.selectedCount > 0 ? "Remove " + dl.selectedCount : "Remove"
-                hint: "del"
                 onClicked: dl.askRemove(false)
             }
 
@@ -3062,7 +3002,6 @@ PanelWindow {
                 danger: true
                 armed: dl.armedCur
                 text: dl.armedCur ? "Press again" : "Delete files"
-                hint: dl.armedCur ? "" : "shift+del"
                 onClicked: dl.askRemove(true)
             }
         }
@@ -3170,7 +3109,6 @@ PanelWindow {
                     primary: Number(dl.globalOpt["max-overall-download-limit"] || 0) > 0
                     glyph: Icons.arrowDown
                     text: dl.limitLabel(dl.globalOpt["max-overall-download-limit"])
-                    hint: "shift+l"
                     onClicked: dl.cycleLimit("max-overall-download-limit")
                 }
 
@@ -3324,31 +3262,6 @@ PanelWindow {
                     }
                 }
             }
-
-            KeyCap {
-                anchors.verticalCenter: parent.verticalCenter
-                label: "enter"
-            }
-
-            OutText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "add"
-                color: Qt.alpha(Colors.foreground, 0.7)
-                rightPadding: 4
-                font.pixelSize: Style.fontSm
-            }
-
-            KeyCap {
-                anchors.verticalCenter: parent.verticalCenter
-                label: "tab"
-            }
-
-            OutText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "folder"
-                color: Qt.alpha(Colors.foreground, 0.7)
-                font.pixelSize: Style.fontSm
-            }
         }
 
         // ---- A link on the clipboard: one key to add it ------------------------
@@ -3378,7 +3291,6 @@ PanelWindow {
                 primary: true
                 glyph: Icons.paste
                 text: "Add from clipboard"
-                hint: "v"
                 onClicked: dl.pasteClipboard()
             }
 
@@ -3537,14 +3449,6 @@ PanelWindow {
                         font.pixelSize: Style.fontLg
                     }
                 }
-
-                KeyCap {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    y: (Style.fieldHeight - height) / 2
-                    visible: !addInput.activeFocus && addInput.text.length === 0
-                    label: "a"
-                }
             }
 
             SearchField {
@@ -3554,7 +3458,6 @@ PanelWindow {
                 anchors.bottom: parent.bottom
                 width: footRow.searchW
                 placeholder: "Search downloads"
-                hint: "/"
                 // Number of matches while typing
                 badge: dl.query.trim() !== "" ? String(dl.shownGids.length) : ""
 

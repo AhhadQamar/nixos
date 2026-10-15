@@ -1,5 +1,6 @@
 // One inset glass bar per screen:
-//   clock (opens the calendar) left, workspaces centre,
+//   clock left (the time opens the clock panel, the date the calendar),
+//   workspaces centre,
 //   music chip, tray and system stats right.
 //
 // The bar is one piece of glass, and everything on it speaks the dial's
@@ -17,6 +18,7 @@
 
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 
 Variants {
     model: Quickshell.screens
@@ -39,6 +41,10 @@ Variants {
         property real reveal: 0
 
         screen: modelData
+        // Popups hanging from the bar can only take the keyboard if the bar
+        // may. OnDemand, and only while one is open: the bar never holds
+        // focus otherwise.
+        WlrLayershell.keyboardFocus: Panels.barPopupOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         implicitHeight: Style.barHeight
         color: "transparent"
 
@@ -95,9 +101,10 @@ Variants {
 
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                open: calendar.open || clockPop.open
-                onClicked: calendar.toggle()
-                onContextRequested: clockPop.toggle()
+                clockOpen: clockPop.open
+                calendarOpen: calendar.open
+                onTimeClicked: clockPop.toggle()
+                onDateClicked: calendar.toggle()
             }
 
             // Time left while a timer or the Pomodoro runs; nothing otherwise
@@ -147,8 +154,8 @@ Variants {
             target: clock
         }
 
-        // Timer, Pomodoro, stopwatch and alarms: right-click the clock, or click
-        // the chip beside it
+        // Timer, Pomodoro, stopwatch and alarms: click the time, or the chip
+        // beside it
         ClockPopup {
             id: clockPop
 

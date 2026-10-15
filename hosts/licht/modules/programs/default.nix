@@ -9,5 +9,6 @@
     ./nvim
     ./vscodium
     ./yt-dlp
+    ./obsidian
   ];
 }

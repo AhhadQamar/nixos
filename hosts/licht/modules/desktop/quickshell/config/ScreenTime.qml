@@ -58,11 +58,10 @@ PanelWindow {
     readonly property real screenW: targetScreen ? targetScreen.width : 1920
     readonly property real screenH: targetScreen ? targetScreen.height : 1080
     readonly property int stageW: Math.min(780, Math.round(screenW * 0.9))
-    // The window is this tall always; the stage inside it grows and shrinks
-    // with what is shown (bodyH), so the dial glides up and down instead of
-    // the layer surface being resized.
+    // The stage grows and shrinks with what is shown (bodyH), so the dial
+    // glides up and down; it never gets taller than this.
     readonly property int winH: Math.min(660, Math.round(screenH * 0.8))
-    readonly property int topY: 54
+    readonly property int topY: Style.panelTop
     readonly property real dialR: 900
     // The dome the dial starts as when it opens (and ends as when it closes)
     readonly property real rainbowR: 360
@@ -312,7 +311,7 @@ PanelWindow {
     }
 
     readonly property string msgTitle: loadFailed ? "Couldn't read screen time data" : (view.any_data ? "Nothing recorded for this period" : "No data yet")
-    readonly property string msgSub: loadFailed ? "Run `screentime panel day 0` in a terminal to see the error." : (view.any_data ? "Use Shift+← to look at another day." : "The logger starts with Hyprland. To start it now, run `screentime log` in a terminal.")
+    readonly property string msgSub: loadFailed ? "Run `screentime panel day 0` in a terminal to see the error." : (view.any_data ? "" : "The logger starts with Hyprland. To start it now, run `screentime log` in a terminal.")
 
     // ---- Layout of what is under the dial ---------------------------------
     readonly property int readoutTop: topY + baseDrop + 28
@@ -905,7 +904,7 @@ PanelWindow {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: panel.stageW
-        height: panel.bodyH
+        height: Math.min(panel.bodyH, panel.winH)
         clip: true
         opacity: Math.min(1, panel.reveal * 3)
         transform: Translate {
@@ -939,62 +938,9 @@ PanelWindow {
         // Feathered backing: a soft dark ellipse keeps the words and the scale
         // readable over any wallpaper without a visible panel edge. It is as
         // tall as the stage is, so it never meets the edge of the window.
-        Shape {
+        StageShade {
             id: scrimShape
-
-            readonly property real r: stage.width * 0.5
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: scrimShape.r
-                origin.y: scrimShape.r
-                yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
-            }
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: scrimShape.r
-
-                fillGradient: RadialGradient {
-                    centerX: scrimShape.r
-                    centerY: scrimShape.r
-                    centerRadius: scrimShape.r
-                    focalX: scrimShape.r
-                    focalY: scrimShape.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.background, 0.88)
-                    }
-                    GradientStop {
-                        position: 0.55
-                        color: Qt.alpha(Colors.background, 0.6)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.background, 0)
-                    }
-                }
-
-                PathArc {
-                    x: scrimShape.r * 2
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-                PathArc {
-                    x: 0
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-            }
+            yScale: Math.min(1.2, stage.height * 0.94 / scrimShape.r)
         }
 
         // Low light on the horizon: the accent, or red while the period is
@@ -2008,7 +1954,7 @@ PanelWindow {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    visible: panel.msgMode
+                    visible: panel.msgMode && text !== ""
                     text: panel.msgSub
                     color: Qt.alpha(Colors.foreground, 0.78)
                     style: Text.Outline
@@ -2023,7 +1969,7 @@ PanelWindow {
             id: actions
 
             x: stage.cx - width / 2
-            y: stage.height - panel.actionsH - 16
+            y: stage.height - panel.actionsH - Style.panelFoot
             spacing: Style.spaceMd
             // If the row is ever wider than the stage it shrinks to fit
             scale: Math.min(1, (stage.width - 32) / Math.max(1, actions.implicitWidth))
@@ -2073,7 +2019,6 @@ PanelWindow {
                 compact: true
                 visible: panel.offset > 0
                 text: "Today"
-                hint: "t"
                 onClicked: panel.goToday()
             }
 
@@ -2081,7 +2026,6 @@ PanelWindow {
                 compact: true
                 visible: panel.hasData && panel.view.apps.length > 6
                 text: panel.showAll ? "Fewer apps" : "More apps"
-                hint: "a"
                 onClicked: panel.toggleAll()
             }
 
@@ -2090,7 +2034,6 @@ PanelWindow {
                 compact: true
                 visible: panel.appMode && panel.curApp.titles.length > panel.titlesShort
                 text: panel.curExpanded ? "Fewer windows" : "All windows"
-                hint: "Enter"
                 onClicked: panel.toggleSelected()
             }
         }

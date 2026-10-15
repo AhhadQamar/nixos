@@ -64,9 +64,6 @@ PanelWindow {
     readonly property int tickCount: Math.ceil(width / tickGap / 10) * 10 + 20
     readonly property int slotHalf: Math.min(9, Math.ceil(width * 0.52 / farPx) + 1)
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid). Lighter than the
-    // launcher's: here you want to see the wallpaper behind the dial.
-    readonly property real scrim: 0.72
 
     // Opens on the monitor that has focus (set in open()).
     property var targetScreen: Focus.screen

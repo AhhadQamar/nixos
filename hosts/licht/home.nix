@@ -13,7 +13,6 @@
     nh
     vesktop
     playerctl
-    obsidian
     bombsquad
     github-copilot-cli
     bluetui
@@ -23,11 +22,8 @@
     enable = true;
     automount = true;
     notify = true;
-    # Show the icon only when there is a device to manage
     tray = "auto";
     settings = {
-      # Ignore internal disks and partitions: only USB sticks, SD cards and
-      # external drives count
       device_config = [
         {
           is_systeminternal = true;
@@ -56,7 +52,7 @@
   };
 
   programs.home-manager.enable = true;
-
+  home.file.".face".source = ./assets/avatar.png;
   imports = [
     ./modules/desktop
     ./modules/shell

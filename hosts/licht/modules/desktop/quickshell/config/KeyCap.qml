@@ -1,4 +1,4 @@
-// Keyboard hint: a small key-shaped label.
+// A small key-shaped label: a key in the shortcut sheet, an arrow that is also a button.
 
 import QtQuick
 

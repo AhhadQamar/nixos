@@ -387,9 +387,16 @@ PopupWindow {
     PanelLink {
         win: pop
         name: "network"
-        idleMs: Style.popupIdleMs
+        barPopup: true
+        idleMs: Style.popupIdleLongMs
         hovered: idleHover.hovered
         busy: pop.working || pop.selected !== ""
+    }
+
+    PopupKeys {
+        id: popupKeys
+
+        win: pop
     }
 
     HyprlandFocusGrab {
@@ -654,7 +661,10 @@ PopupWindow {
                                 Component.onCompleted: input.echoMode = TextInput.Password
                                 onAccepted: if (pwField.text !== "")
                                     row.submit()
-                                Keys.onEscapePressed: pop.selected = ""
+                                Keys.onEscapePressed: {
+                                    pop.selected = "";
+                                    popupKeys.forceActiveFocus();
+                                }
                             }
 
                             TextButton {

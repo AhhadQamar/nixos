@@ -11,7 +11,7 @@
     ./system/networking.nix
     ./system/hardware.nix
     ./system/desktop.nix
-    ./system/sddm.nix
+    ./system/greeter
     ./system/updater.nix
     ./system/wireguard.nix
   ];

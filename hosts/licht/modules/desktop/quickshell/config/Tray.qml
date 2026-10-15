@@ -402,8 +402,15 @@ Item {
         PanelLink {
             win: more
             name: "tray"
+            barPopup: true
             idleMs: Style.popupIdleMs
             hovered: idleHover.hovered
+        }
+
+        PopupKeys {
+            id: popupKeys
+
+            win: more
         }
 
         HyprlandFocusGrab {

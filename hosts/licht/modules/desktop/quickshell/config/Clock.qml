@@ -1,5 +1,6 @@
-// Time and date for the left of the bar. Click it to open the calendar;
-// right-click it to open the clock panel (timer, Pomodoro, stopwatch, alarms).
+// Time and date for the left of the bar. Click the time to open the clock panel
+// (timer, Pomodoro, stopwatch, alarms) and the date to open the calendar; a
+// right-click opens the other one of the two.
 //
 // The dial in miniature: a glass capsule reads the time out (the date beside
 // it as a small uppercase, letter-spaced head line), and a short ruler curves
@@ -7,9 +8,10 @@
 // to, so it creeps along as the hours pass (it slides a little each minute).
 // The ticks beside the marker rise like a magnifier.
 //
-// While the calendar is open the capsule takes the accent (outline, soft tint,
-// the time and the dot) and a 2px underline breathes under it. The breath only
-// runs while the calendar is open. Hover lifts the capsule from its resting
+// While a popup is open the capsule takes the accent (outline, soft tint and
+// the dot), the half that opened it lights up and a 2px underline breathes
+// under that half, gliding across if the other one opens. The breath only runs
+// while a popup is open. Hover lifts the capsule from its resting
 // glass. When the minute changes, the time slides up into place instead of
 // just swapping.
 
@@ -19,16 +21,24 @@ import Quickshell
 Item {
     id: root
 
-    // Lit while the calendar is showing
-    property bool open: false
+    // Which popups are showing: the clock panel lights the time, the calendar
+    // the date
+    property bool clockOpen: false
+    property bool calendarOpen: false
+    readonly property bool open: clockOpen || calendarOpen
     // 0..1..0 while open: the underline breathes with it
     property real breath: 0
     // How far through the day it is, 0..1 (the ruler's marker follows it)
     readonly property real dayFraction: (clock.date.getHours() * 60 + clock.date.getMinutes()) / 1440
 
-    signal clicked
-    // Right-click: the bar uses it to open the clock panel (timer, Pomodoro ...)
-    signal contextRequested
+    // A click on the time (left of the dot) and on the date (right of it)
+    signal timeClicked
+    signal dateClicked
+    // Where the time ends and the date begins, in this item's coordinates
+    readonly property real splitX: glass.x + row.x + dot.x + dot.width / 2
+    // Where the date's half of the capsule starts: the calendar hangs from here
+    readonly property real dateLeft: glass.x + row.x + dateText.x - Style.spaceMd
+    readonly property bool overDate: hover.hovered && hover.point.position.x >= splitX
 
     implicitHeight: Style.barHeight
     // The capsule stands Style.spaceLg from the bar's left end, as the last
@@ -63,7 +73,7 @@ Item {
         }
     }
 
-    // Breath, only while the calendar is open
+    // Breath, only while a popup is open
     SequentialAnimation {
         running: root.open
         loops: Animation.Infinite
@@ -141,7 +151,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Qt.formatDateTime(clock.date, "h:mm AP")
                 textFormat: Text.PlainText
-                color: root.open ? Colors.accent : Colors.foreground
+                color: root.clockOpen ? Colors.accent : Colors.foreground
                 onTextChanged: roll.restart()
 
                 transform: Translate {
@@ -162,6 +172,8 @@ Item {
             }
 
             Rectangle {
+                id: dot
+
                 anchors.verticalCenter: parent.verticalCenter
                 width: 3
                 height: 3
@@ -178,10 +190,12 @@ Item {
             // The head line: small, uppercase, letter-spaced. Hover brings it
             // up from its muted grey.
             Text {
+                id: dateText
+
                 anchors.verticalCenter: parent.verticalCenter
                 text: Qt.formatDateTime(clock.date, "ddd d MMM").toUpperCase()
                 textFormat: Text.PlainText
-                color: hover.hovered || root.open ? Colors.foreground : Colors.muted
+                color: root.calendarOpen ? Colors.accent : (root.overDate ? Colors.foreground : Colors.muted)
 
                 Behavior on color {
                     ColorAnimation {
@@ -198,9 +212,12 @@ Item {
         }
     }
 
-    // Underline under the capsule while the calendar is open
+    // Underline under the capsule, under whichever half is open
     Item {
-        anchors.horizontalCenter: glass.horizontalCenter
+        // The half that is open (the time while neither is, so it rests there)
+        readonly property Item half: root.calendarOpen && !root.clockOpen ? dateText : timeText
+
+        x: glass.x + row.x + half.x + half.width / 2 - width / 2
         anchors.top: glass.bottom
         anchors.topMargin: Style.spaceXs
         width: 30
@@ -211,6 +228,12 @@ Item {
         Behavior on opacity {
             NumberAnimation {
                 duration: Style.fadeMs
+            }
+        }
+        Behavior on x {
+            NumberAnimation {
+                duration: Style.moveMs
+                easing.type: Style.easeMove
             }
         }
 
@@ -228,11 +251,12 @@ Item {
     TapHandler {
         id: tap
 
-        onTapped: root.clicked()
+        onTapped: point => point.position.x < root.splitX ? root.timeClicked() : root.dateClicked()
     }
+    // Right-click: the other one of the two
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: root.contextRequested()
+        onTapped: point => point.position.x < root.splitX ? root.dateClicked() : root.timeClicked()
     }
     HoverHandler {
         id: hover

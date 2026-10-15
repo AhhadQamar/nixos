@@ -2,7 +2,6 @@
 //
 //   text      the label
 //   glyph     an icon from Icons.qml, before the label (alone if there is no text)
-//   hint      a key shown on the button (see KeyCap)
 //   primary   accent tint and a bold accent label
 //   danger    red tint and a bold red label; also the second press of
 //             something destructive
@@ -26,7 +25,6 @@ Rectangle {
 
     property string text: ""
     property string glyph: ""
-    property string hint: ""
     property bool primary: false
     property bool danger: false
     property bool compact: false
@@ -202,12 +200,6 @@ Rectangle {
             font.pixelSize: Style.fontMd
             font.bold: btn.primary || btn.danger
             onTextChanged: labelFade.restart()
-        }
-
-        KeyCap {
-            anchors.verticalCenter: parent.verticalCenter
-            visible: btn.hint !== ""
-            label: btn.hint
         }
     }
 

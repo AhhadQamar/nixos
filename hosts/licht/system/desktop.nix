@@ -1,9 +1,6 @@
 {pkgs, ...}: {
-  programs.hyprland = {
-    enable = true;
-    withUWSM = true;
-  };
-  programs.hyprlock.enable = true;
+  programs.hyprland.enable = true;
+  security.pam.services.qs-lock = {};
 
   programs.dconf.enable = true;
   security.pam.services.login.enableGnomeKeyring = true;

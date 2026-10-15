@@ -73,7 +73,7 @@ PanelWindow {
     // with what is shown (bodyH), so the dial glides up and down instead of
     // the layer surface being resized.
     readonly property int winH: Math.min(680, Math.round(screenH * 0.9))
-    readonly property int topY: 56
+    readonly property int topY: Style.panelTop
     readonly property int ruleDrop: 46
     readonly property int ruleY: topY + ruleDrop
     readonly property real dialR: 900
@@ -368,7 +368,7 @@ PanelWindow {
     readonly property int readoutTop: ruleY + 30
     readonly property int actionsH: Style.buttonCompact
     readonly property int footH: Style.buttonCompact
-    readonly property int foot: 16
+    readonly property int foot: Style.panelFoot
     // Heights that glide, so a longer readout lifts the dial in step with
     // everything under it instead of the window being resized
     property real readH: readCol.implicitHeight
@@ -1082,62 +1082,9 @@ PanelWindow {
         // Feathered backing: a soft dark ellipse keeps the words and the scale
         // readable over any wallpaper without a visible panel edge. It grows
         // with the stage, so a tall readout stays covered.
-        Shape {
+        StageShade {
             id: scrimShape
-
-            readonly property real r: stage.width * 0.5
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: scrimShape.r
-                origin.y: scrimShape.r
-                yScale: Math.max(0.62, stage.height * 0.95 / scrimShape.r)
-            }
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: scrimShape.r
-
-                fillGradient: RadialGradient {
-                    centerX: scrimShape.r
-                    centerY: scrimShape.r
-                    centerRadius: scrimShape.r
-                    focalX: scrimShape.r
-                    focalY: scrimShape.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.background, 0.88)
-                    }
-                    GradientStop {
-                        position: 0.55
-                        color: Qt.alpha(Colors.background, 0.6)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.background, 0)
-                    }
-                }
-
-                PathArc {
-                    x: scrimShape.r * 2
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-                PathArc {
-                    x: 0
-                    y: scrimShape.r
-                    radiusX: scrimShape.r
-                    radiusY: scrimShape.r
-                }
-            }
+            yScale: Math.max(0.62, stage.height * 0.95 / scrimShape.r)
         }
 
         // Low light on the horizon in the colour of the moment: the accent,
@@ -1755,7 +1702,7 @@ PanelWindow {
                                 style: Text.Outline
                                 styleColor: Qt.alpha(Colors.background, 0.8)
                                 color: Updater.logLines.length > 0 ? Colors.foreground : Colors.muted
-                                text: Updater.logLines.length > 0 ? Updater.logLines.join("\n") : "Nothing yet. Build and switch output shows up here."
+                                text: Updater.logLines.length > 0 ? Updater.logLines.join("\n") : "No output yet."
                                 font.pixelSize: Style.fontSm
                             }
                         }

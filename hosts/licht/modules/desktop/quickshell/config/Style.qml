@@ -13,8 +13,8 @@
 //
 // Space: spaceXs 4, spaceSm 6, spaceMd 8, spaceLg 12, spaceXl 16.
 //
-// Type (all in the shell font): fontXs 10 captions, fontSm 11 hints and
-// details, fontMd 12 body, fontBase 13, fontLg 14 titles in a card, fontXl 16.
+// Type (all in the shell font): fontXs 10 captions, fontSm 11 secondary text
+// and details, fontMd 12 body, fontBase 13, fontLg 14 titles in a card, fontXl 16.
 // Bigger sizes (dial read-outs, hero numbers) are one-offs and stay where they
 // are used.
 //
@@ -48,8 +48,13 @@ Singleton {
     readonly property int barHeight: 44
     readonly property int barRadius: radiusXl
     readonly property int barGap: 8
-    // A bar popup left alone this long closes itself (see PanelLink.qml)
-    readonly property int popupIdleMs: 15000
+    // A bar popup left alone this long closes itself (see PanelLink.qml). The
+    // pointer over it, or a key or the wheel used in it, starts the count again.
+    // popupIdleMs is for the ones you glance at (calendar, tray and volume
+    // menus); popupIdleLongMs for the ones you work in (the clock panel, Wi-Fi,
+    // Bluetooth), where a short pause to read or choose is normal.
+    readonly property int popupIdleMs: 2000
+    readonly property int popupIdleLongMs: 4000
     readonly property int itemHeight: 28
     readonly property int discSize: 24
     // ---- Shape, space and type -------------------------------------------
@@ -108,6 +113,12 @@ Singleton {
     readonly property int buttonCompact: 28
     readonly property int buttonPad: 32
     readonly property int fieldHeight: 36
+
+    // The dials: how far the first line sits from the top of the stage, and how
+    // far the last row of buttons or fields sits from the bottom. Every dial
+    // panel uses the same two, so they all rest on the same lines.
+    readonly property int panelTop: 56
+    readonly property int panelFoot: 16
 
     // The record in the music chip is a physical object, so it stays black and
     // its highlights stay white whatever the wallpaper does.

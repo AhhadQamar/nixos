@@ -1,0 +1,347 @@
+/* vault.css: the "premium" layer.
+   Rule: one accent, everything else neutral. Colors come from obsidian-pywal.css,
+   so the whole vault still follows your wallpaper. This file only does shape,
+   spacing, type and motion. Disable this snippet to get the plain look back. */
+
+/* ---------- 1. Foundations ---------- */
+body {
+  --file-line-width: 42rem;
+  --font-text-size: 16px;
+  --line-height-normal: 1.75;
+
+  /* Rubik is already your GTK font; the rest are fallbacks */
+  --font-interface-theme: "Rubik", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-text-theme: var(--font-interface-theme);
+  --font-monospace-theme: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 16px;
+
+  --text-soft: color-mix(in srgb, var(--text-normal) 62%, transparent);
+  --hairline: color-mix(in srgb, var(--text-normal) 10%, transparent);
+  --surface: color-mix(in srgb, var(--text-normal) 4%, transparent);
+  --surface-hover: color-mix(in srgb, var(--text-normal) 8%, transparent);
+  --accent-soft: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  /* headings: neutral and confident, accent is saved for things you can act on */
+  --inline-title-size: 1.9em;
+  --inline-title-weight: 700;
+  --h1-size: 1.6em;  --h1-weight: 700;
+  --h2-size: 1.25em; --h2-weight: 650;
+  --h3-size: 1.05em; --h3-weight: 600;
+  --h4-size: 1em;    --h4-weight: 600;
+  --h1-color: var(--text-normal);
+  --h2-color: var(--text-normal);
+  --h3-color: var(--text-soft);
+  --h4-color: var(--text-soft);
+  --h5-color: var(--text-soft);
+  --h6-color: var(--text-soft);
+
+  --list-spacing: 0.25em;
+  --checkbox-radius: 50%;
+  --checkbox-size: 1.15em;
+  --checklist-done-decoration: none;
+  --checklist-done-color: color-mix(in srgb, var(--text-normal) 45%, transparent);
+
+  --blockquote-border-thickness: 2px;
+  --blockquote-border-color: var(--accent-line);
+  --blockquote-background-color: var(--surface);
+  --blockquote-color: var(--text-soft);
+  --blockquote-font-style: normal;
+
+  --table-header-weight: 600;
+  --table-header-color: var(--text-soft);
+}
+
+.inline-title { letter-spacing: -0.02em; }
+.markdown-rendered :is(h1, h2) { letter-spacing: -0.015em; }
+.cm-s-obsidian :is(.HyperMD-header-1, .HyperMD-header-2) { letter-spacing: -0.015em; }
+
+/* nicer line breaks: balanced titles and headings, no lonely last words */
+.inline-title, .markdown-rendered :is(h1, h2, h3) { text-wrap: balance; }
+.markdown-rendered p, .markdown-rendered li { text-wrap: pretty; }
+body { -webkit-font-smoothing: antialiased; }
+
+/* pywal paints reading-view headings yellow/green with !important; calm them down */
+body.theme-dark .markdown-rendered :is(h1, h2),
+body.theme-light .markdown-rendered :is(h1, h2) { color: var(--text-normal) !important; }
+body.theme-dark .markdown-rendered :is(h3, h4, h5, h6),
+body.theme-light .markdown-rendered :is(h3, h4, h5, h6) { color: var(--text-soft) !important; }
+
+/* links: accent, with a soft underline that brightens on hover */
+body {
+  --link-decoration: underline;
+  --link-decoration-hover: underline;
+  --link-external-decoration: underline;
+  --link-external-decoration-hover: underline;
+}
+.markdown-rendered a,
+.cm-s-obsidian .cm-hmd-internal-link .cm-underline,
+.cm-s-obsidian span.cm-url {
+  text-decoration-color: var(--accent-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color .15s var(--ease);
+}
+.markdown-rendered a:hover { text-decoration-color: var(--interactive-accent); }
+
+hr { border-color: var(--hairline); }
+
+/* tags become quiet pills (pywal makes them solid yellow) */
+body.theme-dark, body.theme-light {
+  --tag-background: var(--accent-soft) !important;
+  --tag-background-hover: color-mix(in srgb, var(--interactive-accent) 24%, transparent) !important;
+  --tag-color: var(--interactive-accent) !important;
+  --tag-border-width: 0px !important;
+  --tag-radius: 999px;
+  --tag-padding-x: .75em;
+}
+
+/* checkboxes: accent when done, tiny press animation */
+input[type="checkbox"] { transition: transform .12s var(--ease), background-color .15s; }
+input[type="checkbox"]:active { transform: scale(.88); }
+input[type="checkbox"]:checked { background-color: var(--interactive-accent); border-color: var(--interactive-accent); }
+
+/* code */
+.markdown-rendered pre, .cm-s-obsidian .HyperMD-codeblock-bg {
+  border-radius: var(--radius-m);
+}
+.markdown-rendered pre { border: 1px solid var(--hairline); }
+.markdown-rendered :not(pre) > code { border-radius: var(--radius-s); padding: .1em .4em; }
+
+/* ---------- 2. Properties panel ---------- */
+.metadata-container { margin-bottom: 1.4em; }
+.metadata-properties-heading { opacity: .6; }
+.metadata-property { border-bottom: none; }
+.metadata-property-key { color: var(--text-soft); }
+
+/* ---------- 3. Callouts: your "Done when", "Good looks like", "Test myself" ---------- */
+.callout {
+  --callout-radius: var(--radius-m);
+  --callout-padding: .9em 1.15em;
+  --callout-border-width: 1px;
+  --callout-border-opacity: .28;
+  --callout-blend-mode: normal;
+  --callout-title-size: .72rem;
+  --callout-title-weight: 650;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+.callout-title { text-transform: uppercase; letter-spacing: .13em; }
+.callout-content { color: var(--text-normal); }
+.callout[data-callout="goal"]     { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-target; }
+.callout[data-callout="question"] { --callout-color: var(--color-blue-rgb);   --callout-icon: lucide-brain; }
+
+/* ---------- 4. Tables ---------- */
+.markdown-rendered table,
+.markdown-source-view.mod-cm6 .cm-table-widget table { border-collapse: collapse; }
+.markdown-rendered th, .markdown-rendered td,
+.markdown-source-view.mod-cm6 .cm-table-widget th,
+.markdown-source-view.mod-cm6 .cm-table-widget td {
+  border-left: none; border-right: none; border-top: none;
+  border-bottom: 1px solid var(--hairline);
+  padding: .55em .75em;
+}
+.markdown-rendered th,
+.markdown-source-view.mod-cm6 .cm-table-widget th {
+  font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+}
+.markdown-rendered tbody tr { transition: background-color .15s; }
+.markdown-rendered tbody tr:hover { background: var(--surface); }
+
+/* ---------- 5. Bases (Projects, Inbox, Test me, Areas) ---------- */
+body {
+  --bases-table-header-background: transparent;
+  --bases-table-header-background-hover: var(--surface);
+  --bases-table-header-color: var(--text-soft);
+  --bases-table-header-weight: 600;
+  --bases-table-header-size: .72rem;
+  --bases-table-border-color: var(--hairline);
+  --bases-table-column-border-width: 0px;
+  --bases-table-row-border-width: 1px;
+  --bases-table-row-background-hover: var(--surface);
+
+  --bases-cards-container-background: transparent;
+  --bases-cards-background: var(--surface);
+  --bases-cards-shadow: none;
+  --bases-cards-shadow-hover: 0 14px 34px rgba(0, 0, 0, .35);
+}
+.bases-table-header { text-transform: uppercase; letter-spacing: .1em; }
+.bases-cards-item {
+  border-radius: var(--radius-l);
+  border: 1px solid var(--hairline);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s var(--ease);
+}
+.bases-cards-item:hover { transform: translateY(-3px); border-color: var(--accent-line); }
+.bases-cards-label { font-weight: 650; letter-spacing: -.01em; }
+.bases-cards-property { color: var(--text-soft); }
+/* embedded dashboards: no toolbar, the view is chosen by the link */
+.internal-embed .bases-header { display: none; }
+
+/* ---------- 6. Home ---------- */
+.markdown-preview-view.home,
+.markdown-source-view.home {
+  background:
+    radial-gradient(900px 420px at 8% -8%, color-mix(in srgb, var(--interactive-accent) 10%, transparent), transparent 70%),
+    var(--background-primary);
+}
+.home .metadata-container, .home .frontmatter-container { display: none !important; }
+
+/* hero title */
+.home .inline-title {
+  display: block;
+  width: fit-content;
+  font-size: 2.8rem;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  margin: .5em 0 .15em;
+  background: linear-gradient(110deg, var(--text-normal) 10%, var(--interactive-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.home p { color: var(--text-soft); font-size: .95em; }
+
+/* section labels with an accent tick */
+.home h2 {
+  display: flex; align-items: center; gap: .7em;
+  font-size: .72rem; font-weight: 650;
+  letter-spacing: .16em; text-transform: uppercase;
+  margin: 2.4em 0 .7em;
+}
+.home h2::before {
+  content: ""; width: 1.1em; height: 2px; border-radius: 2px;
+  background: var(--interactive-accent);
+}
+body.theme-dark .home h2, body.theme-light .home h2,
+body.theme-dark .markdown-rendered.home h2, body.theme-light .markdown-rendered.home h2 {
+  color: var(--text-soft) !important;
+}
+
+/* every dashboard becomes a glass card */
+.home .internal-embed {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-l);
+  padding: .4em .6em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 12px 32px rgba(0, 0, 0, .22);
+}
+.home .internal-embed .bases-view { background: transparent; }
+.home .internal-embed .bases-cards-container { padding: .5em; }
+
+/* link row at the bottom becomes pills */
+.home p a.internal-link {
+  display: inline-block;
+  padding: .3em .9em; margin: 0 .4em .4em 0;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  background: var(--surface); color: var(--text-normal);
+  font-size: .85rem; text-decoration: none;
+  transition: border-color .15s var(--ease), background-color .15s var(--ease), transform .15s var(--ease);
+}
+.home p a.internal-link:hover {
+  border-color: var(--accent-line); background: var(--accent-soft); transform: translateY(-1px);
+}
+
+/* ---------- 7. App chrome: sidebar, tabs, status bar, popups ---------- */
+.view-header { border-bottom: none; }
+.workspace-tab-header-container { border-bottom: none; }
+.workspace-tab-header { border-radius: var(--radius-m); transition: background-color .15s; }
+.workspace-tab-header.is-active { background: var(--surface-hover); box-shadow: none; }
+
+.tree-item-self { border-radius: var(--radius-m); transition: background-color .15s; }
+.tree-item-self:hover { background: var(--surface); }
+.nav-folder-title, .nav-file-title { border-radius: var(--radius-m); }
+
+.status-bar {
+  background: transparent; border: none;
+  opacity: .45; transition: opacity .2s;
+}
+.status-bar:hover { opacity: 1; }
+
+/* quick switcher and command palette */
+.prompt {
+  border-radius: var(--radius-l);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+}
+.suggestion-item { border-radius: var(--radius-s); }
+.suggestion-item.is-selected { background: var(--accent-soft); }
+
+/* slim, rounded scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  border-radius: 10px; border: 3px solid transparent; background-clip: padding-box;
+}
+
+/* ================= v2 refinements ================= */
+
+/* ---------- 8. Note pages: title accent, quieter properties ---------- */
+.inline-title::after {
+  content: ""; display: block;
+  width: 2.2rem; height: 3px; border-radius: 3px;
+  margin-top: .55em;
+  background: var(--interactive-accent);
+}
+.home .inline-title::after { display: none; }
+
+.metadata-container {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  padding: .5em .9em;
+}
+.metadata-properties-heading { display: none; }
+.metadata-property { padding: .1em 0; }
+.metadata-property-key { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; }
+.metadata-property-icon { display: none; }
+.metadata-property-value input, .metadata-property-value .multi-select-pill { font-size: .9em; }
+
+mark { background: var(--accent-soft); color: var(--text-normal); border-radius: 4px; padding: 0 .2em; }
+kbd, .markdown-rendered code.kbd {
+  border: 1px solid var(--hairline); border-bottom-width: 2px;
+  border-radius: var(--radius-s); padding: .05em .45em; background: var(--surface);
+}
+
+/* ---------- 9. Tables: numbers line up, empty header rows disappear ---------- */
+.markdown-rendered table { font-variant-numeric: tabular-nums; }
+.markdown-rendered td:first-child { font-weight: 500; }
+.markdown-rendered thead:not(:has(th:not(:empty))) { display: none; }
+
+/* ---------- 10. Sidebar hierarchy ---------- */
+.nav-files-container { padding-inline: .4rem; }
+.nav-folder.mod-root > .nav-folder-children > .nav-folder > .nav-folder-title {
+  font-size: .72rem; font-weight: 650;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-soft);
+  margin-top: .6em;
+}
+.nav-file-title { color: var(--text-soft); font-size: .92em; }
+.nav-file-title:hover, .nav-file-title.is-active { color: var(--text-normal); }
+.tree-item-children { border-inline-start: 1px solid var(--hairline); margin-inline-start: .55em; }
+
+/* ---------- 11. Header and tabs: less chrome ---------- */
+body {
+  --header-height: 38px;
+  --tab-container-background: transparent;
+}
+.view-header-title-parent { display: none; }
+.view-header-title { font-weight: 600; letter-spacing: -.01em; }
+.workspace-tab-header-inner-title { font-size: .85em; }
+
+/* ---------- 12. Focus and selection ---------- */
+:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; border-radius: var(--radius-s); }
+.cm-s-obsidian .cm-line ::selection, .markdown-rendered ::selection {
+  background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+}
+
+/* ---------- 13. Home in editing view ----------
+   Reading view is the intended way to use Home, but headings in editing view
+   are not <h2> elements, so they need their own selectors. */
+.home .cm-s-obsidian .HyperMD-header-2 { padding-top: 2em; }
+.home .cm-s-obsidian .HyperMD-header-2 .cm-header-2 {
+  font-size: .72rem; font-weight: 650;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--text-soft);
+}

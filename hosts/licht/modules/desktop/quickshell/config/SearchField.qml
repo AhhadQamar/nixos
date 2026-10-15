@@ -1,7 +1,6 @@
 // The search pill every panel uses: a magnifier, the text, and a clear button.
 //
-//   placeholder  the hint shown while empty
-//   hint         a key shown on the right while the field is empty and unfocused
+//   placeholder  the text shown while empty
 //   clearable    shows the clear button while there is text (default on)
 //   badge        a small count beside the clear button (empty hides it)
 //   busy         the magnifier breathes in the accent while something is searching
@@ -32,7 +31,6 @@ FocusScope {
     id: root
 
     property string placeholder: ""
-    property string hint: ""
     property string glyph: Icons.search
     property bool clearable: true
     property string badge: ""
@@ -133,7 +131,7 @@ FocusScope {
 
         anchors.verticalCenter: parent.verticalCenter
         x: 14 + Style.fontXl + Style.spaceMd + 4
-        width: parent.width - x - (root.clearable || root.hint !== "" ? 38 : 14) - (count.visible ? count.width + 4 : 0)
+        width: parent.width - x - (root.clearable ? 38 : 14) - (count.visible ? count.width + 4 : 0)
         focus: true
         clip: true
         color: Colors.foreground
@@ -229,13 +227,5 @@ FocusScope {
                 field.forceActiveFocus();
             }
         }
-    }
-
-    KeyCap {
-        anchors.right: parent.right
-        anchors.rightMargin: 10
-        anchors.verticalCenter: parent.verticalCenter
-        visible: root.hint !== "" && !field.activeFocus && !root.filled
-        label: root.hint
     }
 }

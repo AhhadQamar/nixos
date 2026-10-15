@@ -54,8 +54,6 @@ PanelWindow {
     readonly property int footY: pillY + Style.fieldHeight + 10
     readonly property int stageH: footY + 34
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid)
-    readonly property real scrim: 0.95
 
     // ---- State ----------------------------------------------------------
     // Opens on the monitor that has focus (set in open())
@@ -94,7 +92,7 @@ PanelWindow {
     readonly property bool busy: Pkgs.searching || Pkgs.building
 
     readonly property string emptyTitle: Pkgs.building ? "Building the package index…" : (!Pkgs.ready ? "No package index yet" : (input.text.trim() === "" ? "Search nixpkgs" : (Pkgs.searching ? "Searching…" : "No packages match")))
-    readonly property string emptySub: Pkgs.building ? Pkgs.buildNote : (!Pkgs.ready ? "Use Update index below to build it" : (input.text.trim() === "" ? "By name or description, in the version your flake is pinned to" : (Pkgs.searching ? "" : "Try fewer or different words")))
+    readonly property string emptySub: Pkgs.building ? Pkgs.buildNote : (!Pkgs.ready ? "Use Update index below to build it" : "")
     readonly property string descText: {
         if (!shown)
             return emptySub;
@@ -1093,7 +1091,6 @@ PanelWindow {
                 id: shellBtn
 
                 text: "Shell"
-                hint: "↵"
                 primary: true
                 raised: true
                 onClicked: panel.launchShell()
@@ -1108,7 +1105,6 @@ PanelWindow {
                 id: copyBtn
 
                 text: "Copy name"
-                hint: "⇧↵"
                 raised: true
                 onClicked: panel.copyName()
             }

@@ -3,9 +3,9 @@
 // solid pill, so there is never any doubt what Enter will do. A faint ring
 // around it breathes with the dial's ring (pass `breath`).
 //
-//   text / glyph / hint   as on TextButton; the hint is the key
-//   breath                0..1, the shell's slow pulse
-//   enabled               false dims it and ignores clicks
+//   text / glyph   as on TextButton
+//   breath         0..1, the shell's slow pulse
+//   enabled        false dims it and ignores clicks
 
 import QtQuick
 
@@ -14,7 +14,6 @@ Rectangle {
 
     property string text: ""
     property string glyph: ""
-    property string hint: ""
     property real breath: 0
 
     readonly property bool hovered: hover.hovered
@@ -77,29 +76,6 @@ Rectangle {
             color: Colors.background
             font.pixelSize: Style.fontMd
             font.bold: true
-        }
-
-        // The key, as a small dark cap on the accent
-        Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            visible: btn.hint !== ""
-            implicitWidth: Math.max(20, hintText.implicitWidth + 12)
-            implicitHeight: 20
-            width: implicitWidth
-            height: implicitHeight
-            radius: Style.radiusXs
-            color: Qt.alpha(Colors.background, 0.18)
-
-            Txt {
-                id: hintText
-
-                anchors.centerIn: parent
-                text: btn.hint
-                color: Colors.background
-                opacity: 0.8
-                font.pixelSize: Style.fontXs
-                font.bold: true
-            }
         }
     }
 

@@ -19,6 +19,8 @@ hl.config({
 		-- it: a window asking for attention lights up its workspace (red)
 		-- instead of pulling focus to another monitor.
 		focus_on_activate = false,
+
+		allow_session_lock_restore = true,
 	},
 
 	cursor = {

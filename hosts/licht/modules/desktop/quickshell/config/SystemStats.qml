@@ -1,5 +1,6 @@
 // The status cluster on the right of the bar, drawn as the dial in miniature:
-// a row of small glass discs (updates, CPU, bell, volume, network, battery)
+// a row of small glass discs (updates, CPU, bell, volume, Bluetooth, network,
+// battery)
 // with a short hairline ruler curving over them. Each disc holds an icon drawn
 // in hairline strokes (the *Glyph.qml files) rather than a font glyph. The
 // state that drives a picture lives here and is handed to the icon as inputs.
@@ -14,12 +15,19 @@
 // double tap locks it open (another double tap lets go). A click opens the
 // network manager (NetworkPopup.qml): join, disconnect, scan.
 //
+// The Bluetooth disc is muted while the adapter is off, plain while it is on
+// and in the accent while a device is connected; hover for the device's name.
+// A click opens the Bluetooth manager (BluetoothPopup.qml): connect, pair,
+// forget, scan. A right click switches the adapter on and off. It only exists
+// on a machine that has a Bluetooth adapter.
+//
 // Indicators that only matter sometimes (the update icon, the battery) grow
 // in and shrink away instead of popping. CPU load and volume wear the same
 // hairline ring the volume OSD draws round its icon.
 
 import QtQuick
 import Quickshell
+import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
@@ -37,7 +45,7 @@ Item {
     // ---- ruler and marker --------------------------------------------------
     // Every disc, left to right. `lit` is the one under the pointer (null when
     // none is): reading `hovered` inside the loop makes this re-run on change.
-    readonly property var stops: [updateItem, cpuItem, bellItem, volumeItem, netItem, batteryItem]
+    readonly property var stops: [updateItem, cpuItem, bellItem, volumeItem, btItem, netItem, batteryItem]
     readonly property Item lit: {
         for (let i = 0; i < stops.length; i++) {
             if (stops[i].hovered)
@@ -92,6 +100,20 @@ Item {
             return;
         const step = delta > 0 ? 0.05 : -0.05;
         sink.audio.volume = Math.max(0, Math.min(1, sink.audio.volume + step));
+    }
+
+    // ---- bluetooth -------------------------------------------------------
+    // There is no disc on a machine without an adapter
+    readonly property var btAdapter: Bluetooth.defaultAdapter
+    readonly property bool btPresent: btAdapter !== null
+    readonly property bool btOn: btAdapter?.enabled ?? false
+    // Every device that is connected now
+    readonly property var btLinked: (btAdapter?.devices?.values ?? []).filter(d => d.connected)
+    readonly property bool btConnected: btLinked.length > 0
+
+    function toggleBluetooth() {
+        if (btAdapter)
+            btAdapter.enabled = !btAdapter.enabled;
     }
 
     // ---- network ---------------------------------------------------------
@@ -198,6 +220,14 @@ Item {
             netProc.running = true
     }
 
+    // The Bluetooth manager, opened by a click on the Bluetooth disc
+    BluetoothPopup {
+        id: btMenu
+
+        barWindow: root.QsWindow.window
+        target: btItem.disc
+    }
+
     // ---- battery ---------------------------------------------------------
     readonly property var bat: UPower.displayDevice
     readonly property bool hasBattery: bat?.isPresent ?? false
@@ -248,8 +278,15 @@ Item {
         PanelLink {
             win: sinkMenu
             name: "volume"
+            barPopup: true
             idleMs: Style.popupIdleMs
             hovered: menuHover.hovered
+        }
+
+        PopupKeys {
+            id: popupKeys
+
+            win: sinkMenu
         }
 
         HyprlandFocusGrab {
@@ -489,6 +526,32 @@ Item {
             onClicked: root.toggleMute()
             onRightClicked: sinkMenu.toggle()
             onScrolled: delta => root.nudgeVolume(delta)
+        }
+
+        // Bluetooth: click opens the manager, right click switches the adapter.
+        // Hover says what is connected.
+        StatItem {
+            id: btItem
+
+            present: root.btPresent
+            label: !root.btOn ? "Off" : (root.btConnected ? root.btLinked[0].name + (root.btLinked.length > 1 ? "  +" + (root.btLinked.length - 1) : "") : "On")
+            iconColor: !root.btOn ? Colors.muted : (root.btConnected ? Colors.accent : Colors.foreground)
+            labelColor: !root.btOn ? Colors.muted : Colors.foreground
+            // Switching on or off, or a device linking, swells the picture
+            glyphKey: root.btOn + ":" + root.btConnected
+
+            // The rune, slashed when off, with link dots when connected
+            // (BluetoothGlyph.qml)
+            glyph: Component {
+                BluetoothGlyph {
+                    color: btItem.iconColor
+                    powered: root.btOn
+                    linked: root.btConnected
+                }
+            }
+
+            onClicked: btMenu.toggle()
+            onRightClicked: root.toggleBluetooth()
         }
 
         // Network: hover for the speeds, double tap to keep them showing

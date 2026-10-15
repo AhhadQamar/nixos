@@ -93,6 +93,23 @@ Singleton {
     // hide (md-eye_off)
     readonly property string eyeOff: String.fromCodePoint(0xF0209)
 
+    // bluetooth, a device that reports no kind (md-bluetooth)
+    readonly property string bluetooth: String.fromCodePoint(0xF00AF)
+    // headphones, headsets (md-headphones)
+    readonly property string headphones: String.fromCodePoint(0xF02CB)
+    // speakers and other audio (md-speaker)
+    readonly property string speaker: String.fromCodePoint(0xF04C3)
+    // keyboards (md-keyboard)
+    readonly property string keyboard: String.fromCodePoint(0xF030C)
+    // mice (md-mouse)
+    readonly property string mouse: String.fromCodePoint(0xF037D)
+    // game controllers (md-gamepad-variant)
+    readonly property string gamepad: String.fromCodePoint(0xF02B5)
+    // phones (md-cellphone)
+    readonly property string cellphone: String.fromCodePoint(0xF011C)
+    // computers (md-laptop)
+    readonly property string laptop: String.fromCodePoint(0xF0322)
+
     // ---- Adding an icon -------------------------------------------------
     // 1. Find the glyph on https://pictogrammers.com/library/mdi/ (or the
     //    Nerd Fonts cheat sheet, search "md-") and copy its codepoint,

@@ -48,6 +48,5 @@
   home.activation.ensureWalHyprFiles = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.cache/wal"
     [ -f "$HOME/.cache/wal/colors-hyprland.lua" ] || touch "$HOME/.cache/wal/colors-hyprland.lua"
-    [ -f "$HOME/.cache/wal/colors-hyprlock.conf" ] || touch "$HOME/.cache/wal/colors-hyprlock.conf"
   '';
 }

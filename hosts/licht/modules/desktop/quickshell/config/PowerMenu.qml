@@ -24,40 +24,35 @@ PanelWindow {
     id: menu
 
     // ---- Settings -------------------------------------------------------
-    // Each action: label, one-line hint, Nerd Font codepoint, shell command,
+    // Each action: label, Nerd Font codepoint, shell command,
     // and whether it is destructive (red, asks for a second press).
     readonly property var actions: [
         {
             "label": "Lock",
-            "hint": "Lock the screen",
             "icon": 0xF033E,
-            "cmd": "hyprlock",
+            "cmd": "loginctl lock-session",
             "critical": false
         },
         {
             "label": "Logout",
-            "hint": "End this session",
             "icon": 0xF0343,
-            "cmd": "uwsm stop",
+            "cmd": "loginctl terminate-session \"$XDG_SESSION_ID\"",
             "critical": false
         },
         {
             "label": "Suspend",
-            "hint": "Sleep, keep everything open",
             "icon": 0xF0904,
             "cmd": "systemctl suspend",
             "critical": false
         },
         {
             "label": "Reboot",
-            "hint": "Restart the machine",
             "icon": 0xF0709,
             "cmd": "systemctl reboot",
             "critical": true
         },
         {
             "label": "Shutdown",
-            "hint": "Power off",
             "icon": 0xF0425,
             "cmd": "systemctl poweroff",
             "critical": true
@@ -80,8 +75,6 @@ PanelWindow {
     readonly property int tickGap: 12
     readonly property int tickCount: Math.ceil(width / tickGap / 10) * 10 + 20
 
-    // Strength of the lower-edge shade (0 = none, 1 = solid)
-    readonly property real scrim: 0.95
     // How long a pending confirmation stays armed, in ms
     readonly property int confirmMs: 3000
 

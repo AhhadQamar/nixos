@@ -1,0 +1,89 @@
+/* pywal-generated Obsidian theme — auto-regenerated, do not edit manually */
+
+.theme-dark, .theme-light {{
+    /* Backgrounds */
+    --background-primary:             {background} !important;
+    --background-primary-alt:         {color8}44 !important;
+    --background-secondary:           {background} !important;
+    --background-secondary-alt:       {color8}33 !important;
+    --background-modifier-cover:      {background}ee !important;
+    --background-modifier-form-field: {background} !important;
+
+    /* Borders & dividers */
+    --background-modifier-border:       {color8}66 !important;
+    --background-modifier-border-hover: {color8}99 !important;
+    --background-modifier-border-focus: {color4}88 !important;
+    --divider-color:                    {color8}55 !important;
+    --prompt-border-color:              {color4}66 !important;
+    --indentation-guide-color:          {color8}55 !important;
+    --indentation-guide-color-active:   {color4}88 !important;
+
+    /* Text */
+    --text-normal:       {foreground} !important;
+    --text-muted:        {color8}cc !important;
+    --text-faint:        {color8}99 !important;
+    --text-accent:       {color4} !important;
+    --text-accent-hover: {color4} !important;
+    --text-on-accent:    {background} !important;
+
+    /* Interactive */
+    --interactive-normal:       {color8}44 !important;
+    --interactive-hover:        {color8}66 !important;
+    --interactive-accent:       {color4} !important;
+    --interactive-accent-hover: {color4} !important;
+
+    /* Titlebar */
+    --titlebar-background:         {background} !important;
+    --titlebar-background-focused: {background} !important;
+    --titlebar-text-color:         {foreground} !important;
+
+    /* Scrollbar */
+    --scrollbar-bg:       transparent !important;
+    --scrollbar-thumb-bg: {color8}55 !important;
+
+    /* Code blocks */
+    --code-background: {color8}33 !important;
+    --code-normal:     #b8bb26 !important;
+
+    /* Tags */
+    --tag-color:            {background} !important;
+    --tag-background:       {color4}cc !important;
+    --tag-background-hover: {color4} !important;
+
+    /* Links */
+    --link-color:            {color4} !important;
+    --link-color-hover:      {color4} !important;
+    --link-unresolved-color: {color8}cc !important;
+}}
+
+/* Headings — warm yellow/green palette, no red */
+.theme-dark h1, .theme-light h1 {{ color: {color4}  !important; }}
+.theme-dark h2, .theme-light h2 {{ color: {color4} !important; }}
+.theme-dark h3, .theme-light h3 {{ color: #b8bb26  !important; }}
+.theme-dark h4, .theme-light h4 {{ color: #b8bb26 !important; }}
+.theme-dark h5, .theme-light h5 {{ color: #83a598  !important; }}
+.theme-dark h6, .theme-light h6 {{ color: {foreground}  !important; }}
+
+/* File explorer */
+.nav-folder-title-content::before {{
+    color: {color4}99 !important;
+}}
+
+.nav-file-title.is-active,
+.nav-folder-title.is-active {{
+    background-color: {color4}22 !important;
+    color: {foreground} !important;
+}}
+
+/* Editor */
+.cm-cursor, .cm-cursor-primary {{
+    border-left-color: {color4} !important;
+}}
+
+.cm-active {{
+    background-color: {color8}22 !important;
+}}
+
+.cm-selectionBackground, ::selection {{
+    background-color: {color4}33 !important;
+}}

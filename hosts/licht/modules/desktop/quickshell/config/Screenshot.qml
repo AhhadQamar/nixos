@@ -2514,7 +2514,6 @@ PanelWindow {
                 TextButton {
                     glyph: Icons.copy
                     text: "Copy"
-                    hint: "C"
                     primary: shot.toClipboard
                     onClicked: shot.toggleCopy()
                 }
@@ -2522,7 +2521,6 @@ PanelWindow {
                 TextButton {
                     glyph: Icons.folder
                     text: "Save"
-                    hint: "S"
                     primary: shot.toFile
                     onClicked: shot.toggleSave()
                 }
@@ -2545,7 +2543,6 @@ PanelWindow {
                     breath: shot.breath
                     glyph: Icons.check
                     text: "Capture"
-                    hint: "Enter"
                     onClicked: shot.capture()
                 }
             }
