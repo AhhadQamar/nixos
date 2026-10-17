@@ -435,6 +435,9 @@ Item {
             label: Updater.summary
             iconColor: failed ? Colors.critical : (Updater.available || Updater.busy ? Colors.accent : Colors.foreground)
             badge: Updater.available && !Updater.busy
+            // While it builds, the ring around the picture fills with the
+            // progress (none until there is something to estimate from)
+            ring: Updater.progress
             // A new state swells the picture while the two pictures cross-fade
             glyphKey: mode
 

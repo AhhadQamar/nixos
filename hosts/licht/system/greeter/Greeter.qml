@@ -15,7 +15,8 @@
 // we start a new one.
 //
 // There are no IPC commands: greetd starts it. Keys: type the password, Enter
-// logs in. Pressing Enter before greetd has asked for the password is not
+// logs in; Tab / Shift+Tab (or Ctrl+Left / Right) turn the dial of discs,
+// Ctrl+Enter presses one, Esc goes back to the lock disc (see LockHud.qml). Pressing Enter before greetd has asked for the password is not
 // lost: it is sent the moment the prompt arrives.
 //
 // default.nix passes in who to log in (GREETER_USER), what starts the session
@@ -36,6 +37,25 @@ Scope {
     readonly property string wallpaper: Quickshell.env("GREETER_WALLPAPER") || ""
     // Said in the corner of the screen
     readonly property string modeText: "Sign in"
+    // Said on the button of the lock disc
+    readonly property string goText: "Sign in"
+
+    // ---- What the dial offers ---------------------------------------------
+    // No player here; the dial's lines for it stay hidden
+    readonly property bool nowActive: false
+    readonly property string nowTitle: ""
+    readonly property string nowArtist: ""
+    readonly property real nowProgress: 0
+
+    // Power, for when you do not want to log in. Reboot and shutdown ask twice.
+    readonly property string systemctl: "/run/current-system/sw/bin/systemctl"
+    // (No volume or brightness here: the greeter has no Pipewire and no
+    // Brightness singleton. The dial still shows the battery, through UPower.)
+    readonly property var actions: [
+        {"key": "suspend", "label": "Suspend", "head": "Power", "icon": String.fromCodePoint(0xF0904), "run": () => Quickshell.execDetached([systemctl, "suspend"])},
+        {"key": "reboot", "label": "Reboot", "head": "Power", "icon": String.fromCodePoint(0xF0709), "critical": true, "run": () => Quickshell.execDetached([systemctl, "reboot"])},
+        {"key": "shutdown", "label": "Shutdown", "head": "Power", "icon": String.fromCodePoint(0xF0425), "critical": true, "run": () => Quickshell.execDetached([systemctl, "poweroff"])}
+    ]
     // How long the unlock animation plays before the dial collapses
     readonly property int holdMs: 950
 
@@ -56,6 +76,11 @@ Scope {
     property bool awaiting: false
     // Enter was pressed before greetd was ready for the password
     property bool pendingSubmit: false
+
+    // Which disc of the dial is selected (-1 = the lock disc), and which one
+    // waits for a second press (-1 = none); LockHud turns and presses
+    property int dialIndex: -1
+    property int armed: -1
 
     property real reveal: 0
     property real spinIn: 3.2

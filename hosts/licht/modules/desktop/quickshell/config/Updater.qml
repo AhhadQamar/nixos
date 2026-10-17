@@ -128,6 +128,109 @@ Singleton {
         return parts.length > 0 ? parts.join(" · ") : "Up to date";
     }
 
+    // ---- Build progress ---------------------------------------------------
+    // nix prints no percentage, so the bar chip's ring is an estimate: the
+    // plan nix announces once it has evaluated ("these 12 derivations will be
+    // built", "these 40 paths will be fetched") counted against the
+    // "building" and "copying path" lines that follow, or, before that, how
+    // long your last real build took.
+    readonly property string historyPath: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell/sysupd.json"
+    property var history: ({})
+    property double runStartMs: 0
+    property real elapsedSec: 0
+    property bool planSeen: false
+    property int toBuild: 0
+    property int toFetch: 0
+    property int buildsStarted: 0
+    property int fetchesStarted: 0
+
+    // Counting and timing only while a build runs, not during the switch
+    readonly property bool timing: phase === "building" || (phase === "applying" && applyStage === "build")
+    readonly property int planTotal: toBuild + toFetch
+    // Builds that have finished are the ones before the newest started
+    readonly property real stepsDone: Math.min(planTotal, Math.max(0, buildsStarted - 1) + fetchesStarted)
+    readonly property real lastBuildSec: history.build > 0 ? history.build : 0
+    // 0..1, or -1 when there is nothing to go by yet (the very first build,
+    // before nix has said what it will do)
+    readonly property real progress: {
+        if (!timing)
+            return -1;
+        if (planSeen && planTotal > 0)
+            return Math.min(0.97, stepsDone / planTotal);
+        if (lastBuildSec > 0)
+            return Math.min(0.95, elapsedSec / lastBuildSec);
+        return -1;
+    }
+    function beginProgress() {
+        runStartMs = Date.now();
+        elapsedSec = 0;
+        planSeen = false;
+        toBuild = 0;
+        toFetch = 0;
+        buildsStarted = 0;
+        fetchesStarted = 0;
+    }
+
+    // Read one line of nix output for the plan and the steps
+    function trackProgress(line) {
+        if (!timing)
+            return;
+        let m = line.match(/^(?:these (\d+) derivations|this derivation) will be built/);
+        if (m) {
+            toBuild = m[1] ? parseInt(m[1]) : 1;
+            planSeen = true;
+            return;
+        }
+        m = line.match(/^(?:these (\d+) paths|this path) will be fetched/);
+        if (m) {
+            toFetch = m[1] ? parseInt(m[1]) : 1;
+            planSeen = true;
+            return;
+        }
+        if (line.startsWith("building '/nix/store/"))
+            buildsStarted++;
+        else if (line.startsWith("copying path '"))
+            fetchesStarted++;
+    }
+
+    // Remember how long a real build took, for the next estimate. A rebuild of
+    // something already built (an apply right after a preview) takes seconds
+    // and says nothing about the next one, so it is ignored.
+    function recordBuild() {
+        const sec = (Date.now() - runStartMs) / 1000;
+        if (sec < 30)
+            return;
+        history = {
+            "build": Math.round(sec)
+        };
+        histWriter.command = ["sh", "-c", 'mkdir -p "$(dirname "$2")" && printf "%s" "$1" > "$2.tmp" && mv -f "$2.tmp" "$2"', "sh", JSON.stringify(history), historyPath];
+        histWriter.running = true;
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.timing
+        onTriggered: root.elapsedSec = (Date.now() - root.runStartMs) / 1000
+    }
+
+    FileView {
+        id: histFile
+
+        path: root.historyPath
+        onLoaded: {
+            try {
+                root.history = JSON.parse(histFile.text());
+            } catch (e) {
+                root.history = {};
+            }
+        }
+    }
+
+    Process {
+        id: histWriter
+    }
+
     // ---- Actions --------------------------------------------------------
     // quiet = a check nobody asked for (the schedule): if it fails, the bar is
     // left alone and it is tried again later, instead of showing an error
@@ -219,6 +322,7 @@ Singleton {
         diff = [];
         previewed = false;
         previewTag = currentTag;
+        beginProgress();
         buildProc.running = true;
     }
 
@@ -232,6 +336,7 @@ Singleton {
         error = "";
         cancelled = false;
         logLines = [];
+        beginProgress();
         applyProc.running = true;
     }
 
@@ -374,8 +479,11 @@ Singleton {
 
     // ---- Helpers --------------------------------------------------------
     function pushLog(line) {
-        if (phase === "applying" && line.startsWith("==> activating"))
+        trackProgress(line);
+        if (phase === "applying" && line.startsWith("==> activating")) {
+            recordBuild();
             applyStage = "switch";
+        }
         logLines = logLines.concat([line]).slice(-300);
     }
 
@@ -660,8 +768,10 @@ Singleton {
                 root.pushLog("Cancelled.");
                 return;
             }
-            if (exitCode === 0)
+            if (exitCode === 0) {
+                root.recordBuild();
                 diffProc.running = true;
+            }
             else
                 root.finish(false, "", "Build failed", exitCode);
         }

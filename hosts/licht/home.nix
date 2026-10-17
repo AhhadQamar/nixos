@@ -52,7 +52,6 @@
   };
 
   programs.home-manager.enable = true;
-  home.file.".face".source = ./assets/avatar.png;
   imports = [
     ./modules/desktop
     ./modules/shell

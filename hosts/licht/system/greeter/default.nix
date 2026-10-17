@@ -30,6 +30,8 @@
     "Txt.qml"
     "KeyCap.qml"
     "SearchField.qml"
+    # LockHud's button row (needs only Style, Colors and Txt)
+    "TextButton.qml"
     # The lock's design, shared so the login screen and the lock never drift
     "LockHud.qml"
     "StageShade.qml"

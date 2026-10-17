@@ -14,10 +14,11 @@
 // contexts would mean two attempts running at once for a single password.
 // The animation state lives here too, so every screen moves as one.
 //
-// What makes it alive: the time is the hero of the screen inside a ring
-// instrument, a thin arc is the seconds, and every key you type turns the scale
-// and lights a segment of the inner ring. A right password sends a crest
-// the whole instrument. Left alone it settles down to the time and a dim ring.
+// What makes it alive: the time is a poster on the left, and the dial (a rail
+// of glass discs under the ruler) is the interface. Meters (battery, volume,
+// brightness) sit left of the lock disc, actions (media, suspend, reboot,
+// shutdown) right of it; the selected disc is read out below. Every key you
+// type turns the ruler, and a right password sends a crest the whole width.
 //
 // Success is not instant: a crest runs out along the ruler, the dial collapses, and only
 // then does the lock open (about a second). The password has been checked by
@@ -27,7 +28,9 @@
 //   qs ipc call lock lock
 //
 // There is deliberately no unlock command: the only way out is the password.
-// Keys: type the password, Enter unlocks.
+// Keys: type the password, Enter unlocks. Tab / Shift+Tab (or Ctrl+Left / Right)
+// turn the dial, Ctrl+Enter presses a disc, Ctrl+Up / Down adjust volume or
+// brightness, Esc goes back to the lock disc (see LockHud.qml).
 //
 // Everything that locks goes through logind: Super+Shift+L, the power menu and
 // hypridle (idle, and before sleep) run `loginctl lock-session`, and
@@ -38,6 +41,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Services.Pam
+import Quickshell.Services.Pipewire
 
 Scope {
     id: root
@@ -50,6 +54,65 @@ Scope {
 
     // Said in the corner of the screen
     readonly property string modeText: "Session locked"
+
+    // ---- What the dial offers ---------------------------------------------
+    // What the music player has loaded (the dial shows it under the date)
+    readonly property bool nowActive: Music.hasTrack
+    readonly property string nowTitle: Music.title
+    readonly property string nowArtist: Music.artist
+    readonly property real nowProgress: Music.progress
+
+    // Said on the button of the lock disc
+    readonly property string goText: "Unlock"
+
+    // The default speaker, for the volume disc (tracked, so its volume is read)
+    readonly property var sink: Pipewire.defaultAudioSink
+
+    // The discs of the dial: a label, a glyph, and what each does. The list
+    // only changes when a track is loaded or the backlight is found; what
+    // changes while it is up (Play and Pause, the volume) is read through
+    // functions, so the dial is not rebuilt under your finger. See the header
+    // of LockHud.qml for the optional fields.
+    readonly property var actions: {
+        const list = [];
+        if (Brightness.available)
+            list.push({
+                "key": "brightness",
+                "label": "Brightness",
+                "head": "Screen",
+                "icon": String.fromCodePoint(0xF00DF),
+                "level": () => Brightness.percent / 100,
+                "adjust": dir => Brightness.step(dir * 5)
+            });
+        list.push({
+            "key": "volume",
+            "label": "Volume",
+            "head": "Sound",
+            "icon": String.fromCodePoint(0xF057E),
+            "level": () => Math.min(1, root.sink?.audio?.volume ?? 0),
+            "sub": () => (root.sink?.audio?.muted ?? false) ? "Muted" : "",
+            "adjust": dir => {
+                const au = root.sink?.audio;
+                if (au)
+                    au.volume = Math.max(0, Math.min(1, au.volume + dir * 0.05));
+            },
+            "run": () => {
+                const au = root.sink?.audio;
+                if (au)
+                    au.muted = !au.muted;
+            }
+        });
+        if (Music.hasTrack) {
+            const now = () => (Music.artist ? Music.artist + "  \u00b7  " : "") + Music.title;
+            list.push({"key": "prev", "label": "Previous", "head": "Now playing", "icon": Icons.chevronLeft, "sub": now, "run": () => Music.prev()});
+            list.push({"key": "play", "label": "Play / Pause", "head": "Now playing", "icon": Icons.play, "name": () => Music.playing ? "Pause" : "Play", "glyph": () => Music.playing ? Icons.pause : Icons.play, "sub": now, "run": () => Music.playPause()});
+            list.push({"key": "next", "label": "Next", "head": "Now playing", "icon": Icons.chevronRight, "sub": now, "run": () => Music.next()});
+        }
+        list.push({"key": "suspend", "label": "Suspend", "head": "Power", "icon": String.fromCodePoint(0xF0904), "run": () => Quickshell.execDetached(["systemctl", "suspend"])});
+        list.push({"key": "reboot", "label": "Reboot", "head": "Power", "icon": String.fromCodePoint(0xF0709), "critical": true, "run": () => Quickshell.execDetached(["systemctl", "reboot"])});
+        list.push({"key": "shutdown", "label": "Shutdown", "head": "Power", "icon": String.fromCodePoint(0xF0425), "critical": true, "run": () => Quickshell.execDetached(["systemctl", "poweroff"])});
+        return list;
+    }
 
     // ---- State ----------------------------------------------------------
     // What has been typed. Shared by every screen's field, emptied the moment
@@ -64,6 +127,12 @@ Scope {
     property bool succeeded: false
     // Password sent, waiting for PAM's answer
     readonly property bool checking: pam.active
+
+    // Which disc of the dial is selected (-1 = the lock disc), and which one
+    // waits for a second press (-1 = none). LockHud turns and presses; they
+    // live here so every screen shows the same dial.
+    property int dialIndex: -1
+    property int armed: -1
 
     // 0 = hidden below the edge, 1 = in place
     property real reveal: 0
@@ -150,6 +219,11 @@ Scope {
         precision: sessionLock.locked ? SystemClock.Seconds : SystemClock.Minutes
     }
 
+    // Pipewire only reports a node's volume while something tracks it
+    PwObjectTracker {
+        objects: root.sink ? [root.sink] : []
+    }
+
     // ---- Actions --------------------------------------------------------
     function submit() {
         // Nothing to check, already checking, or already through
@@ -172,6 +246,8 @@ Scope {
         failed = false;
         broken = false;
         succeeded = false;
+        dialIndex = -1;
+        armed = -1;
         // Start from the dome, hidden below the edge
         reveal = 0;
         spinIn = 3.2;
