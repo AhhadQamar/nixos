@@ -7,10 +7,11 @@ NixOS flake for my laptop, **`licht`**: Hyprland desktop, a custom Quickshell sh
 | **Channel** | `nixos-26.05` + Home Manager `release-26.05` |
 | **Host** | `licht` (x86_64, Intel graphics) |
 | **User** | `licht` |
-| **Desktop** | Hyprland (Lua config) via UWSM, SDDM `pixie` login |
+| **Desktop** | Hyprland (Lua config), started straight from a Quickshell login screen (greetd + cage) |
 | **Shell** | Quickshell (QML), zsh + starship, kitty, tmux, neovim |
 | **Secrets** | `agenix` (keys: `licht` and `recovery`) |
 | **Repo path** | `~/nixos` (not `/etc/nixos`) |
+| **Repo** | private on GitHub: `AhhadQamar/nixos`. A fresh install has to [log in to GitHub](#fresh-machine) before it can clone |
 
 **Jump to:** [Install](#install) · [Daily use](#daily-use) · [Key bindings](#key-bindings) · [Customise](#customise) · [Secrets](#secrets) · [Troubleshooting](#troubleshooting) · [Layout](#repository-layout)
 
@@ -27,18 +28,47 @@ cd ~/nixos
 
 ### Fresh machine
 
-You need: a NixOS installer USB, internet, and the **recovery age key** (private key file, kept off this machine).
+The repo is **private**, so the installer has to log in to GitHub before it can clone it. You need:
+
+- a NixOS installer USB, booted and online
+- a GitHub account with access to `AhhadQamar/nixos`
+- a second device (a phone is fine) to approve the GitHub login
+- the **recovery age key** (private key file, kept off this machine)
 
 **1. Partition and mount** as usual, with the target at `/mnt`.
 
-**2. Clone the repo.** Use HTTPS here: the installer has no SSH key yet.
+**2. Log in to GitHub from the installer.** Open a shell that has `gh` (the GitHub CLI) and `git`:
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#gh nixpkgs#git
+```
+
+(If the installer already has flakes on, plain `nix shell nixpkgs#gh nixpkgs#git` works too. The flag makes it work either way.)
+
+Then log in:
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web
+```
+
+- If it asks **Authenticate Git with your GitHub credentials?**, answer **Yes**.
+- `gh` prints a one-time code such as `ABCD-1234`. Press Enter, then open **https://github.com/login/device** on your phone or another computer, type the code and approve. The installer does not need a browser.
+- Check it worked: `gh auth status` should say `Logged in to github.com`.
+
+No second device? Create a fine-grained token (GitHub → Settings → Developer settings → Personal access tokens → Fine-grained) with **read-only Contents** access to this repo, then run `gh auth login --with-token` and paste it.
+
+This login lives in the installer's memory only. It is gone after the reboot and nothing is written to the new system.
+
+**3. Clone the repo** into the new system, from the same shell:
 
 ```bash
 mkdir -p /mnt/home/licht
-git clone https://github.com/AhhadQamar/nixos.git /mnt/home/licht/nixos
+gh repo clone AhhadQamar/nixos /mnt/home/licht/nixos
 ```
 
-**3. Put the age key in place** so `agenix` can decrypt secrets on first boot.
+Use `gh repo clone`, not a plain `git clone`: it passes your login to git. A plain HTTPS clone of a private repo fails with `Repository not found`, because GitHub does not accept account passwords for git.
+
+**4. Put the age key in place** so `agenix` can decrypt secrets on first boot.
 
 ```bash
 mkdir -p /mnt/var/lib/agenix
@@ -48,7 +78,7 @@ chmod 600 /mnt/var/lib/agenix/key.txt
 
 > Prefer a dedicated key for this machine? See [Add a new machine key](#add-a-new-machine-key).
 
-**4. Generate hardware config.** The committed one belongs to the original laptop.
+**5. Generate hardware config.** The committed one belongs to the original laptop.
 
 ```bash
 nixos-generate-config --root /mnt
@@ -58,25 +88,46 @@ cp /mnt/etc/nixos/hardware-configuration.nix \
 
 Check the disk UUIDs and CPU settings it generated.
 
-**5. Install.**
+**6. Build and install from the clone.** The system is built straight from the repo you just cloned:
 
 ```bash
 nixos-install --root /mnt --flake /mnt/home/licht/nixos#licht
 ```
 
-**6. Reboot, log in, then finish setup:**
+**7. Set your password.** `nixos-install` only asks for the root password, and the `licht` user has none yet, so you could not log in. Set it before rebooting:
 
 ```bash
-sudo chown -R licht:users ~/nixos          # repo was cloned as root
+nixos-enter --root /mnt -c 'passwd licht'
+```
 
-# switch the remote to SSH once your key is set up (the rebuild script pushes)
+**8. Reboot, log in, then connect git to GitHub.** The installer's login is gone, and the `rebuild` script pushes at the end, so set up an SSH key for the new system:
+
+```bash
+sudo chown -R licht:users ~/nixos          # the clone belongs to root
+
+# the key name modules/shell/git/default.nix expects
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_personal
+
+gh auth login --hostname github.com --git-protocol ssh --web
+```
+
+- When `gh` offers to upload an SSH public key, pick `id_ed25519_personal.pub`. Approve the login with the one-time code, as in step 2.
+- A passphrase on the key is optional. There is no ssh-agent here, so with one you are asked for it on every push.
+
+Now point the clone at SSH and check it works:
+
+```bash
 git -C ~/nixos remote set-url origin git@github.com:AhhadQamar/nixos.git
+git -C ~/nixos fetch        # the first time it asks to trust github.com: answer yes
+```
 
-# log out and back in once so NH_FLAKE is set, then:
+Log out and back in once so `NH_FLAKE` is set, then:
+
+```bash
 u
 ```
 
-**7. Pick a wallpaper** so the theme has colours: press `Super+W`, or run `wal -i <image>`.
+**9. Pick a wallpaper** so the theme has colours: press `Super+W`, or run `wal -i <image>`.
 
 ### Not the original hardware or user?
 
@@ -180,11 +231,11 @@ Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the secon
 | Edit QML without rebuilding | set `liveReload = true` in `quickshell/default.nix`, rebuild once; saves then reload instantly |
 | Change aliases | `modules/shell/zsh/config/.zshrc` (`zshrc`) |
 | Change browser extensions | `modules/programs/brave/default.nix` |
-| Change the login screen | `system/sddm.nix`, `assets/` |
+| Change the login screen | `system/greeter/` (`Greeter.qml`, `default.nix`) |
 
 After any edit: `ut` to test, `u` to keep it.
 
-**Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, GTK 3/4, kitty, tmux, hyprlock and Firefox (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
+**Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, Hyprland, GTK 3/4, kitty, tmux, Obsidian and Firefox (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
 
 ---
 
@@ -239,8 +290,11 @@ Commit and push the changed `.age` files.
 | `u` stops at the gitleaks step | It found something that looks like a secret. Remove it from the staged files, then rerun |
 | Build can't see a new file | Flakes ignore untracked files. `u` stages for you; with plain commands run `git add -A` first |
 | Bar is blank or uncoloured after install | Run `wal -i <image>` or press `Super+W` and pick a wallpaper |
+| Cannot log in after a fresh install | The `licht` password was never set. Boot the installer, mount the system at `/mnt`, run `nixos-enter --root /mnt -c 'passwd licht'`, then reboot |
 | Secrets or aria2 fail after first boot | The age key is missing or wrong at `/var/lib/agenix/key.txt` |
-| `git push` fails after install | Remote is still HTTPS. Run the `remote set-url` command from [Install](#fresh-machine) step 6 |
+| `git push` fails after install | Remote is still HTTPS. Run the `remote set-url` command from [Install](#fresh-machine) step 8 |
+| `Repository not found` or a password prompt when cloning | The repo is private and you are not logged in. Run `gh auth status`, then `gh auth login` and use `gh repo clone` ([Install](#fresh-machine) steps 2-3) |
+| `u` ends with `Permission denied (publickey)` | The SSH key is not on GitHub. Check `gh ssh-key list`; add it with `gh ssh-key add ~/.ssh/id_ed25519_personal.pub` |
 | Hyprland errors | `hyprlog` shows the last 50 lines of the log |
 
 ---
@@ -256,8 +310,7 @@ hosts/licht/
   configuration.nix  user, secrets, NH_FLAKE
   hardware-configuration.nix
   home.nix           Home Manager entry and user packages
-  assets/            avatar and wallpaper for SDDM
-  system/            boot, nix, networking, hardware, desktop, sddm, updater
+  system/            boot, nix, networking, hardware, desktop, greeter, updater, wireguard
   modules/
     desktop/         hypr, quickshell, pywal, theme, cava, pyprland
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime

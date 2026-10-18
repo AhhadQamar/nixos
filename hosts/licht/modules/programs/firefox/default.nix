@@ -24,6 +24,88 @@ in {
   programs.firefox = {
     enable = true;
     nativeMessagingHosts = [pywalfox-native];
+
+    # Browser-wide settings that Firefox Sync does not carry.
+    # Bookmarks, passwords and history stay with Firefox Sync, so none are set here.
+    policies = {
+      # --- Blank new tab and home page ---
+      NewTabPage = false;
+      Homepage = {URL = "about:blank";};
+
+      # --- Less noise ---
+      DontCheckDefaultBrowser = true;
+      OverridePostUpdatePage = ""; # no "what's new" tab after every Firefox update
+      UserMessaging = {
+        ExtensionRecommendations = false;
+        FeatureRecommendations = false;
+        UrlbarInterventions = false;
+        MoreFromMozilla = false;
+        SkipOnboarding = true;
+      };
+
+      # --- Data sent to Mozilla ---
+      # (Mozilla recommends leaving telemetry on; remove these if you prefer)
+      DisableTelemetry = true;
+      DisableFirefoxStudies = true;
+      FirefoxSuggest = {WebSuggestions = false;}; # turns Suggest off completely
+
+      # --- Tracking ---
+      # Block known trackers in every window, not just private ones. Locked = false
+      # keeps the shield icon usable: click it to turn protection off for one site.
+      EnableTrackingProtection = {
+        Value = true;
+        Locked = false;
+        Cryptomining = true;
+        Fingerprinting = true;
+        EmailTracking = true;
+        SuspectedFingerprinting = true;
+        BaselineExceptions = true; # automatic fixes for major breakage
+        ConvenienceExceptions = true; # automatic fixes for minor breakage
+      };
+
+      # --- Connections ---
+      HttpsOnlyMode = "enabled"; # warns before loading plain http (you can click through)
+      NetworkPrediction = false; # no DNS prefetching of links you have not clicked
+      SearchSuggestEnabled = false; # typing in the address bar is not sent to the search engine
+
+      # DNS over HTTPS: your ISP no longer sees which sites you look up.
+      # Fallback = true uses normal DNS if the provider is unreachable.
+      # Swap the URL for https://mozilla.cloudflare-dns.com/dns-query if you prefer Cloudflare.
+      DNSOverHTTPS = {
+        Enabled = true;
+        ProviderURL = "https://dns.quad9.net/dns-query";
+        Fallback = true;
+        Locked = false;
+      };
+
+      # --- Site permissions ---
+      # Sites can no longer even ask. Already granted permissions are kept.
+      Permissions = {
+        Location = {BlockNewRequests = true;};
+        Notifications = {BlockNewRequests = true;};
+      };
+
+      # about:config values. Status "default" means you can still change them in the UI.
+      Preferences = {
+        "privacy.globalprivacycontrol.enabled" = {
+          Value = true; # tells sites you opt out of sale/sharing of your data
+          Status = "default";
+        };
+      };
+
+      # --- Extensions that must exist on a fresh install ---
+      # normal_installed: you can still disable them, and Sync will not duplicate them.
+      ExtensionSettings = {
+        "pywalfox@frewacom.org" = {
+          installation_mode = "normal_installed";
+          install_url = "https://addons.mozilla.org/firefox/downloads/latest/pywalfox@frewacom.org/latest.xpi";
+        };
+        "uBlock0@raymondhill.net" = {
+          installation_mode = "normal_installed";
+          install_url = "https://addons.mozilla.org/firefox/downloads/latest/uBlock0@raymondhill.net/latest.xpi";
+        };
+      };
+    };
   };
 
   home.packages = [pywalfox-native];
