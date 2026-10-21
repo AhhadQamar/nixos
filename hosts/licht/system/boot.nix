@@ -5,7 +5,7 @@
   boot.loader.systemd-boot.editor = false;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.initrd.systemd.enable = true;
-
+  boot.initrd.systemd.emergencyAccess = true;
   boot.plymouth = {
     enable = true;
     theme = "circle_hud";
@@ -21,7 +21,6 @@
   boot.kernelParams = [
     "quiet"
     "splash"
-    "boot.shell_on_fail"
     "udev.log_priority=3"
     "rd.systemd.show_status=auto"
   ];

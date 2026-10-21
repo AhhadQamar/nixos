@@ -1,43 +1,43 @@
 // LockStage.qml
-// What the lock and the login screen show on one screen, in the shell's dial
-// language (see Polkit.qml, the other password prompt, which this follows).
-// Lock.qml and the greeter make one of these per screen and hand it the same
-// LockModel, so every screen moves as one.
+// What the lock and the login screen show on one screen. Lock.qml and
+// Greeter.qml make one of these per screen and hand it the same LockModel, so
+// every screen, and both the lock and the login screen, look the same.
 //
-// The backdrop is your wallpaper, blurred, light at the top and darker toward
-// the foot. The time is the hero of the screen. A borderless stage rises from
-// the bottom edge: one glass disc on the dial, ringed in the accent, with the
-// fine ruler curving across the whole width of the screen over it. Below the
-// ruler: what this screen is, the greeting, and one line for what is going on.
-// Under that a few small buttons (now playing, power), and the password pill
-// rests at the foot.
+// The composition is two things side by side. On the left, set against your
+// wallpaper, the time: large and light, with the date under it, then a
+// greeting and a line saying what is going on. On the right, a large dial that
+// bleeds off the edge of the screen like the face of a safe: two rings of fine
+// ticks, the launcher's and the screenshot frame's ruler closed into circles,
+// an outer ruler and an inner dial, with a 2px accent marker on the side that
+// faces the time.
 //
-// The ruler is the state, as everywhere else in the shell. Each key you type
-// turns it a little (Backspace turns it back). It scans while the password is
-// checked, flushes red on a wrong one (and the disc shakes), and fills green
-// from the middle to both edges on a right one, after which the dial curls
-// away.
+// It is kept lean because it runs on every screen at once on a laptop's
+// graphics: the wallpaper is blurred once at a quarter of the screen size and
+// each ring is drawn once into a texture and only ever turned. Everything that
+// moves is an angle, a size or a fade, and moves at the shell's speeds.
 //
-// Like the launcher it arrives as a rainbow: the disc and the ruler swing in
-// from the left over a tight dome, washed with the wallpaper's colours, and
-// unfurl into the calm dial. Closing plays it in reverse.
+// There is no password box. Typing shows almost nothing: the two rings turn a
+// little, the outer one clockwise and the inner one back, a character at a
+// time, and Backspace turns them back. A wrong password lets them wind back to
+// nought, with a small shake and the marker turning red. A right one opens it
+// like a safe: the two dials spin round, one each way, and come to rest at
+// nought under the marker, then the rings open outwards, one a little ahead of
+// the other, and fade as the time slides away.
 //
-// Keys (the password field keeps focus, so typing is never affected):
-//   type            the password        Enter    check it
-//   Tab, Shift+Tab  pick a button       Ctrl+Left, Ctrl+Right   the same
-//   Ctrl+Enter, Ctrl+Space   press the picked button
-//   Enter on an empty field  presses the picked button
-//   Esc             unpick the button; again to clear the field
-// Mouse: click a button. Reboot and Shutdown ask for a second press; the
-// button turns red and says so. The eye shows what you type.
+// One taller tick on the outer ring goes round once a minute: the seconds.
+// While the lock waits it is the only thing that moves.
 //
-// It reads and writes the LockModel it is given (see LockModel.qml): the
-// password, the pick, the animation clocks, the colour of the moment, the
-// words, and the buttons.
+// Keys (an invisible field keeps the keyboard, so typing is never affected):
+//   type                the password
+//   Enter               check it
+//   Esc                 clear what you typed
+//
+// It reads and writes the LockModel it is given (see LockModel.qml).
 
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import Quickshell
 
 Item {
     id: scene
@@ -45,161 +45,177 @@ Item {
     // The model every screen shows (LockModel.qml)
     required property var lock
 
-    // ---- Settings -------------------------------------------------------
-    // The ruler and the glow use the whole width; the words and the pill keep
-    // to a narrower column in the middle
-    readonly property int contentW: Math.min(780, Math.round(width * 0.9))
-    readonly property int topY: 62
-    readonly property int ruleDrop: 50
-    readonly property int ruleY: topY + ruleDrop
-    // A gentle arc across the screen: wide enough that its edges drop only a
-    // little, whatever the screen
-    readonly property real dialR: Math.max(900, width * 1.6)
-    // The dome the dial starts as when it opens (and ends as when it closes)
-    readonly property real rainbowR: 360
-    // Pixels per slot: only turns the arrival swing (spinIn) into distance
-    readonly property real stepPx: 76
-    readonly property int discSize: 80
-    readonly property int tickGap: 12
-    readonly property int tickN: Math.ceil(width / tickGap) + 24
-    // The background colour with a breath of the accent, for the washes
+    // ---- Layout ---------------------------------------------------------
+    // The dial: its middle (right of centre, so it runs off the edge) and the
+    // radius of the outer ruler; the inner dial sits a little inside it
+    readonly property real dialX: Math.round(width * 0.8)
+    readonly property real dialY: Math.round(height * 0.5)
+    readonly property real ringR: Math.round(Math.min(height * 0.46, width * 0.34))
+    readonly property real innerR: ringR - 40
+    // The time: its left edge, and how large it can be before it meets the dial
+    readonly property real textX: Math.round(width * 0.09)
+    readonly property int clockSize: Math.round(Math.min(height * 0.2, (dialX - ringR - textX - 70) / 3.3))
+    // The outer ruler's ticks sit 10px apart and every fifth is a major, as on
+    // the screenshot frame; in whole twenties so the marker, on the side that
+    // faces the time, stands on a major. The inner dial has 36, every ninth in
+    // the accent.
+    readonly property int outerCount: Math.round(twoPi * ringR / 10 / 20) * 20
+    readonly property int innerCount: 36
+    readonly property real twoPi: Math.PI * 2
+    // The background colour with a breath of the accent, as Dim.qml has it
     readonly property color wash: Qt.tint(Colors.background, Qt.alpha(Colors.accent, 0.08))
-    // The eye button: show what you type (per screen)
-    property bool showPw: false
+    // Secondary text: the palette's muted, lifted a little toward the
+    // foreground so it holds on any wallpaper
+    readonly property color softText: Qt.tint(Colors.muted, Qt.alpha(Colors.foreground, 0.22))
 
-    // ---- The model, under shorter names -----------------------------------
-    readonly property real reveal: lock.reveal
-    readonly property real spinIn: lock.spinIn
-    readonly property real fan: lock.fan
-    readonly property real breath: lock.breath
-    readonly property real shakeX: lock.shakeX
-    readonly property real scan: lock.scan
-    readonly property real scanOn: lock.scanOn
-    readonly property real flush: lock.flush
-    readonly property real okFill: lock.okFill
-    readonly property real ring: lock.ring
-    readonly property color tone: lock.tone
-    readonly property bool succeeded: lock.succeeded
-    readonly property bool checking: lock.checking
+    // ---- What you typed ---------------------------------------------------
+    // The password is emptied the moment it is sent, so the dial keeps the
+    // count it had until the answer is in.
+    property int held: 0
+    readonly property int dotCount: (lock.checking || lock.succeeded) ? held : lock.password.length
 
-    // Radius of the dial right now: curvature eases from the dome to the dial
-    readonly property real dialNow: 1 / (1 / dialR + (1 / rainbowR - 1 / dialR) * fan)
+    // The rings sway a little against each other while the password is
+    // checked: the phase runs only then, and the amount eases in and out so
+    // nothing jumps
+    property real phase: 0
+    property real checkAmt: lock.checking ? 1 : 0
 
-    // ---- Layout of what is under the dial ---------------------------------
-    readonly property int readoutTop: ruleY + 30
-    readonly property int controlsH: Style.buttonCompact
-    readonly property int pillH: Style.fieldHeight
-    // The pill floats above the bottom edge. The stage is also tall enough for
-    // the far ends of the ruler, which droop a little.
-    readonly property int foot: 48
-    readonly property real controlsY: readoutTop + readout.height + 14
-    readonly property real pillY: controlsY + controlsH + 14
-    readonly property real bodyH: pillY + pillH + foot
-
-    // ---- Helpers --------------------------------------------------------
-    function clamp(v, a, b) {
-        return Math.max(a, Math.min(b, v));
+    Behavior on checkAmt {
+        NumberAnimation {
+            duration: Style.moveMs
+            easing.type: Style.easeMove
+        }
     }
 
-    function mod(a, b) {
-        return ((a % b) + b) % b;
+    NumberAnimation on phase {
+        from: 0
+        to: Math.PI * 2
+        duration: 2000
+        loops: Animation.Infinite
+        running: scene.lock.checking
     }
 
-    // Ease-out with a small overshoot for the arrival of the disc (0..1 in,
-    // about 1.04 at the peak): the shell's `pop`, kept gentle.
-    function backOut(t) {
-        const c1 = 0.8;
-        const u = t - 1;
-        return 1 + (c1 + 1) * u * u * u + c1 * u * u;
+    // The two rings turn against each other, a couple of degrees a character
+    // (degrees). At nought once it has worked.
+    property real outerBase: lock.succeeded ? 0 : Math.min(dotCount, 40) * 2
+    property real innerBase: lock.succeeded ? 0 : -Math.min(dotCount, 40) * 3
+
+    Behavior on outerBase {
+        NumberAnimation {
+            duration: scene.lock.succeeded ? Style.sweepMs : Style.moveMs
+            easing.type: scene.lock.succeeded ? Style.easeEnter : Style.easeMove
+        }
     }
 
-    // Staggered arrival: 0 until `from`, 1 at `to` (in reveal units).
-    function stage_(from, to) {
-        return clamp((reveal - from) / (to - from), 0, 1);
+    Behavior on innerBase {
+        NumberAnimation {
+            duration: scene.lock.succeeded ? Style.sweepMs : Style.moveMs
+            easing.type: scene.lock.succeeded ? Style.easeEnter : Style.easeMove
+        }
     }
 
-    // `base` washed with one of the palette's colours, chosen by screen
-    // position x (colour1 on the left through colour6 on the right). The wash
-    // is `fan` strong, so it only shows while the dial is arriving or leaving.
-    function spectral(base, x, a) {
-        const ramp = [Colors.color1, Colors.color2, Colors.color3, Colors.color4, Colors.color5, Colors.color6];
-        const t = (clamp((x - stage.width / 2) / (stage.width * 0.34), -1, 1) * 0.5 + 0.5) * (ramp.length - 1);
-        const i = Math.min(ramp.length - 2, Math.floor(t));
-        const c = Qt.tint(ramp[i], Qt.alpha(ramp[i + 1], t - i));
-        return Qt.alpha(Qt.tint(base, Qt.alpha(c, 0.9 * fan)), a);
+    // The safe: when the password is right the two dials spin, the outer one a
+    // full turn clockwise and the inner one two turns back, slowing as they
+    // come to rest at nought under the marker. 0 to 1.
+    property real spin: 0
+
+    Connections {
+        target: scene.lock
+
+        function onSucceededChanged() {
+            if (scene.lock.succeeded)
+                spinAnim.restart();
+        }
+    }
+
+    NumberAnimation {
+        id: spinAnim
+
+        target: scene
+        property: "spin"
+        from: 0
+        to: 1
+        duration: Style.sweepMs
+        easing.type: Style.easeEnter
+    }
+
+    // What each ring shows: its turn, the sway while checking, the swing in as
+    // the dial arrives, and the spin of the safe
+    readonly property real outerA: outerBase + (1 - lock.reveal) * 12 + Math.sin(phase) * 3 * checkAmt + 360 * spin
+    readonly property real innerA: innerBase - (1 - lock.reveal) * 18 - Math.sin(phase) * 5 * checkAmt - 720 * spin
+
+    // ---- Keyboard ---------------------------------------------------------
+    // The password goes into a field nobody sees: it keeps the keyboard, and
+    // the turning of the rings is all that shows you are typing
+    TextInput {
+        id: pw
+
+        width: 1
+        height: 1
+        opacity: 0
+        focus: true
+        echoMode: TextInput.Password
+        inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+        // Read-only rather than disabled, so it keeps the focus
+        readOnly: scene.lock.checking || scene.lock.succeeded
+
+        // One password for every screen: this field writes it, and shows it
+        // again when the owner empties it
+        onTextChanged: {
+            if (scene.lock.password !== text)
+                scene.lock.password = text;
+        }
+        Keys.onPressed: event => scene.handleKey(event)
+
+        Connections {
+            target: scene.lock
+
+            function onPasswordChanged() {
+                if (pw.text !== scene.lock.password)
+                    pw.text = scene.lock.password;
+                if (scene.lock.password.length > 0)
+                    scene.held = scene.lock.password.length;
+            }
+        }
     }
 
     // The keys the password field leaves to the stage
     function handleKey(event) {
-        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
         switch (event.key) {
         case Qt.Key_Return:
         case Qt.Key_Enter:
             event.accepted = true;
-            if (ctrl || (lock.password === "" && lock.pick >= 0))
-                lock.pressPicked();
-            else if (lock.password !== "")
-                lock.submitRequested();
-            break;
-        case Qt.Key_Space:
-            if (ctrl) {
-                event.accepted = true;
-                lock.pressPicked();
-            }
-            break;
-        case Qt.Key_Tab:
-            event.accepted = true;
-            lock.movePick(1);
-            break;
-        case Qt.Key_Backtab:
-            event.accepted = true;
-            lock.movePick(-1);
-            break;
-        case Qt.Key_Left:
-            if (ctrl) {
-                event.accepted = true;
-                lock.movePick(-1);
-            }
-            break;
-        case Qt.Key_Right:
-            if (ctrl) {
-                event.accepted = true;
-                lock.movePick(1);
-            }
-            break;
+            lock.activate();
+            return;
         case Qt.Key_Escape:
             event.accepted = true;
-            if (lock.pick >= 0)
-                lock.pick = -1;
-            else if (lock.password !== "")
+            if (lock.password !== "")
                 lock.password = "";
-            break;
+            return;
         }
     }
 
-    // Text that stays readable over any wallpaper: the shell font with a thin
-    // outline in the background colour
-    component Soft: Txt {
-        style: Text.Outline
-        styleColor: Qt.alpha(Colors.background, 0.82)
-    }
-
-    // Focus set before the window is shown can be lost; ask again once it is
-    onVisibleChanged: if (visible)
-        Qt.callLater(pw.forceActiveFocus)
     Component.onCompleted: Qt.callLater(pw.forceActiveFocus)
+
+    // Pressing anywhere gives the keyboard back to the field
+    MouseArea {
+        anchors.fill: parent
+        onPressed: pw.forceActiveFocus()
+    }
 
     // ---- Backdrop: the wallpaper, blurred ---------------------------------
     // A blurred picture needs no detail, so the image is read and blurred at a
     // quarter of the screen size and scaled up: the same look for a sixteenth
-    // of the work, which matters on a laptop's integrated graphics.
+    // of the work. It is blurred once and never changes.
     Item {
         id: backdrop
 
         width: Math.round(scene.width / 4)
         height: Math.round(scene.height / 4)
         scale: 4
-        transformOrigin: Item.TopLeft
+        transformOrigin: Item.Center
+        x: (scene.width - width) / 2
+        y: (scene.height - height) / 2
         // Fades in once it has loaded; until then the window's own
         // background colour shows
         opacity: wall.status === Image.Ready ? 1 : 0
@@ -227,600 +243,415 @@ Item {
         }
     }
 
-    // A wash of the background colour over it: light at the top, where the
-    // time sits and the wallpaper can show, and darker toward the foot, where
-    // the stage needs the calm
+    // The shell's dim over it, deepest on the side the time is on and easing
+    // off toward the dial, and a little darker toward the foot
+    Rectangle {
+        anchors.fill: parent
+
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+
+            GradientStop {
+                position: 0
+                color: Qt.alpha(scene.wash, 0.78)
+            }
+            GradientStop {
+                position: 0.55
+                color: Qt.alpha(scene.wash, 0.56)
+            }
+            GradientStop {
+                position: 1
+                color: Qt.alpha(scene.wash, 0.4)
+            }
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
 
         gradient: Gradient {
             GradientStop {
-                position: 0
-                color: Qt.alpha(scene.wash, 0.3)
-            }
-            GradientStop {
-                position: 0.55
-                color: Qt.alpha(scene.wash, 0.5)
+                position: 0.6
+                color: Qt.alpha(scene.wash, 0)
             }
             GradientStop {
                 position: 1
-                color: Qt.alpha(scene.wash, 0.82)
+                color: Qt.alpha(scene.wash, 0.34)
             }
         }
     }
 
-    // ---- The hero: the time -----------------------------------------------
-    // Big enough to read from across the room. The colon breathes with the
-    // disc's ring and takes the colour of the moment.
-    Item {
-        id: hero
-
-        // A read-out, so the size is a one-off (it follows the screen)
-        readonly property int size: Math.round(scene.height * 0.17)
-
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(scene.height * 0.13)
-        width: timeRow.implicitWidth
-        height: timeRow.implicitHeight + dateLine.implicitHeight
-        // Clicks pass through to the stage
-        enabled: false
-        opacity: scene.stage_(0.2, 0.75)
-        transform: Translate {
-            y: (1 - scene.stage_(0.2, 0.75)) * 24
-        }
-
-        Row {
-            id: timeRow
-
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            Soft {
-                text: scene.lock.hourText
-                color: Colors.foreground
-                font.pixelSize: hero.size
-            }
-
-            Soft {
-                text: ":"
-                color: scene.tone
-                opacity: 0.35 + 0.65 * scene.breath
-                font.pixelSize: hero.size
-            }
-
-            Soft {
-                text: scene.lock.minuteText
-                color: Colors.foreground
-                font.pixelSize: hero.size
-            }
-        }
-
-        Soft {
-            id: dateLine
-
-            anchors.top: timeRow.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: scene.lock.dateText
-            color: Qt.alpha(Colors.foreground, 0.85)
-            font.pixelSize: Math.round(hero.size * 0.17)
-            font.letterSpacing: 3
-            font.capitalization: Font.AllUppercase
-        }
-
-        // What the music player has loaded
-        Soft {
-            anchors.top: dateLine.bottom
-            anchors.topMargin: Style.spaceXl
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(implicitWidth, scene.contentW)
-            elide: Text.ElideRight
-            text: (scene.lock.nowArtist !== "" ? scene.lock.nowArtist + "  \u00b7  " : "") + scene.lock.nowTitle
-            color: Qt.alpha(Colors.foreground, 0.78)
-            font.pixelSize: Style.fontMd
-            opacity: scene.lock.nowActive ? 1 : 0
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: Style.baseMs
-                }
-            }
-        }
-    }
-
-    // ---- Stage ------------------------------------------------------------
+    // ---- The lock ---------------------------------------------------------
+    // It fades in and out and shakes after a refusal; nothing else on it moves
     Item {
         id: stage
 
-        readonly property real cx: width / 2
-
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        width: scene.width
-        height: scene.bodyH
-        clip: true
-        opacity: Math.min(1, scene.reveal * 3)
+        anchors.fill: parent
+        opacity: scene.lock.reveal * (1 - scene.lock.leave)
+        // It rises a little as it arrives, and shakes after a refusal
         transform: Translate {
-            y: (1 - scene.reveal) * (stage.height + 40)
+            x: scene.lock.shakeX
+            y: (1 - scene.lock.reveal) * 8
         }
 
-        // Pressing anywhere on the stage gives the keyboard back to the
-        // password field
-        MouseArea {
-            anchors.fill: parent
-            onPressed: pw.forceActiveFocus()
-        }
-
-        // Feathered backing: a soft dark ellipse keeps the words and the
-        // scale readable over any wallpaper without a visible panel edge. It
-        // sits in the middle column, not the whole width.
-        Item {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: scene.contentW
-            height: parent.height
-
-            StageShade {
-                yScale: 0.62
-            }
-        }
-
-        // Low light on the horizon, wide as the screen, in the colour of the
-        // moment: the accent, red after a refusal, green once it has worked.
+        // A soft dark pool behind the dial, with no visible edge, so the ticks
+        // read on any wallpaper
         Shape {
-            id: horizon
+            id: shade
 
-            readonly property real r: stage.width * 0.4
+            readonly property real r: scene.ringR * 1.25
 
-            x: stage.cx - r
-            y: stage.height - r
+            x: scene.dialX - r
+            y: scene.dialY - r
             width: r * 2
             height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: horizon.r
-                origin.y: horizon.r
-                yScale: 0.42
-            }
 
             ShapePath {
                 strokeColor: "transparent"
                 startX: 0
-                startY: horizon.r
+                startY: shade.r
 
                 fillGradient: RadialGradient {
-                    centerX: horizon.r
-                    centerY: horizon.r
-                    centerRadius: horizon.r
-                    focalX: horizon.r
-                    focalY: horizon.r
+                    centerX: shade.r
+                    centerY: shade.r
+                    centerRadius: shade.r
+                    focalX: shade.r
+                    focalY: shade.r
 
                     GradientStop {
                         position: 0
-                        color: Qt.alpha(scene.tone, 0.18)
+                        color: Qt.alpha(scene.wash, 0.5)
                     }
                     GradientStop {
-                        position: 0.5
-                        color: Qt.alpha(scene.tone, 0.07)
+                        position: 0.75
+                        color: Qt.alpha(scene.wash, 0.34)
                     }
                     GradientStop {
                         position: 1
-                        color: Qt.alpha(scene.tone, 0)
+                        color: Qt.alpha(scene.wash, 0)
                     }
                 }
 
                 PathArc {
-                    x: horizon.r * 2
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
+                    x: shade.r * 2
+                    y: shade.r
+                    radiusX: shade.r
+                    radiusY: shade.r
                 }
                 PathArc {
                     x: 0
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
+                    y: shade.r
+                    radiusX: shade.r
+                    radiusY: shade.r
                 }
             }
         }
 
-        // ---- The ruler: fine ticks curving across the screen over the disc.
-        // The ones by the middle rise like a magnifier; the rest of the ruler
-        // shows the state (a scan while checking, red after a refusal, green
-        // filling outward from the middle on success). Typing turns it. -----
-        Repeater {
-            model: scene.tickN
+        // The outer ruler: fine ticks, a taller one every fifth, as on the
+        // screenshot frame. Drawn once into a texture; turning it is nearly
+        // free.
+        Item {
+            id: outerRing
 
-            delegate: Rectangle {
-                id: tick
+            readonly property real r: scene.ringR
 
-                required property int index
+            x: scene.dialX - r
+            y: scene.dialY - r
+            width: r * 2
+            height: r * 2
+            rotation: scene.outerA
+            // Opens outwards as it leaves, a little ahead of the inner one
+            scale: 1 + 0.18 * scene.lock.leave
+            layer.enabled: true
+            layer.smooth: true
+            layer.textureSize: Qt.size(width * 1.5, height * 1.5)
 
-                readonly property real s: (index - scene.tickN / 2) * scene.tickGap - scene.mod(scene.lock.turn - scene.spinIn * scene.stepPx * 0.5, scene.tickGap * 10)
-                readonly property real a: s / scene.dialNow
-                readonly property real rr: scene.dialNow - scene.ruleDrop
-                readonly property bool major: index % 10 === 0
-                // The magnifier by the middle, and the scan going past
-                readonly property real near: Math.max(0, 1 - Math.abs(s) / 90)
-                readonly property real wave: Math.max(0, 1 - Math.abs(x - stage.cx - scene.scan * stage.width / 2) / 90) * scene.scanOn
-                readonly property real hot: Math.max(near, wave)
-                // 1 once the green has reached this tick
-                readonly property real okMix: scene.clamp((scene.okFill * 1.35 - Math.abs(x - stage.cx) / (stage.width / 2)) / 0.35, 0, 1)
-                // Ticks the state is lighting get more solid
-                readonly property real solid: {
-                    const rest = major ? 0.46 : 0.28;
-                    return rest + (1 - rest) * Math.max(0.7 * hot, 0.6 * scene.flush, 0.85 * okMix);
+            Repeater {
+                model: scene.outerCount
+
+                delegate: Rectangle {
+                    required property int index
+
+                    readonly property bool major: index % 5 === 0
+
+                    x: outerRing.r - width / 2
+                    y: 1
+                    width: 1.5
+                    height: major ? 11 : 6
+                    radius: 0.75
+                    antialiasing: true
+                    color: Qt.alpha(Colors.foreground, major ? 0.42 : 0.22)
+                    transform: Rotation {
+                        origin.x: width / 2
+                        origin.y: outerRing.r - 1
+                        angle: index * 360 / scene.outerCount
+                    }
                 }
-                readonly property color hue: Qt.tint(Qt.tint(Qt.tint(Colors.foreground, Qt.alpha(Colors.accent, 0.7 * hot)), Qt.alpha(Colors.critical, 0.85 * scene.flush)), Qt.alpha(Colors.success, 0.95 * okMix))
-
-                x: stage.cx + rr * Math.sin(a) - 0.75
-                y: scene.topY + scene.dialNow - rr * Math.cos(a)
-                width: 1.5
-                height: (major ? 9 : 5) + 6 * hot + 4 * okMix
-                radius: 0.75
-                antialiasing: true
-                visible: Math.abs(a) < 1.2
-                transformOrigin: Item.Top
-                rotation: a * 180 / Math.PI
-                color: scene.spectral(hue, x, solid)
-                opacity: scene.clamp((stage.cx - Math.abs(x - stage.cx)) / 90, 0, 1) * scene.clamp(scene.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1)
             }
         }
 
-        // The middle of the ruler: the 2px marker, in the colour of the moment
+        // The inner dial: the small dial of ticks the screenshot tool turns at
+        // the middle of a region. 36 ticks, every ninth in the accent. It
+        // turns the other way, and is also drawn once.
+        Item {
+            id: innerRing
+
+            readonly property real r: scene.innerR
+
+            x: scene.dialX - r
+            y: scene.dialY - r
+            width: r * 2
+            height: r * 2
+            rotation: scene.innerA
+            scale: 1 + 0.1 * scene.lock.leave
+            layer.enabled: true
+            layer.smooth: true
+            layer.textureSize: Qt.size(width * 1.5, height * 1.5)
+
+            Repeater {
+                model: scene.innerCount
+
+                delegate: Rectangle {
+                    required property int index
+
+                    readonly property bool major: index % 9 === 0
+
+                    x: innerRing.r - width / 2
+                    y: 1
+                    width: 1.5
+                    height: major ? 11 : 5
+                    radius: 0.75
+                    antialiasing: true
+                    color: major ? Colors.accent : Qt.alpha(Colors.foreground, 0.4)
+                    transform: Rotation {
+                        origin.x: width / 2
+                        origin.y: innerRing.r - 1
+                        angle: index * 360 / scene.innerCount
+                    }
+                }
+            }
+        }
+
+        // The marker: the screenshot ruler's 2px accent line, on the side of
+        // the dial that faces the time, pointing in. It turns red after a
+        // refusal.
         Rectangle {
-            x: stage.cx - 1
-            y: scene.ruleY - 3
+            x: scene.dialX - scene.ringR - 2
+            y: scene.dialY - 1
+            width: 16
+            height: 2
+            radius: 1
+            color: scene.lock.tone
+            opacity: 0.9
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Style.moveMs
+                }
+            }
+        }
+
+        // The seconds: one taller accent tick on the outer ring, going round
+        // once a minute from the top. It wakes once a second, and only while
+        // it shows.
+        SystemClock {
+            id: secClock
+
+            precision: SystemClock.Seconds
+            enabled: scene.lock.reveal > 0.01 && !scene.lock.succeeded
+        }
+
+        Rectangle {
+            readonly property real ang: secClock.date.getSeconds() * 6
+
+            x: scene.dialX + scene.ringR * Math.sin(ang * Math.PI / 180) - width / 2
+            y: scene.dialY - scene.ringR * Math.cos(ang * Math.PI / 180)
             width: 2
             height: 16
             radius: 1
-            color: scene.tone
-            opacity: scene.clamp(scene.reveal * 2 - 0.5, 0, 1)
+            antialiasing: true
+            transformOrigin: Item.Top
+            rotation: ang
+            color: Colors.accent
+            opacity: scene.lock.succeeded ? 0 : 0.7
         }
 
-        // ---- The disc: a lock, and a tick once it has worked ------------
-        Item {
-            id: disc
+        // ---- The time ------------------------------------------------------
+        // Left-aligned, vertically centred on the dial: a small line saying what
+        // this is, the time large and light, the date under it, then the
+        // greeting and what is going on. It slides away to the left as the
+        // dial opens.
+        Column {
+            id: block
 
-            // Swung left while arriving, right while leaving
-            readonly property real s: -scene.spinIn * scene.stepPx
-            readonly property real a: s / scene.dialNow
-            readonly property real px: stage.cx + scene.dialNow * Math.sin(a)
-            // It lifts a little off the dial, like a selected disc
-            readonly property real py: scene.topY + scene.dialNow * (1 - Math.cos(a)) - 5
-            readonly property real appear: scene.stage_(0.1, 0.6)
-            readonly property real edge: scene.clamp((stage.cx - Math.abs(px - stage.cx)) / 90, 0, 1)
-
-            width: scene.discSize
-            height: scene.discSize
-            x: px - width / 2 + scene.shakeX
-            y: py - height / 2
-            z: 20
-            opacity: appear * edge
-            scale: 0.55 + 0.45 * scene.backOut(appear)
-            // Tilts along the dial, and rises from below as it arrives
-            rotation: a * 180 / Math.PI * 0.6
+            x: scene.textX
+            y: Math.round(scene.dialY - height / 2)
+            spacing: 0
             transform: Translate {
-                y: (1 - disc.appear) * 30
+                x: -28 * scene.lock.leave
             }
 
-            // Ring that leaves the disc: on a refusal and on success
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width + 14 + 34 * scene.ring
-                height: width
-                radius: width / 2
-                color: "transparent"
-                antialiasing: true
-                visible: scene.ring > 0.001 && scene.ring < 0.999
-                border.width: 1.5
-                border.color: Qt.alpha(scene.tone, 0.5 * (1 - scene.ring))
-            }
-
-            // Breathing ring around the disc
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width + 12
-                height: width
-                radius: width / 2
-                color: "transparent"
-                antialiasing: true
-                border.width: 1
-                border.color: Qt.alpha(scene.tone, 0.25 + 0.25 * scene.breath)
-            }
-
-            // Glass, like the bar: one flat surface with a hairline outline in
-            // the colour of the moment (washed with the palette while the
-            // dial arrives)
-            Rectangle {
-                anchors.fill: parent
-                radius: width / 2
-                antialiasing: true
-                color: Style.card
-                border.width: 1
-                border.color: scene.spectral(scene.tone, disc.px, 0.9)
-            }
-
-            // The soft tint inside the glass
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                radius: width / 2
-                antialiasing: true
-                color: Qt.alpha(scene.tone, Style.tintAlpha)
-            }
-
-            // Light catching the top edge, as on the bar
-            EdgeLight {
-                corner: disc.width * 0.4
-            }
-
-            // Upright while the disc tilts with the dial
+            // What this screen is
             Txt {
-                anchors.centerIn: parent
-                text: scene.succeeded ? Icons.check : Icons.lock
-                color: scene.tone
-                font.pixelSize: disc.width * 0.38
-                rotation: -disc.rotation
-            }
-        }
-
-        // Underline under the disc; it breathes with the ring
-        Rectangle {
-            width: 20 + 10 * scene.breath
-            height: 2
-            radius: 1
-            color: scene.tone
-            x: disc.px - width / 2 + scene.shakeX
-            y: disc.py + scene.discSize / 2 + 6
-            rotation: disc.a * 180 / Math.PI
-            opacity: scene.clamp(scene.reveal * 2 - 0.6, 0, 1)
-        }
-
-        // ---- The middle: what this is, who it greets, what is going on ---
-        Item {
-            id: readout
-
-            x: stage.cx - width / 2
-            y: scene.readoutTop
-            width: Math.min(520, stage.width - 48)
-            height: readCol.implicitHeight
-            // Clicks pass through to the stage
-            enabled: false
-            opacity: scene.stage_(0.25, 0.8)
-            transform: Translate {
-                y: (1 - scene.stage_(0.25, 0.8)) * 12
+                text: scene.lock.modeLine
+                color: Qt.alpha(Colors.foreground, 0.62)
+                font.pixelSize: Style.fontSm
+                font.letterSpacing: 2
+                font.capitalization: Font.AllUppercase
             }
 
-            Column {
-                id: readCol
+            Item {
+                width: 1
+                height: Math.round(scene.clockSize * 0.12)
+            }
 
-                width: parent.width
-                spacing: Style.spaceXs
+            // The time: large and light
+            Row {
+                id: timeRow
 
-                // What this screen is
-                Soft {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: scene.lock.modeText
-                    color: scene.succeeded ? Colors.success : Qt.alpha(Colors.foreground, 0.78)
-                    font.pixelSize: Style.fontSm
-                    font.letterSpacing: 1.4
-                    font.capitalization: Font.AllUppercase
+                Txt {
+                    text: scene.lock.hourText
+                    color: Qt.alpha(Colors.foreground, 0.94)
+                    font.pixelSize: scene.clockSize
+                    font.weight: Font.Light
+                    font.letterSpacing: -Math.round(scene.clockSize * 0.035)
                 }
 
-                // The hello
-                Soft {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: scene.lock.greeting
-                    color: Colors.foreground
-                    font.pixelSize: Style.fontLg
-                    font.bold: true
+                Txt {
+                    text: ":"
+                    color: scene.lock.tone
+                    font.pixelSize: scene.clockSize
+                    font.weight: Font.Light
+                    // Lifted to the optical middle of the digits
+                    transform: Translate {
+                        y: -Math.round(scene.clockSize * 0.05)
+                    }
                 }
 
-                // What is going on. The line is always there, so the dial
-                // never jumps.
-                Item {
-                    width: parent.width
-                    height: 18
+                Txt {
+                    id: minTxt
 
-                    Soft {
-                        width: parent.width
-                        height: parent.height
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                        text: scene.lock.statusText
-                        color: scene.lock.statusIsError ? Colors.critical : (scene.succeeded ? Colors.success : Colors.muted)
-                        font.pixelSize: Style.fontMd
+                    text: scene.lock.minuteText
+                    color: Qt.alpha(Colors.foreground, 0.94)
+                    font.pixelSize: scene.clockSize
+                    font.weight: Font.Light
+                    font.letterSpacing: -Math.round(scene.clockSize * 0.035)
+                    transform: Translate {
+                        id: minSlide
+                    }
+                    // The minute slides up into place when it changes
+                    onTextChanged: minAnim.restart()
 
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: Style.baseMs
-                            }
+                    ParallelAnimation {
+                        id: minAnim
+
+                        NumberAnimation {
+                            target: minSlide
+                            property: "y"
+                            from: 6
+                            to: 0
+                            duration: Style.moveMs
+                            easing.type: Style.easeMove
+                        }
+                        NumberAnimation {
+                            target: minTxt
+                            property: "opacity"
+                            from: 0.35
+                            to: 1
+                            duration: Style.moveMs
+                            easing.type: Style.easeMove
                         }
                     }
                 }
-            }
-        }
 
-        // ---- Under the readout: the few things you can do ---------------
-        Row {
-            id: controls
+                // AM or PM, small, on the line of the digits
+                Item {
+                    width: period.implicitWidth + 14
+                    height: 1
 
-            x: stage.cx - width / 2
-            y: scene.controlsY
-            spacing: Style.spaceMd
-            // The net under the stage width: if the row is still wider than
-            // the stage it shrinks to fit
-            scale: Math.min(1, (stage.width - 32) / Math.max(1, controls.implicitWidth))
-            opacity: scene.stage_(0.35, 0.9)
-            transform: Translate {
-                y: (1 - scene.stage_(0.35, 0.9)) * 10
-            }
+                    Txt {
+                        id: period
 
-            // Show what you type
-            IconButton {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !scene.checking && !scene.succeeded
-                glyph: scene.showPw ? Icons.eyeOff : Icons.eye
-                on: scene.showPw
-                onClicked: {
-                    scene.showPw = !scene.showPw;
-                    pw.forceActiveFocus();
+                        x: 14
+                        y: Math.round(scene.clockSize * 1.0 - implicitHeight * 0.82)
+                        text: scene.lock.periodText
+                        color: Qt.alpha(Colors.foreground, 0.62)
+                        font.pixelSize: Math.round(scene.clockSize * 0.16)
+                        font.letterSpacing: 2
+                    }
                 }
             }
 
-            Repeater {
-                model: scene.lock.actions
+            // The date, after a short hairline in the accent
+            Row {
+                spacing: Style.spaceLg
+                height: dateLine.implicitHeight
 
-                delegate: Row {
-                    id: entry
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 36
+                    height: 1.5
+                    radius: 0.75
+                    color: Colors.accent
+                    opacity: 0.8
+                }
 
-                    required property var modelData
-                    required property int index
-
-                    readonly property bool armed: scene.lock.armed === index
+                Txt {
+                    id: dateLine
 
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spaceMd
-
-                    // A divider where one group ends and the next begins
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 1
-                        height: 16
-                        color: Style.outline
-                        visible: entry.index > 0 && scene.lock.actions[entry.index - 1].group !== entry.modelData.group
-                    }
-
-                    TextButton {
-                        compact: true
-                        enabled: entry.modelData.enabled !== false && !scene.succeeded
-                        glyph: entry.modelData.glyphNow ? entry.modelData.glyphNow() : entry.modelData.glyph
-                        text: entry.armed ? "Press again" : (entry.modelData.showLabel === true ? entry.modelData.label : "")
-                        danger: entry.armed
-                        armed: entry.armed
-                        onClicked: {
-                            scene.lock.press(entry.index);
-                            pw.forceActiveFocus();
-                        }
-
-                        // The button picked with the keyboard
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: -3
-                            radius: parent.radius + 3
-                            color: "transparent"
-                            border.width: 1.5
-                            border.color: Colors.accent
-                            antialiasing: true
-                            opacity: scene.lock.pick === entry.index ? 0.8 : 0
-
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: Style.fadeMs
-                                }
-                            }
-                        }
-                    }
+                    text: scene.lock.dateText
+                    color: Qt.alpha(Colors.foreground, 0.7)
+                    font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.11))
+                    font.letterSpacing: 4
+                    font.capitalization: Font.AllUppercase
                 }
             }
-        }
 
-        // ---- The password pill, at the foot -------------------------------
-        // The shell's SearchField on a glass backing, so it reads on any
-        // wallpaper.
-        Item {
-            id: pill
-
-            // Dimmed once it has worked
-            property real dim: scene.succeeded ? 0.5 : 1
-
-            x: stage.cx - width / 2
-            y: scene.pillY
-            width: Math.min(340, stage.width - 48)
-            height: scene.pillH
-            opacity: scene.stage_(0.4, 0.95) * dim
-            transform: Translate {
-                y: (1 - scene.stage_(0.4, 0.95)) * 10
+            Item {
+                width: 1
+                height: Math.round(scene.clockSize * 0.3)
             }
 
-            Behavior on dim {
+            // The greeting
+            Txt {
+                text: scene.lock.greeting
+                color: Colors.foreground
+                font.pixelSize: 22
+                font.bold: true
+                font.letterSpacing: -0.2
+            }
+
+            Item {
+                width: 1
+                height: Style.spaceXs
+            }
+
+            // What is going on, in words
+            Txt {
+                id: statusLine
+
+                text: scene.lock.statusText
+                color: scene.lock.statusIsError ? Colors.critical : (scene.lock.succeeded ? Colors.foreground : scene.softText)
+                font.pixelSize: Style.fontMd
+                onTextChanged: lineFade.restart()
+
                 NumberAnimation {
+                    id: lineFade
+
+                    target: statusLine
+                    property: "opacity"
+                    from: 0.3
+                    to: 1
                     duration: Style.moveMs
                     easing.type: Style.easeMove
                 }
-            }
 
-            Rectangle {
-                anchors.fill: parent
-                radius: height / 2
-                antialiasing: true
-                color: Style.surface
-                border.width: 1
-                // Red after a refusal (the field is empty again, so the
-                // field's own edge does not cover it)
-                border.color: scene.lock.statusIsError ? Qt.alpha(Colors.critical, 0.7) : Style.outline
-
-                Behavior on border.color {
+                Behavior on color {
                     ColorAnimation {
                         duration: Style.baseMs
                     }
                 }
-            }
-
-            // Light catching the top edge, as on the bar
-            EdgeLight {
-                corner: pill.height
-            }
-
-            SearchField {
-                id: pw
-
-                anchors.fill: parent
-                glyph: Icons.lock
-                placeholder: scene.lock.placeholder
-                // The lock breathes while the password is checked
-                busy: scene.checking
-                clearable: !scene.checking && !scene.succeeded
-
-                // One password for every screen: this field writes it, and
-                // shows it again when the owner empties it
-                onTextChanged: {
-                    if (scene.lock.password !== text)
-                        scene.lock.password = text;
-                }
-                Keys.onPressed: event => scene.handleKey(event)
-            }
-
-            Connections {
-                target: scene.lock
-
-                function onPasswordChanged() {
-                    if (pw.text !== scene.lock.password)
-                        pw.text = scene.lock.password;
-                }
-            }
-
-            // A password field is a TextInput that hides what you type (unless
-            // you ask to see it) and takes no suggestions. Read-only rather
-            // than disabled, so it keeps the cursor.
-            Binding {
-                target: pw.input
-                property: "echoMode"
-                value: scene.showPw ? TextInput.Normal : TextInput.Password
-            }
-            Binding {
-                target: pw.input
-                property: "readOnly"
-                value: scene.checking || scene.succeeded
-            }
-
-            Component.onCompleted: {
-                pw.input.passwordCharacter = "\u2022";
-                pw.input.inputMethodHints = Qt.ImhSensitiveData | Qt.ImhNoPredictiveText;
             }
         }
     }

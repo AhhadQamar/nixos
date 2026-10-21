@@ -1,0 +1,64 @@
+/*
+ * Firefox interface tweaks: rounded controls and a little air, like the
+ * Quickshell bar. Nothing is hidden, so the browser stays fully usable.
+ *
+ * Colours: none are set here on purpose. Pywalfox recolours Firefox's own
+ * theme variables whenever the wallpaper changes, and everything below only
+ * uses those, so the colours follow the wallpaper without a restart.
+ *
+ * Selectors: these depend on Firefox's internal interface and can change in an
+ * update. If a rule stops working, delete it; the browser just looks default.
+ * Each block says which part of the interface it touches.
+ */
+
+:root {
+  --lt-radius: 10px;
+  --lt-radius-small: 7px;
+}
+
+/* Address bar: a rounded pill with a thin border; no shadow. */
+#urlbar-background {
+  border-radius: var(--lt-radius) !important;
+  box-shadow: none !important;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent) !important;
+}
+
+/* Address bar while typing: the border takes the theme's focus colour. */
+#urlbar[focused="true"] > #urlbar-background {
+  border-color: var(--focus-outline-color, currentColor) !important;
+}
+
+/* The dropdown under the address bar. */
+#urlbar .urlbarView-row,
+#urlbar .urlbarView-row-inner {
+  border-radius: var(--lt-radius-small) !important;
+}
+
+/* Toolbar buttons (back, reload, extensions, menu). */
+toolbarbutton.toolbarbutton-1,
+#nav-bar .toolbarbutton-1 > .toolbarbutton-icon {
+  border-radius: var(--lt-radius-small) !important;
+}
+
+/* Tabs, in both the vertical sidebar and the horizontal strip. */
+.tabbrowser-tab > .tab-stack > .tab-background {
+  border-radius: var(--lt-radius) !important;
+  box-shadow: none !important;
+}
+
+/* A little space between vertical tabs. */
+#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab {
+  padding-block: 1px !important;
+}
+
+/* The sidebar's own buttons (expand and collapse, new tab). */
+#sidebar-main .tools-and-extensions toolbarbutton,
+#sidebar-main .actions-list toolbarbutton {
+  border-radius: var(--lt-radius-small) !important;
+}
+
+/* Menus and popups. */
+menupopup,
+panel {
+  --panel-border-radius: var(--lt-radius);
+}

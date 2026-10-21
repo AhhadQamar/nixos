@@ -1,0 +1,11 @@
+" Tridactyl settings. Loaded through the native messenger on startup.
+" Home Manager appends the new-tab lines (see firefox/default.nix).
+" Keys not mentioned here keep Tridactyl's defaults:
+"   j/k scroll   d/u half page   gg/G top/bottom   f follow link (hints)
+"   J/K tab left/right   o/t open here/new tab   x close tab   u undo close
+"   / search   H/L back/forward   yy copy URL   p/P open clipboard URL
+"   b tab list   :  command line
+
+colourscheme dark
+set smoothscroll true
+set modeindicator true

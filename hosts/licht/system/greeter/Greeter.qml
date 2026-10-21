@@ -3,14 +3,15 @@
 // LockModel.qml and the look is LockStage.qml, the same as the screen lock
 // (see Lock.qml), so the two are one design.
 //
-// It runs in cage, a kiosk compositor started by greetd (see default.nix).
-// Cage shows one fullscreen window, so the greeter is a single ordinary window
-// on one screen (the shell's PanelWindows need layer-shell, which cage lacks).
+// It runs in cage, a kiosk compositor started by greetd (see
+// system/greeter/default.nix). Cage shows one fullscreen window, so the
+// greeter is a single ordinary window on one screen (the shell's PanelWindows
+// need layer-shell, which cage lacks).
 //
 // The order of things is greetd's: we ask for a session for the user, greetd
 // runs PAM and asks for the password, we answer, and if PAM is happy greetd
-// says it is ready. Then the screen says so (the ruler fills green and the
-// dial collapses) and only after that do we hand greetd the command that
+// says it is ready. Then the screen says so (the ring fills and the screen
+// fades) and only after that do we hand greetd the command that
 // starts your real session and quit. A wrong password ends that attempt, and
 // we start a new one.
 //
@@ -36,38 +37,6 @@ Scope {
     readonly property var sessionCmd: (Quickshell.env("GREETER_SESSION") || "").split(" ").filter(w => w !== "")
     readonly property string wallpaper: Quickshell.env("GREETER_WALLPAPER") || ""
 
-    // Power, for when you do not want to log in. Reboot and shutdown ask twice.
-    // (No player, volume or brightness here: the greeter has none of them.)
-    readonly property string systemctl: "/run/current-system/sw/bin/systemctl"
-    readonly property var actions: [
-        {
-            "key": "suspend",
-            "label": "Suspend",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0904),
-            "showLabel": true,
-            "run": () => Quickshell.execDetached([systemctl, "suspend"])
-        },
-        {
-            "key": "reboot",
-            "label": "Reboot",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0709),
-            "showLabel": true,
-            "critical": true,
-            "run": () => Quickshell.execDetached([systemctl, "reboot"])
-        },
-        {
-            "key": "shutdown",
-            "label": "Shutdown",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0425),
-            "showLabel": true,
-            "critical": true,
-            "run": () => Quickshell.execDetached([systemctl, "poweroff"])
-        }
-    ]
-
     // ---- State ----------------------------------------------------------
     // Password sent, waiting for greetd's answer
     property bool checking: false
@@ -86,10 +55,9 @@ Scope {
         modeText: "Sign in"
         okText: "Signing in\u2026"
         brokenText: "Can't reach the login service"
-        actions: root.actions
 
         onSubmitRequested: root.submit()
-        // The unlock has been seen and the dial has collapsed. greetd wants
+        // The unlock has been seen and the screen has faded. greetd wants
         // us gone as soon as the session is named, so launch quits Quickshell
         // (and with it cage).
         onFinished: Greetd.launch(root.sessionCmd)
@@ -164,7 +132,7 @@ Scope {
         }
 
         // Logged in. The screen says so first; the session starts when the
-        // dial has collapsed (the model's `finished`).
+        // screen has faded (the model's `finished`).
         function onReadyToLaunch() {
             if (root.sessionCmd.length === 0) {
                 console.warn("greeter: no session to start (GREETER_SESSION)");

@@ -61,7 +61,7 @@ alias u='"$NH_FLAKE"/rebuild'  # format, scan for secrets, switch, commit, push
 alias ub='nh os boot'       # build for next boot, don't switch now
 alias ut='nh os test'       # activate temporarily, don't persist to boot
 alias uu='nix flake update --flake "$NH_FLAKE" && u'    # bump all inputs, then rebuild
-alias nhc='nh clean all'    # gc old generations
+alias nhc='nh clean all --keep 3'    # gc old generations
 alias nhs='nh search'       # package search
 # 'i' = try a package in a throwaway shell (does NOT persist — nothing
 # to uninstall after, just exit the shell). Closest thing to `pacman -S`
