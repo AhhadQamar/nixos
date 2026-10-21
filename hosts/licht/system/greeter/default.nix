@@ -17,24 +17,30 @@
   user = "licht";
   home = config.users.users.${user}.home;
 
-  # What the greeter shares with the shell: the same tokens, colours and
-  # controls, so the two never drift apart. Every file here must come with
-  # everything it uses (SearchField needs KeyCap, for one): QML only finds a
-  # component that sits in the same folder, and a missing one stops the whole
-  # greeter from loading.
+  # What the greeter shares with the shell: the same tokens, colours, controls
+  # and the whole design of the lock, so the login screen and the screen lock
+  # never drift apart. Every file here must come with everything it uses
+  # (LockStage needs the buttons, the field and the glass, for one): QML only
+  # finds a component that sits in the same folder, and a missing one stops
+  # the whole greeter from loading.
   shellDir = ../../modules/desktop/quickshell/config;
   shared = [
+    # Tokens and primitives
     "Style.qml"
     "Colors.qml"
     "Icons.qml"
     "Txt.qml"
-    "KeyCap.qml"
-    "SearchField.qml"
-    # LockHud's button row (needs only Style, Colors and Txt)
+    # Controls (they need only Style, Colors, Txt and Icons)
+    "IconButton.qml"
     "TextButton.qml"
-    # The lock's design, shared so the login screen and the lock never drift
-    "LockHud.qml"
+    "SearchField.qml"
+    # Glass (Style and Colors)
+    "EdgeLight.qml"
     "StageShade.qml"
+    # The lock's design: the state and motion (LockModel) and the look
+    # (LockStage), shared with Lock.qml
+    "LockModel.qml"
+    "LockStage.qml"
   ];
 
   greeterConfig = pkgs.linkFarm "qs-greeter-config" (
