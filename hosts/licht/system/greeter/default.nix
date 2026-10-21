@@ -30,10 +30,11 @@
     "Colors.qml"
     "Icons.qml"
     "Txt.qml"
-    # Controls (they need only Style, Colors, Txt and Icons)
+    # Controls (they need only Style, Colors, Txt and Icons; KeyCap draws the key hints)
     "IconButton.qml"
     "TextButton.qml"
     "SearchField.qml"
+    "KeyCap.qml"
     # Glass (Style and Colors)
     "EdgeLight.qml"
     "StageShade.qml"

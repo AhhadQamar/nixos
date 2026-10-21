@@ -1,7 +1,7 @@
 // Lock.qml
 // The screen lock. This file holds the mechanics; the state and motion are
 // LockModel.qml and the look of each screen is LockStage.qml, both shared with
-// the login screen (the greeter's Greeter.qml) so the two never drift apart.
+// the login screen (Greeter.qml) so the two never drift apart.
 //
 // How it works: WlSessionLock asks the compositor to lock the session. From
 // then on the compositor shows nothing but our surfaces (one per screen) and
@@ -14,8 +14,9 @@
 // shows the same dots, and you can type with either screen focused. Two
 // contexts would mean two attempts running at once for a single password.
 //
-// Success is not instant: the ruler fills green, the dial collapses, and only
-// then does the lock open (about a second). The password has been checked by
+// Success is not instant: the password box accepts it (a tick, "Welcome back"),
+// the ruler ripples and the lock turns into a tick, then the whole screen lifts
+// away, and only then does the lock open (a little over a second and a half). The password has been checked by
 // then, and if anything goes wrong in that second the screen simply stays
 // locked.
 //
@@ -28,14 +29,16 @@
 // hypridle (idle, and before sleep) run `loginctl lock-session`, and
 // hypridle's lock_cmd calls the command above.
 //
-// Volume, brightness and mute are not buttons here: their keys are bound with
+// Volume and brightness are not discs here: their keys are bound with
 // `locked = true` in Hyprland, so they work on the lock screen as they are.
+// Mute and Mute mic are discs, and show whether they are muted right now.
 
 import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Services.Pam
+import Quickshell.Services.Pipewire
 
 Scope {
     id: root
@@ -44,24 +47,39 @@ Scope {
     // The wallpaper switcher keeps this link pointing at the current one
     readonly property string wallpaper: Config.wallpaperDir + "/.current_wallpaper"
 
-    // The buttons under the greeting, in groups (see LockModel.qml). The list
-    // only changes when a track is loaded; what changes while it is up (Play
-    // and Pause) is read through functions, so it is not rebuilt under your
-    // finger.
+    // Whether the speakers and the microphone are muted right now. Pipewire
+    // objects only report this while something tracks them.
+    readonly property var sink: Pipewire.defaultAudioSink
+    readonly property var source: Pipewire.defaultAudioSource
+    readonly property bool soundMuted: sink?.audio?.muted ?? false
+    readonly property bool micMuted: source?.audio?.muted ?? false
+
+    PwObjectTracker {
+        objects: [root.sink, root.source]
+    }
+
+    // The discs on the dial (see LockModel.qml): the first half left of the
+    // lock, the rest right of it, in this order. With a track loaded the player's
+    // three discs lead, then Mute, Screen off, Suspend, Reboot and Shutdown (eight,
+    // four each side of the lock); with none, Mute mic joins them (six, three
+    // each side). The list only
+    // changes when a track is loaded; what changes while it is up (Play and
+    // Pause) is read through functions, so it is not rebuilt under your finger.
     readonly property var actions: {
         const list = [];
         if (Music.hasTrack) {
             list.push({
                 "key": "prev",
                 "label": "Previous",
-                "group": "Now playing",
+                "hintNow": () => Music.title !== "" ? Music.title : "Previous track",
                 "glyph": Icons.chevronLeft,
                 "run": () => Music.prev()
             });
             list.push({
                 "key": "play",
                 "label": "Play / Pause",
-                "group": "Now playing",
+                "labelNow": () => Music.playing ? "Pause" : "Play",
+                "hintNow": () => Music.artist !== "" ? Music.artist : "Now playing",
                 "glyph": Icons.play,
                 "glyphNow": () => Music.playing ? Icons.pause : Icons.play,
                 "run": () => Music.playPause()
@@ -69,35 +87,80 @@ Scope {
             list.push({
                 "key": "next",
                 "label": "Next",
-                "group": "Now playing",
+                "hintNow": () => Music.title !== "" ? Music.title : "Next track",
                 "glyph": Icons.chevronRight,
                 "run": () => Music.next()
             });
         }
+        // Quick things you want without unlocking: sound off, screen off.
+        // Mute and Mute mic say how things are right now, and light up
+        // (like a selected disc) while muted.
+        list.push({
+            "key": "mute",
+            "label": "Sound",
+            "labelNow": () => root.soundMuted ? "Sound is off" : "Sound is on",
+            "hintNow": () => root.soundMuted ? "Press to turn it on" : "Press to mute",
+            "glyph": String.fromCodePoint(0xF057E),
+            "glyphNow": () => String.fromCodePoint(root.soundMuted ? 0xF0581 : 0xF057E),
+            "activeNow": () => root.soundMuted,
+            "run": () => {
+                if (root.sink?.audio)
+                    root.sink.audio.muted = !root.sink.audio.muted;
+                else
+                    Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]);
+            }
+        });
+        // With no track loaded the player's three discs are missing, which
+        // would leave the dial one disc short on the left: the microphone
+        // takes the place, so both sides always hold the same number
+        if (!Music.hasTrack) {
+            list.push({
+                "key": "micmute",
+                "label": "Microphone",
+                "labelNow": () => root.micMuted ? "Microphone is off" : "Microphone is on",
+                "hintNow": () => root.micMuted ? "Press to turn it on" : "Press to mute",
+                "glyph": String.fromCodePoint(0xF036C),
+                "glyphNow": () => String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C),
+                "activeNow": () => root.micMuted,
+                "run": () => {
+                    if (root.source?.audio)
+                        root.source.audio.muted = !root.source.audio.muted;
+                    else
+                        Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]);
+                }
+            });
+        }
+        list.push({
+            "key": "screenoff",
+            "label": "Screen off",
+            "hint": "Any key wakes it",
+            "glyph": String.fromCodePoint(0xF0D90),
+            // Hyprland turns the screen back on at the next key or mouse
+            // move; hypridle re-applies the night light on wake, so this
+            // does the same once the screen is back
+            "run": () => Quickshell.execDetached(["sh", "-c", "hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\" })'; sleep 2; while hyprctl monitors -j | grep -q '\"dpmsStatus\": false'; do sleep 1; done; qs ipc call nightlight reapply"])
+        });
         list.push({
             "key": "suspend",
             "label": "Suspend",
-            "group": "Power",
+            "hint": "Enter to sleep",
             "glyph": String.fromCodePoint(0xF0904),
-            "showLabel": true,
             "run": () => Quickshell.execDetached(["systemctl", "suspend"])
         });
         list.push({
             "key": "reboot",
             "label": "Reboot",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0709),
-            "showLabel": true,
+            "hint": "Needs a second press",
             "critical": true,
+            "glyph": String.fromCodePoint(0xF0709),
             "run": () => Quickshell.execDetached(["systemctl", "reboot"])
         });
         list.push({
             "key": "shutdown",
             "label": "Shutdown",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0425),
-            "showLabel": true,
+            "hint": "Needs a second press",
             "critical": true,
+            "glyph": String.fromCodePoint(0xF0425),
             "run": () => Quickshell.execDetached(["systemctl", "poweroff"])
         });
         return list;
@@ -112,6 +175,7 @@ Scope {
         user: Quickshell.env("USER") || ""
         wallpaper: root.wallpaper
         modeText: "Session locked"
+        showAway: true
         okText: "Welcome back"
         brokenText: "Can't check the password"
         actions: root.actions

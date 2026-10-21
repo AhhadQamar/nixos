@@ -3,13 +3,14 @@
 // LockModel.qml and the look is LockStage.qml, the same as the screen lock
 // (see Lock.qml), so the two are one design.
 //
-// It runs in cage, a kiosk compositor started by greetd (see default.nix).
-// Cage shows one fullscreen window, so the greeter is a single ordinary window
-// on one screen (the shell's PanelWindows need layer-shell, which cage lacks).
+// It runs in cage, a kiosk compositor started by greetd (see
+// system/greeter/default.nix). Cage shows one fullscreen window, so the
+// greeter is a single ordinary window on one screen (the shell's PanelWindows
+// need layer-shell, which cage lacks).
 //
 // The order of things is greetd's: we ask for a session for the user, greetd
 // runs PAM and asks for the password, we answer, and if PAM is happy greetd
-// says it is ready. Then the screen says so (the ruler fills green and the
+// says it is ready. Then the screen says so (the ruler ripples and the
 // dial collapses) and only after that do we hand greetd the command that
 // starts your real session and quit. A wrong password ends that attempt, and
 // we start a new one.
@@ -36,34 +37,39 @@ Scope {
     readonly property var sessionCmd: (Quickshell.env("GREETER_SESSION") || "").split(" ").filter(w => w !== "")
     readonly property string wallpaper: Quickshell.env("GREETER_WALLPAPER") || ""
 
-    // Power, for when you do not want to log in. Reboot and shutdown ask twice.
-    // (No player, volume or brightness here: the greeter has none of them.)
+    // Power, for when you do not want to log in. (No player here: the greeter
+    // has none. Volume and brightness have no discs either.)
     readonly property string systemctl: "/run/current-system/sw/bin/systemctl"
     readonly property var actions: [
         {
             "key": "suspend",
             "label": "Suspend",
-            "group": "Power",
+            "hint": "Enter to sleep",
             "glyph": String.fromCodePoint(0xF0904),
-            "showLabel": true,
             "run": () => Quickshell.execDetached([systemctl, "suspend"])
+        },
+        {
+            "key": "firmware",
+            "label": "Firmware",
+            "hint": "Restart into firmware setup",
+            "critical": true,
+            "glyph": String.fromCodePoint(0xF061A),
+            "run": () => Quickshell.execDetached([systemctl, "reboot", "--firmware-setup"])
         },
         {
             "key": "reboot",
             "label": "Reboot",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0709),
-            "showLabel": true,
+            "hint": "Needs a second press",
             "critical": true,
+            "glyph": String.fromCodePoint(0xF0709),
             "run": () => Quickshell.execDetached([systemctl, "reboot"])
         },
         {
             "key": "shutdown",
             "label": "Shutdown",
-            "group": "Power",
-            "glyph": String.fromCodePoint(0xF0425),
-            "showLabel": true,
+            "hint": "Needs a second press",
             "critical": true,
+            "glyph": String.fromCodePoint(0xF0425),
             "run": () => Quickshell.execDetached([systemctl, "poweroff"])
         }
     ]
