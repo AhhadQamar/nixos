@@ -16,13 +16,13 @@
 //   deny()      the password was refused: the disc shakes, the ruler flushes red
 //   breakDown() the thing that checks passwords could not run: the same, but it
 //               stays until the next attempt
-//   accept()    the password was right. First it is accepted: the password
-//               box turns to a tick and says welcome, a ripple runs along the
-//               ruler and the lock disc turns into a tick. Then the screen
-//               leaves, as the power menu does: the dial curls back and
-//               sweeps off, the clock rises, the wash clears and the
-//               wallpaper comes into focus. `finished` follows, about a
-//               second and a quarter after accept().
+//   accept()    the password was right. First it is accepted: the dial locks
+//               on (brackets close in, a ring leaves it, a ripple runs round
+//               the rulers) and "Welcome back" is read out. Then the screen
+//               leaves, as the power menu does: the rings turn away, the
+//               clock rises, the wash clears and the wallpaper comes into
+//               focus. `finished` follows, about a second and a quarter
+//               after accept().
 //   wake()      a key or the pointer moved: undo the settling (see `calm`) and
 //               start the wait again
 //   reset()     back to nothing (arrive() does this first)

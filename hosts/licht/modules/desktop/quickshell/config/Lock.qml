@@ -11,14 +11,15 @@
 // a wrong password, a PAM error or anything unexpected leaves it locked.
 //
 // One PAM context and one shared password for the whole lock: every screen
-// shows the same dots, and you can type with either screen focused. Two
-// contexts would mean two attempts running at once for a single password.
+// shows the same dial, lit by what you type, and you can type with either
+// screen focused. Two contexts would mean two attempts running at once for a
+// single password.
 //
-// Success is not instant: the password box accepts it (a tick, "Welcome back"),
-// the ruler ripples and the lock turns into a tick, then the whole screen lifts
-// away, and only then does the lock open (a little over a second and a half). The password has been checked by
-// then, and if anything goes wrong in that second the screen simply stays
-// locked.
+// Success is not instant: the dial locks on (brackets close in, a ring leaves it
+// and "Welcome back" is read out), then the rings turn away and the screen
+// lifts, and only then does the lock open (about a second and a half). The
+// password has been checked by then, and if anything goes wrong in that time
+// the screen simply stays locked.
 //
 //   qs ipc call lock lock
 //
