@@ -1,0 +1,154 @@
+/* Licht new tab: styles. Colours come from the Firefox theme, see newtab.js. */
+:root {
+  color-scheme: dark;
+  /* newtab.js replaces these five with the colours of the current Firefox theme
+     (the one Pywalfox sets from your wallpaper). These are the fallbacks. */
+  --bg: #16181d;
+  --fg: #d7dae0;
+  --accent: #7aa2f7;
+  --surface: #1f2229;
+  --muted: color-mix(in srgb, var(--fg) 45%, var(--bg));
+  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
+  --sans: Rubik, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding: 0 8vw;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: var(--sans);
+  /* A faint wash of the accent in the lower left corner, behind the ruler. */
+  background:
+    radial-gradient(70rem 32rem at 0% 100%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 70%),
+    var(--bg);
+}
+
+main {
+  align-self: center;
+  width: min(46rem, 100%);
+}
+
+/* The time: very light and very large, the colon pushed back so the digits lead. */
+#time {
+  margin: 0;
+  font-family: var(--mono);
+  font-weight: 200;
+  font-size: clamp(5rem, 15vw, 12rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+#time .colon { color: var(--muted); }
+
+#date {
+  margin: 1.1rem 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 1.15rem;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+}
+
+/* Search: a glass pill with a hairline of light along its top edge,
+   the same shape language as the Quickshell bar and panels. */
+form {
+  position: relative;
+  margin-top: 2.6rem;
+  width: min(34rem, 100%);
+}
+form::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--fg) 22%, transparent), transparent);
+  pointer-events: none;
+}
+input {
+  width: 100%;
+  padding: 0.95rem 1.4rem;
+  font: inherit;
+  font-size: 1.05rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 16px;
+  outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+input::placeholder { color: var(--muted); }
+input:focus {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+/* The day as a ruler: one tick per quarter hour, the part already gone lit. */
+#day {
+  position: relative;
+  padding-bottom: 3.2rem;
+}
+#ruler {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 3.2rem;
+}
+.tick {
+  width: 1px;
+  height: 0.7rem;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.tick.hour { height: 1.5rem; }
+.tick.past { background: var(--accent); }
+.tick.hour.past { background: var(--accent); }
+
+/* The one thing that moves: on load the lit ticks switch on from midnight to now. */
+@media (prefers-reduced-motion: no-preference) {
+  .tick.past.sweep {
+    animation: light 0.5s ease-out both;
+    animation-delay: calc(var(--i) * 7ms);
+  }
+  @keyframes light {
+    from { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+    to   { background: var(--accent); }
+  }
+}
+
+#now {
+  position: absolute;
+  bottom: 3.2rem; /* stands on the ruler's baseline, above the hour labels */
+  width: 2px;
+  height: 2.6rem;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 14px var(--accent);
+  transition: left 0.4s ease-out;
+}
+
+.marks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1rem;
+  height: 1rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.marks span { position: absolute; transform: translateX(-50%); }
+.marks span:first-child { transform: none; }
+.marks span:last-child { transform: translateX(-100%); }
+
+@media (max-width: 560px) {
+  body { padding: 0 6vw; }
+  .tick { display: none; }
+  .tick.hour { display: block; }
+}

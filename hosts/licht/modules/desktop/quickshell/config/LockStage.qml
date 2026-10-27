@@ -3,13 +3,15 @@
 // Greeter.qml make one of these per screen and hand it the same LockModel, so
 // every screen, and both the lock and the login screen, look the same.
 //
-// The composition is two things side by side. On the left, set against your
-// wallpaper, the time: large and light, with the date under it, then a
-// greeting and a line saying what is going on. On the right, a large dial that
-// bleeds off the edge of the screen like the face of a safe: two rings of fine
-// ticks, the launcher's and the screenshot frame's ruler closed into circles,
-// an outer ruler and an inner dial, with a 2px accent marker on the side that
-// faces the time.
+// The composition is one large radial dial, centred: the power menu's dial
+// closed into a circle, like the face of a safe. It has the power menu's fine
+// ruler (the same ticks, the same spacing, a taller one every fifth and tenth)
+// in two rings, an outer ruler and an inner one turning the other way, on a
+// plate of bar-style glass with a hairline outline, with the same fine marker
+// and soft bead at the top, a feathered shade behind it and a soft light in the
+// colour of the highlight. The time sits in the middle of it, like a watch: a
+// small line saying what this is, the time large and light, the date under it,
+// then the greeting and a line saying what is going on.
 //
 // It is kept lean because it runs on every screen at once on a laptop's
 // graphics: the wallpaper is blurred once at a quarter of the screen size and
@@ -46,21 +48,22 @@ Item {
     required property var lock
 
     // ---- Layout ---------------------------------------------------------
-    // The dial: its middle (right of centre, so it runs off the edge) and the
-    // radius of the outer ruler; the inner dial sits a little inside it
-    readonly property real dialX: Math.round(width * 0.8)
+    // The dial: its middle and the radius of the outer ruler; the inner ruler
+    // sits a little inside it
+    readonly property real dialX: Math.round(width * 0.5)
     readonly property real dialY: Math.round(height * 0.5)
-    readonly property real ringR: Math.round(Math.min(height * 0.46, width * 0.34))
-    readonly property real innerR: ringR - 40
-    // The time: its left edge, and how large it can be before it meets the dial
-    readonly property real textX: Math.round(width * 0.09)
-    readonly property int clockSize: Math.round(Math.min(height * 0.2, (dialX - ringR - textX - 70) / 3.3))
-    // The outer ruler's ticks sit 10px apart and every fifth is a major, as on
-    // the screenshot frame; in whole twenties so the marker, on the side that
-    // faces the time, stands on a major. The inner dial has 36, every ninth in
-    // the accent.
-    readonly property int outerCount: Math.round(twoPi * ringR / 10 / 20) * 20
-    readonly property int innerCount: 36
+    readonly property real ringR: Math.round(Math.min(height * 0.37, width * 0.28))
+    readonly property real innerR: ringR - Math.round(ringR * 0.085)
+    // The glass plate the rulers sit on reaches a little past the outer ruler
+    readonly property real plateR: ringR + 8
+    // What is left in the middle of the rulers, for the time, and how large the
+    // time can be in it
+    readonly property real hubR: innerR - 24
+    readonly property int clockSize: Math.round(Math.min(height * 0.18, hubR * 0.5))
+    // Both rulers are the power menu's: ticks about 12px apart, a taller one
+    // every fifth and every tenth
+    readonly property int outerCount: Math.max(40, Math.round(twoPi * ringR / 12 / 10) * 10)
+    readonly property int innerCount: Math.max(40, Math.round(twoPi * innerR / 12 / 10) * 10)
     readonly property real twoPi: Math.PI * 2
     // The background colour with a breath of the accent, as Dim.qml has it
     readonly property color wash: Qt.tint(Colors.background, Qt.alpha(Colors.accent, 0.08))
@@ -243,40 +246,22 @@ Item {
         }
     }
 
-    // The shell's dim over it, deepest on the side the time is on and easing
-    // off toward the dial, and a little darker toward the foot
+    // The shell's dim over it: lighter at the top, deeper toward the foot
     Rectangle {
         anchors.fill: parent
 
         gradient: Gradient {
-            orientation: Gradient.Horizontal
-
             GradientStop {
                 position: 0
-                color: Qt.alpha(scene.wash, 0.78)
+                color: Qt.alpha(scene.wash, 0.46)
             }
             GradientStop {
                 position: 0.55
-                color: Qt.alpha(scene.wash, 0.56)
+                color: Qt.alpha(scene.wash, 0.58)
             }
             GradientStop {
                 position: 1
-                color: Qt.alpha(scene.wash, 0.4)
-            }
-        }
-    }
-
-    Rectangle {
-        anchors.fill: parent
-
-        gradient: Gradient {
-            GradientStop {
-                position: 0.6
-                color: Qt.alpha(scene.wash, 0)
-            }
-            GradientStop {
-                position: 1
-                color: Qt.alpha(scene.wash, 0.34)
+                color: Qt.alpha(scene.wash, 0.84)
             }
         }
     }
@@ -347,9 +332,91 @@ Item {
             }
         }
 
-        // The outer ruler: fine ticks, a taller one every fifth, as on the
-        // screenshot frame. Drawn once into a texture; turning it is nearly
-        // free.
+        // Wide, low light behind the dial in the colour of the highlight, as
+        // the power menu puts on its horizon
+        Shape {
+            id: horizon
+
+            readonly property real r: scene.ringR * 0.95
+
+            x: scene.dialX - r
+            y: scene.dialY - r
+            width: r * 2
+            height: r * 2
+
+            ShapePath {
+                strokeColor: "transparent"
+                startX: 0
+                startY: horizon.r
+
+                fillGradient: RadialGradient {
+                    centerX: horizon.r
+                    centerY: horizon.r
+                    centerRadius: horizon.r
+                    focalX: horizon.r
+                    focalY: horizon.r
+
+                    GradientStop {
+                        position: 0
+                        color: Qt.alpha(scene.lock.tone, 0.1)
+                    }
+                    GradientStop {
+                        position: 0.6
+                        color: Qt.alpha(scene.lock.tone, 0.04)
+                    }
+                    GradientStop {
+                        position: 1
+                        color: Qt.alpha(scene.lock.tone, 0)
+                    }
+                }
+
+                PathArc {
+                    x: horizon.r * 2
+                    y: horizon.r
+                    radiusX: horizon.r
+                    radiusY: horizon.r
+                }
+                PathArc {
+                    x: 0
+                    y: horizon.r
+                    radiusX: horizon.r
+                    radiusY: horizon.r
+                }
+            }
+        }
+
+        // The plate: glass, like the bar and the power menu's discs, one flat
+        // surface with a hairline outline, big enough to carry both rulers. A
+        // second hairline marks the middle.
+        Rectangle {
+            width: scene.plateR * 2
+            height: width
+            x: scene.dialX - width / 2
+            y: scene.dialY - height / 2
+            radius: width / 2
+            color: Style.card
+            opacity: 0.55
+            border.width: 1
+            border.color: Style.outline
+            // Swells a little as the dial opens
+            scale: 1 + 0.1 * scene.lock.leave
+        }
+
+        Rectangle {
+            width: scene.hubR * 2
+            height: width
+            x: scene.dialX - width / 2
+            y: scene.dialY - height / 2
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: Style.outline
+            scale: 1 + 0.1 * scene.lock.leave
+        }
+
+        // The outer ruler: the power menu's fine ruler closed into a circle,
+        // a taller tick every fifth and tenth. Drawn once into a texture;
+        // turning it is nearly free.
         Item {
             id: outerRing
 
@@ -372,15 +439,16 @@ Item {
                 delegate: Rectangle {
                     required property int index
 
-                    readonly property bool major: index % 5 === 0
+                    readonly property bool major: index % 10 === 0
+                    readonly property bool mid: index % 5 === 0
 
                     x: outerRing.r - width / 2
                     y: 1
-                    width: 1.5
-                    height: major ? 11 : 6
-                    radius: 0.75
+                    width: 1
+                    height: major ? 9 : (mid ? 6 : 3)
+                    radius: 0.5
                     antialiasing: true
-                    color: Qt.alpha(Colors.foreground, major ? 0.42 : 0.22)
+                    color: Qt.alpha(Colors.foreground, major ? 0.95 : (mid ? 0.7 : 0.5))
                     transform: Rotation {
                         origin.x: width / 2
                         origin.y: outerRing.r - 1
@@ -390,9 +458,8 @@ Item {
             }
         }
 
-        // The inner dial: the small dial of ticks the screenshot tool turns at
-        // the middle of a region. 36 ticks, every ninth in the accent. It
-        // turns the other way, and is also drawn once.
+        // The inner ruler: the same ruler a little inside, a touch fainter so
+        // the two read as two. It turns the other way, and is also drawn once.
         Item {
             id: innerRing
 
@@ -414,15 +481,16 @@ Item {
                 delegate: Rectangle {
                     required property int index
 
-                    readonly property bool major: index % 9 === 0
+                    readonly property bool major: index % 10 === 0
+                    readonly property bool mid: index % 5 === 0
 
                     x: innerRing.r - width / 2
                     y: 1
-                    width: 1.5
-                    height: major ? 11 : 5
-                    radius: 0.75
+                    width: 1
+                    height: major ? 9 : (mid ? 6 : 3)
+                    radius: 0.5
                     antialiasing: true
-                    color: major ? Colors.accent : Qt.alpha(Colors.foreground, 0.4)
+                    color: Qt.alpha(Colors.foreground, major ? 0.7 : (mid ? 0.5 : 0.36))
                     transform: Rotation {
                         origin.x: width / 2
                         origin.y: innerRing.r - 1
@@ -432,17 +500,32 @@ Item {
             }
         }
 
-        // The marker: the screenshot ruler's 2px accent line, on the side of
-        // the dial that faces the time, pointing in. It turns red after a
-        // refusal.
+        // The fine marker on the ruler, with a soft bead at its foot, exactly as
+        // on the power menu's: at the top of the dial, pointing in. Both turn
+        // red after a refusal.
         Rectangle {
-            x: scene.dialX - scene.ringR - 2
-            y: scene.dialY - 1
-            width: 16
-            height: 2
-            radius: 1
+            x: scene.dialX - 0.75
+            y: scene.dialY - scene.ringR - 1
+            width: 1.5
+            height: 12
+            radius: 0.5
             color: scene.lock.tone
-            opacity: 0.9
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Style.moveMs
+                }
+            }
+        }
+
+        Rectangle {
+            x: scene.dialX - width / 2
+            y: scene.dialY - scene.ringR + 14
+            width: 5
+            height: 5
+            radius: 2.5
+            color: scene.lock.tone
+            opacity: 0.8
 
             Behavior on color {
                 ColorAnimation {
@@ -477,22 +560,24 @@ Item {
         }
 
         // ---- The time ------------------------------------------------------
-        // Left-aligned, vertically centred on the dial: a small line saying what
-        // this is, the time large and light, the date under it, then the
-        // greeting and what is going on. It slides away to the left as the
-        // dial opens.
+        // In the middle of the dial, like a watch: a small line saying what
+        // this is, the time large and light, the date under it between two
+        // hairlines, then the greeting and what is going on. It lifts a little
+        // as the dial opens.
         Column {
             id: block
 
-            x: scene.textX
+            width: scene.hubR * 2 - 60
+            x: scene.dialX - width / 2
             y: Math.round(scene.dialY - height / 2)
             spacing: 0
             transform: Translate {
-                x: -28 * scene.lock.leave
+                y: -14 * scene.lock.leave
             }
 
             // What this screen is
             Txt {
+                anchors.horizontalCenter: parent.horizontalCenter
                 text: scene.lock.modeLine
                 color: Qt.alpha(Colors.foreground, 0.62)
                 font.pixelSize: Style.fontSm
@@ -502,12 +587,14 @@ Item {
 
             Item {
                 width: 1
-                height: Math.round(scene.clockSize * 0.12)
+                height: Math.round(scene.clockSize * 0.1)
             }
 
             // The time: large and light
             Row {
                 id: timeRow
+
+                anchors.horizontalCenter: parent.horizontalCenter
 
                 Txt {
                     text: scene.lock.hourText
@@ -566,13 +653,13 @@ Item {
 
                 // AM or PM, small, on the line of the digits
                 Item {
-                    width: period.implicitWidth + 14
+                    width: period.implicitWidth + 12
                     height: 1
 
                     Txt {
                         id: period
 
-                        x: 14
+                        x: 12
                         y: Math.round(scene.clockSize * 1.0 - implicitHeight * 0.82)
                         text: scene.lock.periodText
                         color: Qt.alpha(Colors.foreground, 0.62)
@@ -582,14 +669,15 @@ Item {
                 }
             }
 
-            // The date, after a short hairline in the accent
+            // The date, between two short hairlines
             Row {
+                anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spaceLg
                 height: dateLine.implicitHeight
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 36
+                    width: 28
                     height: 1.5
                     radius: 0.75
                     color: Colors.accent
@@ -606,6 +694,15 @@ Item {
                     font.letterSpacing: 4
                     font.capitalization: Font.AllUppercase
                 }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 1.5
+                    radius: 0.75
+                    color: Colors.accent
+                    opacity: 0.8
+                }
             }
 
             Item {
@@ -615,6 +712,7 @@ Item {
 
             // The greeting
             Txt {
+                anchors.horizontalCenter: parent.horizontalCenter
                 text: scene.lock.greeting
                 color: Colors.foreground
                 font.pixelSize: 22
@@ -631,6 +729,7 @@ Item {
             Txt {
                 id: statusLine
 
+                anchors.horizontalCenter: parent.horizontalCenter
                 text: scene.lock.statusText
                 color: scene.lock.statusIsError ? Colors.critical : (scene.lock.succeeded ? Colors.foreground : scene.softText)
                 font.pixelSize: Style.fontMd

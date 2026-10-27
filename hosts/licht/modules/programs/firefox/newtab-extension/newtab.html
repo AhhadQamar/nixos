@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Tab</title>
+<link rel="stylesheet" href="newtab.css">
+<script src="newtab.js" defer></script>
+</head>
+<body>
+<main>
+  <h1 id="time" aria-label="Current time">--<span class="colon">:</span>--</h1>
+  <div id="date"></div>
+  <!-- A plain GET to Google. Nothing is sent until you press Enter. -->
+  <form id="search" action="https://www.google.com/search" method="get">
+    <input id="q" name="q" type="search" placeholder="Search or type an address" aria-label="Search Google or type an address" autocomplete="off" autofocus>
+  </form>
+</main>
+
+<div id="day" aria-hidden="true">
+  <div id="ruler"></div>
+  <div id="now"></div>
+  <div class="marks"><span style="left:0">00</span><span style="left:25%">06</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:100%">24</span></div>
+</div>
+</body>
+</html>

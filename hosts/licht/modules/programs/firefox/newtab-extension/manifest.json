@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Licht new tab",
+  "version": "1.0.0",
+  "description": "A local clock, day ruler and search box for new tabs. Makes no network requests until you search.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "newtab@licht.local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  },
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "permissions": ["theme"]
+}
