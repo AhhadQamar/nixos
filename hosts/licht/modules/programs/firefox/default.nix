@@ -20,12 +20,6 @@
         EOF
       '';
   });
-
-  # The local page for new windows (config/newtab.html). Pywal colours reach it
-  # through the full path of the wal output file, filled in below.
-  pageDir = "${config.home.homeDirectory}/.config/firefox-newtab";
-  pageUrl = "file://${pageDir}/index.html";
-  walCss = "${config.home.homeDirectory}/.cache/wal/newtab-pywal.css";
 in {
   programs.firefox = {
     enable = true;
@@ -48,9 +42,6 @@ in {
       # Written to user.js, so it is re-applied on every start.
       settings = {
         "browser.tabs.insertAfterCurrent" = true; # new tabs open next to the current one
-        # The Homepage policy below only sets a default, which a value already saved
-        # in the profile overrides. Setting it here makes new windows show the page.
-        "browser.startup.homepage" = pageUrl;
       };
     };
 
@@ -58,16 +49,12 @@ in {
     # Bookmarks, passwords and history stay with Firefox Sync, so none are set here.
     policies = {
       # --- New tab and new window ---
-      # Two different pages. A new tab (Ctrl+T) shows the "Licht new tab" extension,
-      # which replaces about:newtab. A new window (Ctrl+N) shows the Home page, which
-      # is the local page below. The extension must not set a homepage itself
-      # (no chrome_settings_overrides in its manifest), or it would fight this one.
+      # The "Licht new tab" extension (newtab-extension/, installed from its signed
+      # .xpi) shows its page on a new tab (Ctrl+T) and, through
+      # chrome_settings_overrides in its manifest, as the home page for new windows
+      # (Ctrl+N). Nothing here may set a home page, or it would fight the extension.
       # NewTabPage = false keeps Firefox's own new tab page off.
       NewTabPage = false;
-      Homepage = {
-        URL = pageUrl;
-        StartPage = "homepage";
-      };
 
       # --- Less noise ---
       DontCheckDefaultBrowser = true;
@@ -158,18 +145,4 @@ in {
 
   # Tridactyl reads this file through its native messenger (see config/tridactylrc).
   xdg.configFile."tridactyl/tridactylrc".source = ./config/tridactylrc;
-
-  # Firefox follows the links in ~/.config down to /nix/store, so a relative
-  # "pywal.css" would be looked up in the store. The page therefore gets the
-  # full path of the wal output file instead.
-  xdg.configFile."firefox-newtab/index.html".text =
-    builtins.replaceStrings ["@WAL_CSS@"] ["file://${walCss}"]
-    (builtins.readFile ./config/newtab.html);
-
-  # wal writes this file on every wallpaper change. Seeded empty so the page
-  # still loads before the first `wal -i` (it has built-in fallback colours).
-  home.activation.seedNewtabPywal = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    mkdir -p "$HOME/.cache/wal"
-    [ -e "${walCss}" ] || touch "${walCss}"
-  '';
 }
