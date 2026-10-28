@@ -230,12 +230,15 @@ Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the secon
 | Change the bar or panels | `modules/desktop/quickshell/config/*.qml` |
 | Edit QML without rebuilding | set `liveReload = true` in `quickshell/default.nix`, rebuild once; saves then reload instantly |
 | Change aliases | `modules/shell/zsh/config/.zshrc` (`zshrc`) |
-| Change browser extensions | `modules/programs/brave/default.nix` |
+| Change Brave extensions | `modules/programs/brave/default.nix` |
+| Change Firefox settings, policies or Tridactyl keys | `modules/programs/firefox/default.nix`, `firefox/config/` (`userChrome.css`, `tridactylrc`) |
 | Change the login screen | `system/greeter/` (`Greeter.qml`, `default.nix`) |
 
 After any edit: `ut` to test, `u` to keep it.
 
 **Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, Hyprland, GTK 3/4, kitty, tmux, Obsidian and Firefox (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
+
+**Firefox new tab and new window:** both show the "Licht new tab" extension (id `newtab@licht.local`). It is installed by hand from a signed `.xpi`, so it is not in this repo or in the `ExtensionSettings` policy. Nothing in the Nix config may set a home page, or it would fight the extension.
 
 ---
 

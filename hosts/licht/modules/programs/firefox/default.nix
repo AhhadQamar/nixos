@@ -49,8 +49,8 @@ in {
     # Bookmarks, passwords and history stay with Firefox Sync, so none are set here.
     policies = {
       # --- New tab and new window ---
-      # The "Licht new tab" extension (newtab-extension/, installed from its signed
-      # .xpi) shows its page on a new tab (Ctrl+T) and, through
+      # The "Licht new tab" extension (installed by hand from its signed
+      # .xpi, not managed here) shows its page on a new tab (Ctrl+T) and, through
       # chrome_settings_overrides in its manifest, as the home page for new windows
       # (Ctrl+N). Nothing here may set a home page, or it would fight the extension.
       # NewTabPage = false keeps Firefox's own new tab page off.
