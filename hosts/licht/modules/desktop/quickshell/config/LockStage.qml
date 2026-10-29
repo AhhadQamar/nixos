@@ -3,38 +3,30 @@
 // Greeter.qml make one of these per screen and hand it the same LockModel, so
 // every screen, and both the lock and the login screen, look the same.
 //
-// The composition is "the corner": one enormous dial whose middle sits in the
-// bottom-right corner of the screen, so only a quarter of it shows, sweeping
-// from the top of the right edge down to the foot of the screen. It has the
-// power menu's fine ruler (the same ticks, the same spacing, a taller one every
-// fifth and tenth) in two rings, an outer ruler and an inner one turning the
-// other way, on a quarter of bar-style glass with a hairline outline, with the
-// same fine marker and soft bead, a feathered shade and a soft light in the
-// colour of the highlight. Opposite it, on the left, the time is set large and
+// The composition is "the corner": a big dial whose middle sits in the
+// bottom-right corner of the screen, so only a quarter of it shows. It is two
+// rings of the power menu's fine ruler (ticks 12px apart, a taller one every
+// fifth and tenth) and one thin marker, and nothing else: no plate, no glow,
+// nothing that lights up. Opposite it, on the left, the time is set large and
 // light at the top (a small line saying what this is above it, the date under
 // it) and the greeting and a line saying what is going on sit at the foot.
 //
 // It is kept lean because it runs on every screen at once on a laptop's
 // graphics: the wallpaper is blurred once at a quarter of the screen size, and
-// each ring is drawn once into a texture and only ever turned. Only the part of
-// each ring that can be seen is built: a ruler repeats every ten ticks, so
+// each ring is drawn once into a texture and only ever turned. Only the part
+// of each ring that can be seen is built: a ruler repeats every ten ticks, so
 // turning it by any angle looks exactly like turning a short stretch of it by
-// that angle modulo one repeat. That is a couple of hundred ticks and a small
-// texture instead of a thousand ticks and a texture the size of the whole
-// dial. Everything that moves is an angle, a size or a fade, and moves at the
-// shell's speeds.
+// that angle modulo one repeat. While the lock waits nothing moves.
 //
-// There is no password box. Typing shows almost nothing: the two rings turn a
-// little, the outer one clockwise and the inner one back, a character at a
-// time, and Backspace turns them back. A wrong password lets them wind back to
-// nought, with a small shake and the marker turning red. A right one opens it
-// like a safe: the two dials spin round, one each way, and come to rest at
-// nought under the marker, then the rings open outwards, one a little ahead of
-// the other, and fade as the text slides away to the left.
-//
-// One taller tick on the outer ring goes up the quarter once a minute, from
-// the foot of the screen to the top of the right edge: the seconds. While the
-// lock waits it is the only thing that moves.
+// There is no password box. Typing only turns the dial: each character
+// clicks the outer ring round a little clockwise and the inner one the other
+// way, and Backspace turns them back. While the password is checked the outer
+// ring creeps round steadily. A wrong password turns the marker red, and the
+// rings spring back to the start, going a little past it and settling, with a
+// small shake. A right one opens it like a safe: the two dials spin, one each
+// way, and come to rest at nought with a tenth tick under the marker, then
+// the rings open outwards, one a little ahead of the other, and fade as the
+// text slides away to the left.
 //
 // Keys (an invisible field keeps the keyboard, so typing is never affected):
 //   type                the password
@@ -42,10 +34,12 @@
 //   Esc                 clear what you typed
 //
 // It reads and writes the LockModel it is given (see LockModel.qml).
+//
+// Note: an inline component cannot see this file's ids, so everything a
+// component needs is handed to it as a property.
 
 import QtQuick
 import QtQuick.Effects
-import QtQuick.Shapes
 import Quickshell
 
 Item {
@@ -64,13 +58,10 @@ Item {
     readonly property real dialX: width
     readonly property real dialY: height
     readonly property real ringR: Math.round(Math.min(height * 0.9, width * 0.5))
-    readonly property real innerR: ringR - Math.max(10, Math.round(ringR * 0.05))
-    // The glass plate reaches a little past the outer ruler
-    readonly property real plateR: ringR + 8
-    // The marker sits on the diagonal of the quarter, pointing in at the
-    // middle of the dial. Angles are in degrees, clockwise from straight up:
-    // 270 is straight left of the middle and 360 straight up, the two edges of
-    // what shows.
+    readonly property real innerR: ringR - Math.max(22, Math.round(ringR * 0.05))
+    // Angles are in degrees, clockwise from straight up: 270 is straight left
+    // of the middle and 360 straight up, the two edges of what shows. The
+    // marker stands on the diagonal of the quarter, pointing at the middle.
     readonly property real markAng: 315
     // The left margin of the text, and the space above and below it
     readonly property int padX: Math.round(Math.max(48, width * 0.06))
@@ -78,12 +69,16 @@ Item {
     readonly property int padBottom: Math.round(height * 0.12)
     // The time, as large as the screen allows
     readonly property int clockSize: Math.round(Math.min(height * 0.18, width * 0.105))
-    // Both rulers are the power menu's: ticks about 12px apart, a taller one
-    // every fifth and every tenth. The count is a multiple of ten so the ruler
-    // repeats every ten ticks.
-    readonly property int outerCount: Math.max(40, Math.round(twoPi * ringR / 12 / 10) * 10)
-    readonly property int innerCount: Math.max(40, Math.round(twoPi * innerR / 12 / 10) * 10)
-    readonly property real twoPi: Math.PI * 2
+    // Both rulers: ticks about 12px apart. The count is a multiple of ten so
+    // the ruler repeats every ten ticks.
+    readonly property int outerCount: Math.max(40, Math.round(2 * Math.PI * ringR / 12 / 10) * 10)
+    readonly property int innerCount: Math.max(40, Math.round(2 * Math.PI * innerR / 12 / 10) * 10)
+    readonly property real stepO: 360 / outerCount
+    readonly property real stepI: 360 / innerCount
+    // How far each ruler is turned so that a tenth tick stands under the
+    // marker: where it rests, at nought
+    readonly property real restO: markAng % (stepO * 10)
+    readonly property real restI: markAng % (stepI * 10)
     // The background colour with a breath of the accent, as Dim.qml has it
     readonly property color wash: Qt.tint(Colors.background, Qt.alpha(Colors.accent, 0.08))
     // Secondary text: the palette's muted, lifted a little toward the
@@ -96,59 +91,60 @@ Item {
     property int held: 0
     readonly property int dotCount: (lock.checking || lock.succeeded) ? held : lock.password.length
 
-    // The rings sway a little against each other while the password is
-    // checked: the phase runs only then, and the amount eases in and out so
-    // nothing jumps
-    property real phase: 0
-    property real checkAmt: lock.checking ? 1 : 0
+    // The rings click round a character at a time: the outer one two ticks
+    // clockwise, the inner one three the other way. At nought once it has
+    // worked.
+    property real outerBase: lock.succeeded ? 0 : Math.min(dotCount, 64) * 2 * stepO
+    property real innerBase: lock.succeeded ? 0 : -Math.min(dotCount, 64) * 3 * stepI
 
-    Behavior on checkAmt {
-        NumberAnimation {
-            duration: Style.moveMs
-            easing.type: Style.easeMove
-        }
-    }
-
-    NumberAnimation on phase {
-        from: 0
-        to: Math.PI * 2
-        duration: 2000
-        loops: Animation.Infinite
-        running: scene.lock.checking
-    }
-
-    // The two rings turn against each other, a couple of degrees a character
-    // (degrees). At nought once it has worked.
-    property real outerBase: lock.succeeded ? 0 : Math.min(dotCount, 40) * 2
-    property real innerBase: lock.succeeded ? 0 : -Math.min(dotCount, 40) * 3
-
+    // Clicking round is quick and settles; winding back after a refusal goes a
+    // little past the start and settles; the safe opening is slow and long
     Behavior on outerBase {
         NumberAnimation {
-            duration: scene.lock.succeeded ? Style.sweepMs : Style.moveMs
-            easing.type: scene.lock.succeeded ? Style.easeEnter : Style.easeMove
+            duration: scene.lock.succeeded ? Style.sweepMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
+            easing.type: scene.lock.succeeded ? Style.easeEnter : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
+            easing.overshoot: 1.6
         }
     }
 
     Behavior on innerBase {
         NumberAnimation {
-            duration: scene.lock.succeeded ? Style.sweepMs : Style.moveMs
-            easing.type: scene.lock.succeeded ? Style.easeEnter : Style.easeMove
+            duration: scene.lock.succeeded ? Style.sweepMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
+            easing.type: scene.lock.succeeded ? Style.easeEnter : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
+            easing.overshoot: 1.6
         }
+    }
+
+    // While the password is checked the outer ring creeps round: one repeat
+    // of the ruler a lap. A ruler repeats, so it looks the same at the end of
+    // a lap as at the start, and it can stop on either without a jump.
+    property real crawlU: 0
+
+    NumberAnimation {
+        id: crawlAnim
+
+        target: scene
+        property: "crawlU"
+        from: 0
+        to: 1
+        duration: 1200
+        loops: Animation.Infinite
+        easing.type: Easing.Linear
+    }
+
+    NumberAnimation {
+        id: crawlSettle
+
+        target: scene
+        property: "crawlU"
+        duration: Style.moveMs
+        easing.type: Style.easeMove
     }
 
     // The safe: when the password is right the two dials spin, the outer one a
     // full turn clockwise and the inner one two turns back, slowing as they
     // come to rest at nought under the marker. 0 to 1.
     property real spin: 0
-
-    Connections {
-        target: scene.lock
-
-        function onSucceededChanged() {
-            if (scene.lock.succeeded)
-                spinAnim.restart();
-        }
-    }
 
     NumberAnimation {
         id: spinAnim
@@ -161,10 +157,36 @@ Item {
         easing.type: Style.easeEnter
     }
 
-    // What each ring shows: its turn, the sway while checking, the swing in as
-    // the dial arrives, and the spin of the safe
-    readonly property real outerA: outerBase + (1 - lock.reveal) * 12 + Math.sin(phase) * 3 * checkAmt + 360 * spin
-    readonly property real innerA: innerBase - (1 - lock.reveal) * 18 - Math.sin(phase) * 5 * checkAmt - 720 * spin
+    Connections {
+        target: scene.lock
+
+        function onSucceededChanged() {
+            if (scene.lock.succeeded) {
+                spinAnim.restart();
+            } else {
+                spinAnim.stop();
+                scene.spin = 0;
+            }
+        }
+
+        function onCheckingChanged() {
+            if (scene.lock.checking) {
+                crawlSettle.stop();
+                scene.crawlU = 0;
+                crawlAnim.restart();
+            } else {
+                crawlAnim.stop();
+                crawlSettle.from = scene.crawlU;
+                crawlSettle.to = scene.crawlU >= 0.5 ? 1 : 0;
+                crawlSettle.restart();
+            }
+        }
+    }
+
+    // What each ring shows: its turn, the swing in as the dial arrives, the
+    // creep while checking and the spin of the safe
+    readonly property real outerA: restO + outerBase + (1 - lock.reveal) * 10 + crawlU * stepO * 10 + 360 * spin
+    readonly property real innerA: restI + innerBase - (1 - lock.reveal) * 14 - 720 * spin
 
     // ---- Keyboard ---------------------------------------------------------
     // The password goes into a field nobody sees: it keeps the keyboard, and
@@ -317,9 +339,12 @@ Item {
     component Ruler: Item {
         id: ruler
 
-        // Radius of the ticks, how many there are in a whole turn (a multiple
-        // of ten), how far it is turned (degrees), how strong it is and how
-        // far it has opened outwards (0 to 1)
+        // Where the middle of the dial is (in the parent), the radius of the
+        // ticks, how many there are in a whole turn (a multiple of ten), how
+        // far it is turned (degrees), how strong it is and how far it has
+        // opened outwards (0 to 1)
+        property real dialX: 0
+        property real dialY: 0
         property real r: 100
         property int count: 40
         property real turn: 0
@@ -338,8 +363,8 @@ Item {
         readonly property int first: Math.round(count * 0.75) - 12
         readonly property int built: Math.ceil(count / 4) + 14
 
-        x: scene.dialX - mid
-        y: scene.dialY - mid
+        x: dialX - mid
+        y: dialY - mid
         width: mid + ex
         height: mid + ex
         layer.enabled: true
@@ -370,21 +395,21 @@ Item {
                 readonly property bool major: tick % 10 === 0
                 readonly property bool half: tick % 5 === 0
 
-                x: ruler.mid + (ruler.r - 1) * Math.sin(a * Math.PI / 180) - 0.5
+                x: ruler.mid + (ruler.r - 1) * Math.sin(a * Math.PI / 180) - 0.75
                 y: ruler.mid - (ruler.r - 1) * Math.cos(a * Math.PI / 180)
-                width: 1
-                height: major ? 9 : (half ? 6 : 3)
-                radius: 0.5
+                width: 1.5
+                height: major ? 13 : (half ? 9 : 5)
+                radius: 0.75
                 antialiasing: true
                 transformOrigin: Item.Top
                 rotation: a
-                color: Qt.alpha(Colors.foreground, (major ? 0.95 : (half ? 0.7 : 0.5)) * ruler.ink)
+                color: Qt.alpha(Colors.foreground, (major ? 1 : (half ? 0.85 : 0.65)) * ruler.ink)
             }
         }
     }
 
     // ---- The lock ---------------------------------------------------------
-    // It fades in and out and shakes after a refusal; nothing else on it moves
+    // It fades in and out and shakes after a refusal
     Item {
         id: stage
 
@@ -396,172 +421,37 @@ Item {
             y: (1 - scene.lock.reveal) * 8
         }
 
-        // A soft dark pool in the corner behind the dial, with no visible
-        // edge, so the ticks read on any wallpaper
-        Shape {
-            id: shade
-
-            readonly property real r: scene.ringR * 1.2
-
-            x: scene.dialX - r
-            y: scene.dialY - r
-            width: r * 2
-            height: r * 2
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: shade.r
-
-                fillGradient: RadialGradient {
-                    centerX: shade.r
-                    centerY: shade.r
-                    centerRadius: shade.r
-                    focalX: shade.r
-                    focalY: shade.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(scene.wash, 0.5)
-                    }
-                    GradientStop {
-                        position: 0.8
-                        color: Qt.alpha(scene.wash, 0.34)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(scene.wash, 0)
-                    }
-                }
-
-                PathArc {
-                    x: shade.r * 2
-                    y: shade.r
-                    radiusX: shade.r
-                    radiusY: shade.r
-                }
-                PathArc {
-                    x: 0
-                    y: shade.r
-                    radiusX: shade.r
-                    radiusY: shade.r
-                }
-            }
-        }
-
-        // Wide, low light in the corner in the colour of the highlight, as the
-        // power menu puts on its horizon
-        Shape {
-            id: horizon
-
-            readonly property real r: scene.ringR * 0.95
-
-            x: scene.dialX - r
-            y: scene.dialY - r
-            width: r * 2
-            height: r * 2
-
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: horizon.r
-
-                fillGradient: RadialGradient {
-                    centerX: horizon.r
-                    centerY: horizon.r
-                    centerRadius: horizon.r
-                    focalX: horizon.r
-                    focalY: horizon.r
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(scene.lock.tone, 0.12)
-                    }
-                    GradientStop {
-                        position: 0.6
-                        color: Qt.alpha(scene.lock.tone, 0.05)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(scene.lock.tone, 0)
-                    }
-                }
-
-                PathArc {
-                    x: horizon.r * 2
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
-                }
-                PathArc {
-                    x: 0
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
-                }
-            }
-        }
-
-        // The plate: glass, like the bar and the power menu's discs, one flat
-        // surface with a hairline outline, big enough to carry both rulers. A
-        // second hairline marks the middle.
-        Rectangle {
-            width: scene.plateR * 2
-            height: width
-            x: scene.dialX - width / 2
-            y: scene.dialY - height / 2
-            radius: width / 2
-            color: Style.card
-            opacity: 0.4
-            border.width: 1
-            border.color: Style.outline
-            // Swells a little as the dial opens
-            scale: 1 + 0.1 * scene.lock.leave
-        }
-
-        Rectangle {
-            readonly property real r: scene.innerR - Math.max(22, Math.round(scene.ringR * 0.035))
-
-            width: r * 2
-            height: width
-            x: scene.dialX - width / 2
-            y: scene.dialY - height / 2
-            radius: width / 2
-            color: "transparent"
-            border.width: 1
-            border.color: Style.outline
-            scale: 1 + 0.1 * scene.lock.leave
-        }
-
-        // The outer ruler, a taller tick every fifth and tenth. Opens outwards
-        // as it leaves, a little ahead of the inner one.
+        // The outer ruler. It opens outwards as it leaves, a little ahead of
+        // the inner one.
         Ruler {
+            dialX: scene.dialX
+            dialY: scene.dialY
             r: scene.ringR
             count: scene.outerCount
             turn: scene.outerA
-            ink: 1
-            open: 0.18 * scene.lock.leave
+            open: 0.14 * scene.lock.leave
         }
 
-        // The inner ruler: the same ruler a little inside, a touch fainter so
-        // the two read as two. It turns the other way.
+        // The inner ruler: the same ruler a little inside and fainter, so the
+        // two read as two. It turns the other way.
         Ruler {
+            dialX: scene.dialX
+            dialY: scene.dialY
             r: scene.innerR
             count: scene.innerCount
             turn: scene.innerA
-            ink: 0.74
-            open: 0.1 * scene.lock.leave
+            ink: 0.85
+            open: 0.07 * scene.lock.leave
         }
 
-        // The fine marker on the ruler, with a soft bead at its foot, exactly
-        // as on the power menu's: on the diagonal of the quarter, pointing in.
-        // Both turn red after a refusal.
+        // The fine marker on the ruler, on the diagonal of the quarter,
+        // pointing in. It turns red after a refusal.
         Rectangle {
             x: scene.dialX + scene.ringR * Math.sin(scene.markAng * Math.PI / 180) - width / 2
             y: scene.dialY - scene.ringR * Math.cos(scene.markAng * Math.PI / 180)
-            width: 1.5
-            height: 12
-            radius: 0.5
+            width: 2
+            height: 20
+            radius: 1
             antialiasing: true
             transformOrigin: Item.Top
             rotation: scene.markAng
@@ -572,51 +462,6 @@ Item {
                     duration: Style.moveMs
                 }
             }
-        }
-
-        Rectangle {
-            readonly property real br: scene.ringR - 16
-
-            x: scene.dialX + br * Math.sin(scene.markAng * Math.PI / 180) - width / 2
-            y: scene.dialY - br * Math.cos(scene.markAng * Math.PI / 180) - height / 2
-            width: 5
-            height: 5
-            radius: 2.5
-            color: scene.lock.tone
-            opacity: 0.8
-
-            Behavior on color {
-                ColorAnimation {
-                    duration: Style.moveMs
-                }
-            }
-        }
-
-        // The seconds: one taller accent tick on the outer ring, going up the
-        // quarter once a minute, from the foot of the screen to the top of the
-        // right edge. It wakes once a second, and only while it shows, and
-        // fades at either end so it never jumps.
-        SystemClock {
-            id: secClock
-
-            precision: SystemClock.Seconds
-            enabled: scene.lock.reveal > 0.01 && !scene.lock.succeeded
-        }
-
-        Rectangle {
-            readonly property int sec: secClock.date.getSeconds()
-            readonly property real ang: 270 + sec * 1.5
-
-            x: scene.dialX + scene.ringR * Math.sin(ang * Math.PI / 180) - width / 2
-            y: scene.dialY - scene.ringR * Math.cos(ang * Math.PI / 180)
-            width: 2
-            height: 16
-            radius: 1
-            antialiasing: true
-            transformOrigin: Item.Top
-            rotation: ang
-            color: Colors.accent
-            opacity: scene.lock.succeeded ? 0 : 0.7 * Math.min(1, sec / 2, (60 - sec) / 2)
         }
 
         // ---- The time ------------------------------------------------------
@@ -730,30 +575,15 @@ Item {
                 height: Math.round(scene.clockSize * 0.04)
             }
 
-            // The date, after a short hairline in the accent
-            Row {
-                spacing: Style.spaceLg
-                height: dateLine.implicitHeight
+            // The date
+            Txt {
+                id: dateLine
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 28
-                    height: 1.5
-                    radius: 0.75
-                    color: Colors.accent
-                    opacity: 0.8
-                }
-
-                Txt {
-                    id: dateLine
-
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: scene.lock.dateText
-                    color: Qt.alpha(Colors.foreground, 0.7)
-                    font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.11))
-                    font.letterSpacing: 4
-                    font.capitalization: Font.AllUppercase
-                }
+                text: scene.lock.dateText
+                color: Qt.alpha(Colors.foreground, 0.7)
+                font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.11))
+                font.letterSpacing: 4
+                font.capitalization: Font.AllUppercase
             }
         }
 
