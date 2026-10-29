@@ -68,7 +68,7 @@ Item {
     readonly property int padTop: Math.round(height * 0.13)
     readonly property int padBottom: Math.round(height * 0.12)
     // The time, as large as the screen allows
-    readonly property int clockSize: Math.round(Math.min(height * 0.18, width * 0.105))
+    readonly property int clockSize: Math.round(Math.min(height * 0.2, width * 0.115))
     // Both rulers: ticks about 12px apart. The count is a multiple of ten so
     // the ruler repeats every ten ticks.
     readonly property int outerCount: Math.max(40, Math.round(2 * Math.PI * ringR / 12 / 10) * 10)
@@ -79,6 +79,11 @@ Item {
     // marker: where it rests, at nought
     readonly property real restO: markAng % (stepO * 10)
     readonly property real restI: markAng % (stepI * 10)
+    // The greeting split at the comma: "Good evening, licht" is a quiet
+    // "Good evening" and a large "licht". With no name it is all one line.
+    readonly property int greetCut: lock.greeting.indexOf(", ")
+    readonly property string greetLead: greetCut >= 0 ? lock.greeting.substring(0, greetCut) : ""
+    readonly property string greetName: greetCut >= 0 ? lock.greeting.substring(greetCut + 2) : lock.greeting
     // The background colour with a breath of the accent, as Dim.qml has it
     readonly property color wash: Qt.tint(Colors.background, Qt.alpha(Colors.accent, 0.08))
     // Secondary text: the palette's muted, lifted a little toward the
@@ -350,6 +355,8 @@ Item {
         property real turn: 0
         property real ink: 1
         property real open: 0
+        // How tall its ticks are, as a share of the full size
+        property real size: 1
 
         // The middle of the dial within this item, and room on the far sides of
         // it for the ticks that lie just past the edges of the screen
@@ -398,7 +405,7 @@ Item {
                 x: ruler.mid + (ruler.r - 1) * Math.sin(a * Math.PI / 180) - 0.75
                 y: ruler.mid - (ruler.r - 1) * Math.cos(a * Math.PI / 180)
                 width: 1.5
-                height: major ? 13 : (half ? 9 : 5)
+                height: (major ? 13 : (half ? 9 : 5)) * ruler.size
                 radius: 0.75
                 antialiasing: true
                 transformOrigin: Item.Top
@@ -421,6 +428,32 @@ Item {
             y: (1 - scene.lock.reveal) * 8
         }
 
+        // A hairline under each ring that its ticks hang from, so the two read
+        // as one dial. They open outwards with their rings.
+        Rectangle {
+            width: scene.ringR * 2
+            height: width
+            x: scene.dialX - width / 2
+            y: scene.dialY - height / 2
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.alpha(Colors.foreground, 0.2)
+            scale: 1 + 0.14 * scene.lock.leave
+        }
+
+        Rectangle {
+            width: scene.innerR * 2
+            height: width
+            x: scene.dialX - width / 2
+            y: scene.dialY - height / 2
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.alpha(Colors.foreground, 0.12)
+            scale: 1 + 0.07 * scene.lock.leave
+        }
+
         // The outer ruler. It opens outwards as it leaves, a little ahead of
         // the inner one.
         Ruler {
@@ -441,6 +474,7 @@ Item {
             count: scene.innerCount
             turn: scene.innerA
             ink: 0.85
+            size: 0.75
             open: 0.07 * scene.lock.leave
         }
 
@@ -482,9 +516,9 @@ Item {
             // What this screen is
             Txt {
                 text: scene.lock.modeLine
-                color: Qt.alpha(Colors.foreground, 0.62)
+                color: scene.softText
                 font.pixelSize: Style.fontSm
-                font.letterSpacing: 2
+                font.letterSpacing: 3
                 font.capitalization: Font.AllUppercase
             }
 
@@ -493,16 +527,18 @@ Item {
                 height: Math.round(scene.clockSize * 0.1)
             }
 
-            // The time: large and light
+            // The time: large and light. The hour is the brightest, the colon
+            // takes the accent and the minutes sit a step quieter, so the eye
+            // lands on the hour first.
             Row {
                 id: timeRow
 
                 Txt {
                     text: scene.lock.hourText
-                    color: Qt.alpha(Colors.foreground, 0.94)
+                    color: Qt.alpha(Colors.foreground, 0.96)
                     font.pixelSize: scene.clockSize
                     font.weight: Font.Light
-                    font.letterSpacing: -Math.round(scene.clockSize * 0.035)
+                    font.letterSpacing: -Math.round(scene.clockSize * 0.04)
                 }
 
                 Txt {
@@ -514,16 +550,22 @@ Item {
                     transform: Translate {
                         y: -Math.round(scene.clockSize * 0.05)
                     }
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: Style.moveMs
+                        }
+                    }
                 }
 
                 Txt {
                     id: minTxt
 
                     text: scene.lock.minuteText
-                    color: Qt.alpha(Colors.foreground, 0.94)
+                    color: Qt.alpha(Colors.foreground, 0.78)
                     font.pixelSize: scene.clockSize
                     font.weight: Font.Light
-                    font.letterSpacing: -Math.round(scene.clockSize * 0.035)
+                    font.letterSpacing: -Math.round(scene.clockSize * 0.04)
                     transform: Translate {
                         id: minSlide
                     }
@@ -552,20 +594,20 @@ Item {
                     }
                 }
 
-                // AM or PM, small, on the line of the digits
+                // AM or PM, small, level with the top of the digits
                 Item {
-                    width: period.implicitWidth + 12
+                    width: period.implicitWidth + Style.spaceLg
                     height: 1
 
                     Txt {
                         id: period
 
-                        x: 12
-                        y: Math.round(scene.clockSize * 1.0 - implicitHeight * 0.82)
+                        x: Style.spaceLg
+                        y: Math.round(scene.clockSize * 0.24)
                         text: scene.lock.periodText
-                        color: Qt.alpha(Colors.foreground, 0.62)
-                        font.pixelSize: Math.round(scene.clockSize * 0.16)
-                        font.letterSpacing: 2
+                        color: scene.softText
+                        font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.13))
+                        font.letterSpacing: 3
                     }
                 }
             }
@@ -580,8 +622,8 @@ Item {
                 id: dateLine
 
                 text: scene.lock.dateText
-                color: Qt.alpha(Colors.foreground, 0.7)
-                font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.11))
+                color: Qt.alpha(Colors.foreground, 0.72)
+                font.pixelSize: Math.max(12, Math.round(scene.clockSize * 0.095))
                 font.letterSpacing: 4
                 font.capitalization: Font.AllUppercase
             }
@@ -600,36 +642,70 @@ Item {
                 x: -16 * (1 - scene.lock.reveal) - 24 * scene.lock.leave
             }
 
+            // The greeting in two lines: the words quiet, the name large
             Txt {
-                text: scene.lock.greeting
-                color: Colors.foreground
-                font.pixelSize: Math.max(22, Math.round(scene.clockSize * 0.15))
-                font.bold: true
-                font.letterSpacing: -0.2
+                visible: scene.greetLead !== ""
+                text: scene.greetLead
+                color: scene.softText
+                font.pixelSize: Math.max(Style.fontXl, Math.round(scene.clockSize * 0.09))
+                font.letterSpacing: 1
             }
 
             Txt {
-                id: statusLine
+                text: scene.greetName
+                color: Colors.foreground
+                font.pixelSize: Math.max(30, Math.round(scene.clockSize * 0.26))
+                font.weight: Font.Medium
+                font.letterSpacing: -0.5
+            }
 
-                text: scene.lock.statusText
-                color: scene.lock.statusIsError ? Colors.critical : (scene.lock.succeeded ? Colors.foreground : scene.softText)
-                font.pixelSize: Style.fontMd
-                onTextChanged: lineFade.restart()
+            Item {
+                width: 1
+                height: Style.spaceLg
+            }
 
-                NumberAnimation {
-                    id: lineFade
+            Row {
+                spacing: Style.spaceLg
 
-                    target: statusLine
-                    property: "opacity"
-                    from: 0.3
-                    to: 1
-                    duration: Style.moveMs
-                    easing.type: Style.easeMove
+                // A short bar in the marker's colour, so the line answers the
+                // marker on the dial
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 2
+                    height: 16
+                    radius: 1
+                    color: scene.lock.tone
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: Style.moveMs
+                        }
+                    }
                 }
 
-                Behavior on color {
-                    ColorAnimation {
-                        duration: Style.baseMs
+                Txt {
+                    id: statusLine
+
+                    text: scene.lock.statusText
+                    color: scene.lock.statusIsError ? Colors.critical : (scene.lock.succeeded ? Colors.foreground : scene.softText)
+                    font.pixelSize: Style.fontBase
+                    onTextChanged: lineFade.restart()
+
+                    NumberAnimation {
+                        id: lineFade
+
+                        target: statusLine
+                        property: "opacity"
+                        from: 0.3
+                        to: 1
+                        duration: Style.moveMs
+                        easing.type: Style.easeMove
+                    }
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: Style.baseMs
+                        }
                     }
                 }
             }
