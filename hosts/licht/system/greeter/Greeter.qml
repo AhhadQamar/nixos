@@ -36,6 +36,8 @@ Scope {
     // The session command, split into words for greetd
     readonly property var sessionCmd: (Quickshell.env("GREETER_SESSION") || "").split(" ").filter(w => w !== "")
     readonly property string wallpaper: Quickshell.env("GREETER_WALLPAPER") || ""
+    // 12 hour clock with AM/PM, unless default.nix says otherwise
+    readonly property bool clock12h: (Quickshell.env("GREETER_CLOCK12H") || "1") !== "0"
 
     // ---- State ----------------------------------------------------------
     // Password sent, waiting for greetd's answer
@@ -52,6 +54,7 @@ Scope {
         checking: root.checking
         user: root.user
         wallpaper: root.wallpaper
+        use12h: root.clock12h
         modeText: "Sign in"
         okText: "Signing in\u2026"
         brokenText: "Can't reach the login service"

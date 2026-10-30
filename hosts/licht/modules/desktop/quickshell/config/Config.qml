@@ -79,6 +79,11 @@ Singleton {
     // write ["pw-play", "/path/to/sound.oga"].
     readonly property var clockSound: ["bash", "-c", "IFS=:; for d in $XDG_DATA_DIRS /run/current-system/sw/share; do f=\"$d/sounds/freedesktop/stereo/alarm-clock-elapsed.oga\"; [ -f \"$f\" ] && exec pw-play \"$f\"; done"]
 
+    // ---- Lock screen ------------------------------------------------------
+    // The big clock: 12 hour with AM/PM (true) or 24 hour (false). The login
+    // screen has no Config and always uses 12 hour.
+    readonly property bool clock12h: true
+
     // ---- Screen time ------------------------------------------------------
     // Daily goal in minutes. 0 hides every goal marker.
     readonly property int dailyGoalMinutes: 360

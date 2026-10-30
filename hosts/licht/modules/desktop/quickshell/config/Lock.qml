@@ -52,6 +52,7 @@ Scope {
         checking: pam.active
         user: Quickshell.env("USER") || ""
         wallpaper: root.wallpaper
+        use12h: Config.clock12h
         modeText: "Session locked"
         showAway: true
         okText: "Welcome back"

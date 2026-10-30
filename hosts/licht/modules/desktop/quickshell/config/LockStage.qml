@@ -24,9 +24,11 @@
 // ring creeps round steadily. A wrong password turns the marker red, and the
 // rings spring back to the start, going a little past it and settling, with a
 // small shake. A right one opens it like a safe: the two dials spin, one each
-// way, and come to rest at nought with a tenth tick under the marker, then
-// the rings open outwards, one a little ahead of the other, and fade as the
-// text slides away to the left.
+// way, and come to rest at nought with a tenth tick under the marker, where
+// the marker gives one short click inward. Then the rings open outwards, one
+// a little ahead of the other, and fade as the text slides away to the left;
+// the veil over the wallpaper lifts and the wallpaper drifts a little closer,
+// so the screen opens rather than just switching off.
 //
 // Keys (an invisible field keeps the keyboard, so typing is never affected):
 //   type                the password
@@ -106,16 +108,16 @@ Item {
     // little past the start and settles; the safe opening is slow and long
     Behavior on outerBase {
         NumberAnimation {
-            duration: scene.lock.succeeded ? Style.sweepMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
-            easing.type: scene.lock.succeeded ? Style.easeEnter : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
+            duration: scene.lock.succeeded ? scene.unlockMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
+            easing.type: scene.lock.succeeded ? Easing.OutQuart : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
             easing.overshoot: 1.6
         }
     }
 
     Behavior on innerBase {
         NumberAnimation {
-            duration: scene.lock.succeeded ? Style.sweepMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
-            easing.type: scene.lock.succeeded ? Style.easeEnter : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
+            duration: scene.lock.succeeded ? scene.unlockMs : (scene.lock.failed ? Style.enterMs : Style.moveMs)
+            easing.type: scene.lock.succeeded ? Easing.OutQuart : (scene.lock.failed ? Easing.OutBack : Style.easeMove)
             easing.overshoot: 1.6
         }
     }
@@ -148,18 +150,48 @@ Item {
 
     // The safe: when the password is right the two dials spin, the outer one a
     // full turn clockwise and the inner one two turns back, slowing as they
-    // come to rest at nought under the marker. 0 to 1.
+    // come to rest at nought under the marker. 0 to 1. They throw off fast and
+    // take their time to settle (OutQuart), and the marker clicks in once they
+    // have all but stopped. `unlockMs` is how long the spin takes; the model's
+    // holdMs (when the screen starts to fade) is set to follow it.
+    readonly property int unlockMs: 800
     property real spin: 0
+    // The marker's click as the dials settle: 0 = at rest, 1 = pushed in
+    property real latch: 0
 
-    NumberAnimation {
+    ParallelAnimation {
         id: spinAnim
 
-        target: scene
-        property: "spin"
-        from: 0
-        to: 1
-        duration: Style.sweepMs
-        easing.type: Style.easeEnter
+        NumberAnimation {
+            target: scene
+            property: "spin"
+            from: 0
+            to: 1
+            duration: scene.unlockMs
+            easing.type: Easing.OutQuart
+        }
+
+        // The click: in quickly once the dials have all but stopped, then out
+        SequentialAnimation {
+            PauseAnimation {
+                duration: Math.round(scene.unlockMs * 0.65)
+            }
+            NumberAnimation {
+                target: scene
+                property: "latch"
+                from: 0
+                to: 1
+                duration: Style.pressMs - 10
+                easing.type: Style.easePress
+            }
+            NumberAnimation {
+                target: scene
+                property: "latch"
+                to: 0
+                duration: Style.baseMs
+                easing.type: Style.easeMove
+            }
+        }
     }
 
     Connections {
@@ -171,6 +203,7 @@ Item {
             } else {
                 spinAnim.stop();
                 scene.spin = 0;
+                scene.latch = 0;
             }
         }
 
@@ -230,6 +263,8 @@ Item {
 
     // The keys the password field leaves to the stage
     function handleKey(event) {
+        // Caps Lock or Num Lock may have just changed: have the model look
+        lock.pollKeys();
         switch (event.key) {
         case Qt.Key_Return:
         case Qt.Key_Enter:
@@ -261,7 +296,8 @@ Item {
 
         width: Math.round(scene.width / 4)
         height: Math.round(scene.height / 4)
-        scale: 4
+        // Drifts a little closer as the screen opens
+        scale: 4 + 0.16 * scene.lock.leave
         transformOrigin: Item.Center
         x: (scene.width - width) / 2
         y: (scene.height - height) / 2
@@ -292,9 +328,11 @@ Item {
         }
     }
 
-    // The shell's dim over it: lighter at the top, deeper toward the foot
+    // The shell's dim over it: lighter at the top, deeper toward the foot. It
+    // lifts as the screen opens.
     Rectangle {
         anchors.fill: parent
+        opacity: 1 - 0.6 * scene.lock.leave
 
         gradient: Gradient {
             GradientStop {
@@ -313,9 +351,10 @@ Item {
     }
 
     // A deeper veil down the left, behind the text, so it reads on any
-    // wallpaper without a box around it
+    // wallpaper without a box around it. It goes with the text.
     Rectangle {
         anchors.fill: parent
+        opacity: 1 - scene.lock.leave
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
@@ -484,7 +523,8 @@ Item {
             x: scene.dialX + scene.ringR * Math.sin(scene.markAng * Math.PI / 180) - width / 2
             y: scene.dialY - scene.ringR * Math.cos(scene.markAng * Math.PI / 180)
             width: 2
-            height: 20
+            // Pushes in a little at the click when the dials settle
+            height: 20 + 10 * scene.latch
             radius: 1
             antialiasing: true
             transformOrigin: Item.Top
@@ -596,6 +636,7 @@ Item {
 
                 // AM or PM, small, level with the top of the digits
                 Item {
+                    visible: scene.lock.periodText !== ""
                     width: period.implicitWidth + Style.spaceLg
                     height: 1
 

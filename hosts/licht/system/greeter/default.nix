@@ -15,6 +15,10 @@
   ...
 }: let
   user = "licht";
+  # The big clock on the login screen: 12 hour with AM/PM (true) or 24 hour.
+  # Keep it in step with clock12h in quickshell/config/Config.qml, which does
+  # the same for the screen lock.
+  clock12h = true;
   home = config.users.users.${user}.home;
 
   # What the greeter shares with the shell: the same tokens, colours, controls
@@ -89,6 +93,11 @@
     # does not: cage has none, so tell Qt not to
     export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
     export GREETER_USER=${user}
+    export GREETER_CLOCK12H=${
+      if clock12h
+      then "1"
+      else "0"
+    }
     # What the screen shows behind the clock. Only passed on when readable,
     # so a missing file means a plain backdrop, never a broken screen.
     wall=${home}/Pictures/Wallpapers/.current_wallpaper

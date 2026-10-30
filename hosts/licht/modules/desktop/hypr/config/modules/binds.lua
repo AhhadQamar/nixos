@@ -110,7 +110,7 @@ hl.bind(mainMod .. " + bracketright", qs("music", "media next"))
 hl.bind(mainMod .. " + bracketleft", qs("music", "media prev"))
 
 -- Session --------------------------------------------------------------------
--- Goes through logind so hypridle's lock_cmd runs. That keeps one hyprlock
+-- Goes through logind so hypridle's lock_cmd runs. That keeps one lock
 -- instance and lets "lock before suspend" know the session is already locked.
 hl.bind(mainMod .. " + SHIFT + L", hl.dsp.exec_cmd("loginctl lock-session"))
 

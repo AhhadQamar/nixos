@@ -14,6 +14,7 @@
 //   deny()      the password was refused: the marker turns red, the dial shakes
 //   breakDown() the thing that checks passwords could not run: the same, but it
 //               stays until the next attempt
+//   pollKeys()  ask whether Caps Lock or Num Lock is on (call it on every key press)
 //   accept()    the password was right: "Welcome back" is read out, the two
 //               dials spin and come to rest at nought, like a safe opening,
 //               then the rings open outwards and the screen fades.
@@ -30,6 +31,7 @@
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Scope {
     id: root
@@ -48,8 +50,12 @@ Scope {
     // Say how long the screen has been locked, beside the small line above the
     // greeting (the lock does; the login screen has nothing to say here)
     property bool showAway: false
-    // How long the unlock is on show before the screen fades
-    property int holdMs: Style.sweepMs
+    // How long the unlock is on show before the screen fades: the dials have
+    // settled and clicked by then (see unlockMs in LockStage.qml)
+    property int holdMs: 640
+    // 12 hour clock with AM/PM (true) or 24 hour (false). The lock sets this
+    // from Config; the greeter has no Config, so it keeps the default.
+    property bool use12h: true
 
     signal submitRequested
     signal finished
@@ -69,12 +75,19 @@ Scope {
     property real leave: 0
     // Sideways offset of the dial while it shakes
     property real shakeX: 0
+    // Refused attempts since the screen came up
+    property int attempts: 0
+    // Caps Lock and Num Lock are on (see pollKeys)
+    property bool capsOn: false
+    property bool numOn: false
 
     // The colour of the moment: the accent, red after a refusal
     readonly property color tone: (failed || broken) ? Colors.critical : Colors.accent
 
     // ---- What the screen says -------------------------------------------
-    readonly property string statusText: succeeded ? okText : (broken ? brokenText : (failed ? "Incorrect password. Try again." : (checking ? "Checking\u2026" : readyText)))
+    readonly property string lockKeysText: capsOn && numOn ? "Caps Lock and Num Lock are on" : (capsOn ? "Caps Lock is on" : (numOn ? "Num Lock is on" : ""))
+    readonly property string failedText: attempts > 1 ? "Incorrect password. Try again (" + attempts + ")" : "Incorrect password. Try again."
+    readonly property string statusText: succeeded ? okText : (broken ? brokenText : (failed ? failedText : (checking ? "Checking\u2026" : (lockKeysText !== "" ? lockKeysText : readyText))))
     readonly property bool statusIsError: failed || broken
 
     // When this screen came up, and how long ago that was ("" while it is
@@ -93,12 +106,15 @@ Scope {
     // The small line above the greeting, with the time away when there is some
     readonly property string modeLine: modeText + (showAway && awayText !== "" ? "  \u00b7  " + awayText : "")
 
-    // A 12 hour clock: 1 to 12, with AM or PM said separately
+    // 1 to 12 with AM or PM said separately, or 00 to 23 (see use12h)
     readonly property string hourText: {
-        const h = clock.date.getHours() % 12;
-        return String(h === 0 ? 12 : h);
+        const h = clock.date.getHours();
+        if (!use12h)
+            return String(h).padStart(2, "0");
+        return String(h % 12 === 0 ? 12 : h % 12);
     }
-    readonly property string periodText: clock.date.getHours() < 12 ? "AM" : "PM"
+    // Empty on a 24 hour clock, so nothing is drawn
+    readonly property string periodText: use12h ? (clock.date.getHours() < 12 ? "AM" : "PM") : ""
     readonly property string minuteText: Qt.formatDateTime(clock.date, "mm")
     readonly property string dateText: Qt.formatDateTime(clock.date, "dddd d MMMM")
     // Which of the greetings for the hour this visit uses (picked in arrive())
@@ -131,6 +147,9 @@ Scope {
         failed = false;
         broken = false;
         succeeded = false;
+        attempts = 0;
+        capsOn = false;
+        numOn = false;
         reveal = 0;
         leave = 0;
         shakeX = 0;
@@ -141,9 +160,11 @@ Scope {
         lockedAt = Date.now();
         greetPick = Math.floor(Math.random() * 3);
         openAnim.restart();
+        pollKeys();
     }
 
     function deny() {
+        attempts += 1;
         failed = true;
         shake.restart();
     }
@@ -165,6 +186,40 @@ Scope {
     function activate() {
         if (!succeeded && password !== "")
             submitRequested();
+    }
+
+    // ---- Caps Lock and Num Lock -----------------------------------------
+    // There is no password box to show them, so a wrong password from a stuck
+    // Caps Lock, or digits typed as arrows, would give no clue. The kernel
+    // keeps the LED state of every keyboard under /sys/class/leds (readable by
+    // anyone, and it works with no physical LED); it is read a moment after
+    // each key, once the compositor has updated it. Any keyboard with a lock
+    // on counts.
+    function pollKeys() {
+        keysDelay.restart();
+    }
+
+    Timer {
+        id: keysDelay
+
+        interval: 80
+        onTriggered: keysProbe.running = true
+    }
+
+    // Prints one line per lock, e.g. "capslock 0" or "numlock 1 0". Only shell
+    // built-ins, and /bin/sh by its full path: the login screen runs with a
+    // bare PATH.
+    Process {
+        id: keysProbe
+
+        command: ["/bin/sh", "-c", "for k in capslock numlock; do v=; for f in /sys/class/leds/*$k/brightness; do [ -r \"$f\" ] && read x < \"$f\" && v=\"$v $x\"; done; echo \"$k$v\"; done"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const on = k => new RegExp("^" + k + ".* 1( |$)", "m").test(text);
+                root.capsOn = on("capslock");
+                root.numOn = on("numlock");
+            }
+        }
     }
 
     // ---- Timers ---------------------------------------------------------
