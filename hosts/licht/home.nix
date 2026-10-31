@@ -13,7 +13,6 @@
     nh
     vesktop
     playerctl
-    bombsquad
     github-copilot-cli
     bluetui
   ];

@@ -10,6 +10,9 @@ local options = {
 		json = { "prettier" },
 		markdown = { "prettier" },
 
+		-- Jinja templates (Flask) - prettier breaks {% %} / {{ }}
+		htmldjango = { "djlint" },
+
 		-- C / C++
 		c = { "clang_format" },
 		cpp = { "clang_format" },
@@ -32,6 +35,9 @@ local options = {
 		black = {
 			prepend_args = { "--fast", "--line-length", "88" },
 		},
+		djlint = {
+			prepend_args = { "--profile", "jinja", "--indent", "2" },
+		},
 		isort = {
 			prepend_args = { "--profile", "black" },
 		},
@@ -43,10 +49,14 @@ local options = {
 	},
 
 	-- Format automatically when you save a file
-	format_on_save = {
-		timeout_ms = 2000,
-		lsp_format = "fallback",
-	},
+	-- djlint is a Python tool with a slow cold start, give it more time
+	format_on_save = function(bufnr)
+		local slow = { htmldjango = true }
+		return {
+			timeout_ms = slow[vim.bo[bufnr].filetype] and 10000 or 2000,
+			lsp_format = "fallback",
+		}
+	end,
 }
 
 require("conform").setup(options)

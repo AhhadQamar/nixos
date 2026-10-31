@@ -29,6 +29,7 @@
     prettier
     black
     python3Packages.isort
+    djlint # Jinja/Django template formatter (Flask)
   ];
 
   xdg.configFile."nvim".source =

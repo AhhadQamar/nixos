@@ -5,6 +5,15 @@ vim.filetype.add {
   extension = { qml = "qml" },
 }
 
+-- Jinja templates (Flask): treat as htmldjango so prettier is skipped
+vim.filetype.add {
+  extension = { jinja = "htmldjango", jinja2 = "htmldjango", j2 = "htmldjango" },
+  pattern = {
+    [".*/templates/.*%.html"] = "htmldjango",
+    [".*%.html%.j2"] = "htmldjango",
+  },
+}
+
 -- QML indentation
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "qml",
