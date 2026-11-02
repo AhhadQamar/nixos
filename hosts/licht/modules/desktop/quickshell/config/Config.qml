@@ -45,6 +45,49 @@ Singleton {
         }
     ]
 
+    // ---- Download manager ---------------------------------------------------
+    // New downloads go into a folder by file type, unless you pick one yourself
+    // under "Save to" (folders are relative to $HOME, and are made when needed)
+    readonly property bool downloadAutoCategory: true
+    readonly property var downloadCategories: [
+        {
+            "name": "Videos",
+            "dir": "Videos",
+            "exts": ["mp4", "mkv", "webm", "avi", "mov", "wmv", "flv", "m4v", "mpg", "mpeg", "ts"]
+        },
+        {
+            "name": "Music",
+            "dir": "Music",
+            "exts": ["mp3", "flac", "ogg", "opus", "m4a", "aac", "wav", "wma"]
+        },
+        {
+            "name": "Documents",
+            "dir": "Documents",
+            "exts": ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "epub", "djvu", "mobi"]
+        },
+        {
+            "name": "Archives",
+            "dir": "Downloads/Archives",
+            "exts": ["zip", "rar", "7z", "tar", "gz", "xz", "bz2", "zst", "tgz", "iso", "img"]
+        },
+        {
+            "name": "Programs",
+            "dir": "Downloads/Programs",
+            "exts": ["exe", "msi", "deb", "rpm", "appimage", "apk", "dmg"]
+        }
+    ]
+    // The scheduler (Z in the panel, or `qs ipc call downloads schedule on`):
+    // downloads run inside this window and wait outside it. A window that ends
+    // before it starts runs over midnight.
+    readonly property var downloadSchedule: ({
+            "start": "02:00",
+            "stop": "07:00"
+        })
+    // Add links to the downloads as soon as you copy them, if they are files
+    // (an archive, a video, a torrent, a magnet link...). Off, because copying a
+    // link to send to someone then starts a download.
+    readonly property bool downloadClipboardAdd: false
+
     // ---- System updater ---------------------------------------------------
     // Same variable your `rebuild` script and nh use
     readonly property string flakeDir: {

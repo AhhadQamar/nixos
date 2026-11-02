@@ -40,7 +40,29 @@
 // y copy the link, c clear finished, shift+p pause or resume all, shift+l cycle
 // the download limit, + / - parallel downloads, / search, 1-5 and tab switch
 // the filter, ? the sheet of keys, esc steps back (selection, details, search,
-// close).
+// close), z the schedule, w what to do when everything is finished.
+//
+// What the add pill (and `qs ipc call downloads add`, and the `dl` command)
+// understand, besides plain links, magnets and .torrent / .metalink files:
+//   https://x.org/img[001-100].jpg    a batch (numbers or letters, a step: [1-99:2])
+//   https://a.org/f.iso|https://b.org/f.iso    mirrors of one file
+//   https://a.org/f.iso#sha256=<hex>  checked when done (sha-1, sha-512, md5 too)
+//   curl 'https://...' -H 'Cookie: ...'    a browser's "Copy as cURL": the cookies,
+//                                     referer, login and user agent go with it
+//   qs ipc call downloads addx '{"url": "...", "referer": "...", "cookie": "...",
+//     "headers": ["K: V"], "user": "...", "pass": "...", "out": "name.ext",
+//     "dir": "...", "mirrors": ["..."], "userAgent": "..."}'
+// A link with a known file type is filed by type (Config.downloadCategories),
+// unless a folder is picked under "Save to". A link already in the list is not
+// added twice.
+//
+// The scheduler (Z): downloads run only inside Config.downloadSchedule and wait
+// outside it; anything added outside the window waits for it. "When finished"
+// (W) puts the computer to sleep or shuts it down a minute after the last
+// download ends; a new download or W again cancels it.
+//   qs ipc call downloads schedule on|off|toggle
+//   qs ipc call downloads whendone none|suspend|hibernate|poweroff
+//   qs ipc call downloads cancelaction
 //
 // Every timing and easing comes from the shared motion tokens in Style.qml; the
 // loops (breathing, the glint along the bar) are driven by properties and only
@@ -155,6 +177,14 @@ PanelWindow {
         {
             "k": ["1\u20135", "tab"],
             "d": "filter tabs"
+        },
+        {
+            "k": ["z"],
+            "d": "schedule on / off"
+        },
+        {
+            "k": ["w"],
+            "d": "when finished: nothing / sleep / shut down"
         },
         {
             "k": ["esc"],
@@ -275,6 +305,17 @@ PanelWindow {
     property string lastAdded: ""
     property var pendingDelete: []        // gids waiting for a second shift+del
     property var fileJobs: []
+    // Scheduler: downloads run inside Config.downloadSchedule and wait outside it
+    property bool schedOn: false
+    property bool windowOpen: true
+    property var windowLast: null         // the window state aria2 was last told about
+    readonly property bool holdNew: schedOn && !windowOpen
+    // What to do when the last download ends: none | suspend | hibernate | poweroff
+    property string whenDone: "none"
+    property bool seenBusy: false
+    property int actionLeft: 0            // seconds until that happens (0 = not counting)
+    property bool clipSeeded: false
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell"
     // Where each shown download sits along the dial, in disc units
     property var posMap: ({})
     // Downloads that were just removed and are shrinking away
@@ -703,9 +744,12 @@ PanelWindow {
                 message = r[0].message === "Unauthorized" ? "aria2 rejected the RPC secret" : r[0].message;
                 return;
             }
+            if (!connected)
+                windowLast = null;   // aria2 is back: say again what the schedule wants
             connected = true;
             message = "";
             ingest(r[0][0] || [], r[1][0] || [], r[2][0] || [], r[3][0] || {});
+            checkIdle(r[3][0] || {});
         });
     }
 
@@ -893,12 +937,19 @@ PanelWindow {
                 {
                     "methodName": "aria2.tellStopped",
                     "params": [t, -1, 15, ["gid", "status", "followedBy", "errorMessage"]]
+                },
+                {
+                    "methodName": "aria2.getGlobalStat",
+                    "params": [t]
                 }
             ]], function (res) {
             const r = res.result;
             if (!r || (r[0] && r[0].code))
                 return;
+            if (!connected)
+                windowLast = null;
             connected = true;
+            checkIdle((r[2] && r[2][0]) || {});
             const k = known;
             const events = [];
             (r[0][0] || []).forEach(function (d) {
@@ -961,11 +1012,127 @@ PanelWindow {
         return p && p.dir !== "" && home !== "" ? home + "/" + p.dir : "";
     }
 
+    // Where a new download goes and how it starts: a folder by file type (when no
+    // folder was picked), and paused while the schedule is holding things back
+    function baseOpts(name, dir) {
+        const o = {};
+        let d = dir;
+        if (d === "" && Config.downloadAutoCategory && home !== "") {
+            const c = Aria2.categoryDir(name, Config.downloadCategories);
+            if (c !== "")
+                d = home + "/" + c;
+        }
+        if (d !== "")
+            o["dir"] = d;
+        if (holdNew)
+            o["pause"] = "true";
+        return o;
+    }
+
+    function isDuplicate(url) {
+        const gids = Object.keys(rowMap);
+        for (let i = 0; i < gids.length; i++) {
+            const r = rowMap[gids[i]];
+            if (r.live && r.uris.indexOf(url) >= 0)
+                return true;
+        }
+        return false;
+    }
+
+    // Results of a batch of aria2 calls: the first error, if any
+    function firstError(res) {
+        if (res.error)
+            return res.error.message;
+        const list = res.result || [];
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].code)
+                return list[i].message;
+        }
+        return "";
+    }
+
+    // One download with its own headers: what a "Copy as cURL" holds, or addx
+    function addRich(o, dir) {
+        if (isDuplicate(o.url)) {
+            say("Already in the list", true);
+            return 0;
+        }
+        const uris = [o.url].concat(o.mirrors || []);
+        const opts = baseOpts(o.out && o.out !== "" ? o.out : o.url, dir);
+        const headers = (o.headers || []).slice();
+        if (o.cookie && o.cookie !== "")
+            headers.push("Cookie: " + o.cookie);
+        if (headers.length > 0)
+            opts["header"] = headers;
+        if (o.referer && o.referer !== "")
+            opts["referer"] = o.referer;
+        if (o.ua && o.ua !== "")
+            opts["user-agent"] = o.ua;
+        if (o.user && o.user !== "") {
+            opts["http-user"] = o.user;
+            opts["http-passwd"] = o.pass || "";
+            opts["ftp-user"] = o.user;
+            opts["ftp-passwd"] = o.pass || "";
+        }
+        if (o.out && o.out !== "")
+            opts["out"] = o.out;
+        call("aria2.addUri", [uris, opts], function (res) {
+            if (res.error)
+                say(res.error.message, true);
+            else
+                say(holdNew ? "Added  ·  waits for " + Config.downloadSchedule.start : "Added 1 download", false);
+            refresh();
+        });
+        return 1;
+    }
+
+    // qs ipc call downloads addx '{...}'
+    function addSpec(spec) {
+        let o = null;
+        try {
+            o = JSON.parse(spec);
+        } catch (e) {
+            return "error: not JSON";
+        }
+        if (!o || typeof o.url !== "string" || !/^(https?|ftp|sftp):\/\//i.test(o.url))
+            return "error: needs a \"url\"";
+        let dir = typeof o.dir === "string" ? o.dir : "";
+        if (dir !== "" && dir.charAt(0) !== "/" && home !== "")
+            dir = home + "/" + dir;
+        const n = addRich({
+            "url": o.url,
+            "mirrors": Array.isArray(o.mirrors) ? o.mirrors : [],
+            "headers": Array.isArray(o.headers) ? o.headers : [],
+            "cookie": o.cookie || "",
+            "referer": o.referer || "",
+            "ua": o.userAgent || "",
+            "user": o.user || "",
+            "pass": o.pass || "",
+            "out": o.out || ""
+        }, dir);
+        return n > 0 ? "ok" : "skipped";
+    }
+
     function addTextTo(text, dir) {
+        if (/^\s*curl\s/.test(text)) {
+            const c = Aria2.parseCurl(text);
+            if (c.error) {
+                say(c.error, true);
+                return 0;
+            }
+            const n = addRich(c, dir);
+            if (n > 0)
+                lastAdded = text.trim();
+            return n;
+        }
         const tokens = text.split(/\s+/).filter(function (t) {
             return t.length > 0;
         });
+        const calls = [];
+        const seen = {};
         let added = 0;
+        let dups = 0;
+        let cut = false;
         let bad = "";
         tokens.forEach(function (tok) {
             let t = tok;
@@ -978,32 +1145,53 @@ PanelWindow {
             }
             if (t.indexOf("~/") === 0 && home !== "")
                 t = home + t.slice(1);
-            const opts = dir !== "" ? {
-                "dir": dir
-            } : {};
             if (/^(magnet:|https?:|ftp:|sftp:)/i.test(t)) {
-                call("aria2.addUri", [[t], opts], function (res) {
-                    if (res.error)
-                        say(res.error.message, true);
-                    refresh();
+                const p = Aria2.parseToken(t, 1000);
+                cut = cut || p.cut;
+                p.groups.forEach(function (uris) {
+                    if (seen[uris[0]] || isDuplicate(uris[0])) {
+                        dups++;
+                        return;
+                    }
+                    seen[uris[0]] = true;
+                    const opts = baseOpts(uris[0], dir);
+                    if (p.checksum !== "")
+                        opts["checksum"] = p.checksum;
+                    calls.push(["aria2.addUri", [uris, opts]]);
+                    added++;
                 });
-                added++;
             } else if (t.charAt(0) === "/" && /\.torrent$/i.test(t)) {
-                queueFile(t, "aria2.addTorrent", opts);
+                queueFile(t, "aria2.addTorrent", baseOpts(t, dir));
                 added++;
             } else if (t.charAt(0) === "/" && /\.(metalink|meta4)$/i.test(t)) {
-                queueFile(t, "aria2.addMetalink", opts);
+                queueFile(t, "aria2.addMetalink", baseOpts(t, dir));
                 added++;
             } else if (bad === "") {
                 bad = tok;
             }
         });
+        if (calls.length > 0)
+            batch(calls, function (res) {
+                const err = firstError(res);
+                if (err !== "")
+                    say(err, true);
+                refresh();
+            });
         if (added > 0)
             lastAdded = text.trim();
         if (bad !== "")
             say("Not a link or .torrent path: " + (bad.length > 40 ? bad.slice(0, 40) + "\u2026" : bad), true);
-        else if (added > 0)
-            say(added === 1 ? "Added 1 download" : "Added " + added + " downloads", false);
+        else if (added > 0) {
+            let msg = added === 1 ? "Added 1 download" : "Added " + added + " downloads";
+            if (holdNew)
+                msg += "  ·  wait for " + Config.downloadSchedule.start;
+            if (dups > 0)
+                msg += "  ·  " + dups + " already in the list";
+            if (cut)
+                msg += "  ·  batch cut at 1000";
+            say(msg, false);
+        } else if (dups > 0)
+            say(dups === 1 ? "Already in the list" : dups + " already in the list", true);
         return added;
     }
 
@@ -1334,6 +1522,134 @@ PanelWindow {
         retryTimer.restart();
     }
 
+    // ---- Schedule, and what to do when everything is finished -------------------
+    function nowMinutes() {
+        const d = new Date();
+        return d.getHours() * 60 + d.getMinutes();
+    }
+
+    // Every few seconds: is it time to start or stop? Only a change is sent to
+    // aria2. Running: resume everything. Not running: pause everything.
+    function schedTick() {
+        if (!schedOn || secret === "" || !connected)
+            return;
+        const c = Config.downloadSchedule;
+        const w = Aria2.inWindow(nowMinutes(), Aria2.parseTime(c.start), Aria2.parseTime(c.stop));
+        windowOpen = w;
+        if (w === windowLast)
+            return;
+        windowLast = w;
+        act(w ? "aria2.unpauseAll" : "aria2.forcePauseAll", []);
+        say(w ? "Schedule  ·  downloads running until " + c.stop : "Schedule  ·  waiting for " + c.start, false);
+    }
+
+    function setSchedule(on) {
+        if (on === schedOn)
+            return;
+        const wasHolding = windowLast === false;
+        schedOn = on;
+        windowLast = null;
+        if (on) {
+            schedTick();
+            const c = Config.downloadSchedule;
+            say("Schedule on  ·  " + c.start + " \u2013 " + c.stop, false);
+        } else {
+            windowOpen = true;
+            if (wasHolding)
+                act("aria2.unpauseAll", []);
+            say("Schedule off", false);
+        }
+        saveSettings();
+    }
+
+    function saveSettings() {
+        settingsFile.setText(JSON.stringify({
+            "schedOn": schedOn
+        }));
+    }
+
+    function whenLabel(m) {
+        return ({
+                "none": "Nothing",
+                "suspend": "Sleep",
+                "hibernate": "Hibernate",
+                "poweroff": "Shut down"
+            })[m] || "Nothing";
+    }
+
+    function cancelAction() {
+        const was = actionLeft > 0;
+        actionLeft = 0;
+        actionTimer.stop();
+        whenDone = "none";
+        if (was)
+            say("Cancelled  ·  the computer stays on", false);
+    }
+
+    function cycleWhenDone() {
+        if (actionLeft > 0) {
+            cancelAction();
+            return;
+        }
+        const steps = ["none", "suspend", "poweroff"];
+        setWhenDone(steps[(Math.max(0, steps.indexOf(whenDone)) + 1) % steps.length]);
+    }
+
+    function setWhenDone(m) {
+        if (["none", "suspend", "hibernate", "poweroff"].indexOf(m) < 0)
+            return "error: none, suspend, hibernate or poweroff";
+        if (actionLeft > 0)
+            cancelAction();
+        whenDone = m;
+        say(m === "none" ? "When finished: do nothing" : "When finished: " + whenLabel(m).toLowerCase(), false);
+        return "ok";
+    }
+
+    // Called with aria2's global stats each time they are read. busy -> idle with
+    // an action chosen starts the countdown; any new work cancels it.
+    function checkIdle(st) {
+        const busy = Number(st.numActive || 0) + Number(st.numWaiting || 0) > 0;
+        if (busy) {
+            seenBusy = true;
+            if (actionLeft > 0) {
+                actionLeft = 0;
+                actionTimer.stop();
+                say("New download  ·  " + whenLabel(whenDone).toLowerCase() + " cancelled", false);
+            }
+            return;
+        }
+        if (!seenBusy)
+            return;
+        seenBusy = false;
+        if (whenDone !== "none" && actionLeft === 0) {
+            actionLeft = 60;
+            actionTimer.restart();
+            Quickshell.execDetached(["notify-send", "-a", "Downloads", "-u", "critical", "-i", "folder-download", "Downloads finished", whenLabel(whenDone) + " in 60 seconds. Press W in the downloads panel to cancel."]);
+        }
+    }
+
+    function runAction() {
+        const a = whenDone;
+        whenDone = "none";
+        actionLeft = 0;
+        actionTimer.stop();
+        if (a !== "none")
+            Quickshell.execDetached(["systemctl", a]);
+    }
+
+    // Links copied while this is on (Config.downloadClipboardAdd) are added at once
+    function captureClip(line) {
+        if (!clipSeeded) {
+            clipSeeded = true;   // the first answer is what was already there
+            return;
+        }
+        const t = line.trim();
+        if (t === "" || t === lastAdded || !Aria2.isFileLink(t, Config.downloadCategories))
+            return;
+        if (addText(t, "") > 0)
+            Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Download started", defang(t.length > 90 ? t.slice(0, 90) + "\u2026" : t)]);
+    }
+
     // ---- Window ----------------------------------------------------------------
     function open() {
         if (isOpen)
@@ -1444,6 +1760,27 @@ PanelWindow {
             dl.addText(link, "");
         }
 
+        // A download with its own headers (JSON, see the top of this file)
+        function addx(spec: string): string {
+            return dl.addSpec(spec);
+        }
+
+        function schedule(state: string): string {
+            if (state === "on" || state === "off" || state === "toggle") {
+                dl.setSchedule(state === "toggle" ? !dl.schedOn : state === "on");
+                return dl.schedOn ? "on" : "off";
+            }
+            return dl.schedOn ? "on" : "off";
+        }
+
+        function whendone(mode: string): string {
+            return dl.setWhenDone(mode);
+        }
+
+        function cancelaction(): void {
+            dl.cancelAction();
+        }
+
         target: "downloads"
     }
 
@@ -1503,6 +1840,59 @@ PanelWindow {
                 dl.say("Couldn't read " + fileReader.job.path, true);
             dl.fileJobs = dl.fileJobs.slice(1);
             dl.pumpFiles();
+        }
+    }
+
+    // The schedule is remembered across restarts. (What to do when finished is
+    // not: a forgotten "shut down" would be a nasty surprise.)
+    FileView {
+        id: settingsFile
+
+        path: dl.stateDir + "/downloads.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const d = JSON.parse(text());
+                if (d.schedOn === true) {
+                    dl.schedOn = true;
+                    dl.windowLast = null;
+                }
+            } catch (e) {}
+        }
+    }
+
+    Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", stateDir])
+
+    // Check the schedule even while the panel is closed
+    Timer {
+        interval: 20000
+        repeat: true
+        running: dl.schedOn
+        onTriggered: dl.schedTick()
+    }
+
+    Timer {
+        id: actionTimer
+
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            dl.actionLeft--;
+            if (dl.actionLeft <= 0)
+                dl.runAction();
+            else if (dl.isOpen)
+                dl.say(dl.whenLabel(dl.whenDone) + " in " + dl.actionLeft + " s  ·  W cancels", false);
+        }
+    }
+
+    // Copied links that are files, when Config.downloadClipboardAdd is on
+    Process {
+        id: clipWatch
+
+        command: ["wl-paste", "--type", "text", "--watch", "sh", "-c", "tr '\n' ' '; echo"]
+        running: Config.downloadClipboardAdd
+        stdout: SplitParser {
+            onRead: line => dl.captureClip(line)
         }
     }
 
@@ -1783,6 +2173,10 @@ PanelWindow {
                 dl.stepParallel(1);
             } else if (k === Qt.Key_Minus) {
                 dl.stepParallel(-1);
+            } else if (k === Qt.Key_W) {
+                dl.cycleWhenDone();
+            } else if (k === Qt.Key_Z) {
+                dl.setSchedule(!dl.schedOn);
             } else if (k === Qt.Key_Slash) {
                 searchInput.forceActiveFocus();
             } else if (k >= Qt.Key_1 && k <= Qt.Key_5) {
@@ -3187,6 +3581,26 @@ PanelWindow {
                     onClicked: dl.act("aria2.purgeDownloadResult", [])
                     onHoveredChanged: dl.tip = hovered ? "Clear finished" : ""
                 }
+
+                // The schedule: downloads only run inside the window (Z)
+                TextButton {
+                    compact: true
+                    primary: dl.schedOn
+                    glyph: Icons.clock
+                    onClicked: dl.setSchedule(!dl.schedOn)
+                    onHoveredChanged: dl.tip = hovered ? (dl.schedOn ? "Schedule on" : "Schedule off") : ""
+                }
+
+                // What happens when everything is finished (W)
+                TextButton {
+                    compact: true
+                    primary: dl.whenDone !== "none"
+                    danger: dl.actionLeft > 0
+                    glyph: Icons.power
+                    text: dl.actionLeft > 0 ? String(dl.actionLeft) : (dl.whenDone === "none" ? "" : dl.whenLabel(dl.whenDone))
+                    onClicked: dl.cycleWhenDone()
+                    onHoveredChanged: dl.tip = hovered ? "When finished" : ""
+                }
             }
 
             Row {
@@ -3255,7 +3669,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     compact: true
                     primary: dl.savePick === index
-                    text: modelData.label !== "" ? modelData.label : (dl.globalOpt["dir"] ? Aria2.basename(dl.globalOpt["dir"]) : "Default")
+                    text: modelData.label !== "" ? modelData.label : (Config.downloadAutoCategory ? "Auto" : (dl.globalOpt["dir"] ? Aria2.basename(dl.globalOpt["dir"]) : "Default"))
                     onClicked: {
                         dl.savePick = index;
                         addInput.forceActiveFocus();

@@ -117,6 +117,9 @@ Singleton {
     // add to a playlist (md-playlist_plus)
     readonly property string playlistPlus: String.fromCodePoint(0xF0412)
 
+    // shut down / when finished (md-power)
+    readonly property string power: String.fromCodePoint(0xF0425)
+
     // ---- Adding an icon -------------------------------------------------
     // 1. Find the glyph on https://pictogrammers.com/library/mdi/ (or the
     //    Nerd Fonts cheat sheet, search "md-") and copy its codepoint,
