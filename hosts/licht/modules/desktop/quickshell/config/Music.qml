@@ -1,7 +1,11 @@
-// Music backend: one resident mpv that plays ~/Music, driven over its JSON IPC
-// socket. mpv is started detached, so music keeps playing when the shell is
+// Music backend: one resident mpv that plays ~/Music and streams from YouTube
+// Music (mpv's yt-dlp hook), driven over its JSON IPC socket. mpv is started detached, so music keeps playing when the shell is
 // reloaded, and the shell reattaches to it. The panel (MusicPlayer.qml) and the
 // bar chip (MusicChip.qml) both read from here.
+//
+// Also here: the metadata of streamed tracks (mpv's own is poor), the download
+// queue (yt-dlp, same settings and folders as the ytm aliases) and the last
+// queue and position, so the player can pick up where it left off.
 
 pragma Singleton
 import QtQuick
@@ -20,7 +24,7 @@ Singleton {
     readonly property string queueFile: runtime + "/quickshell-music-queue.m3u"
     readonly property int queueCap: 2000
     // --no-config: your normal mpv.conf (uosc, night mode, resume) is for video
-    readonly property var mpvCommand: ["mpv", "--no-config", "--idle=yes", "--no-video", "--force-window=no", "--no-terminal", "--audio-display=no", "--load-scripts=no", "--load-unsafe-playlists=yes", "--keep-open=no", "--audio-client-name=quickshell-music", "--volume=70", "--volume-max=130", "--input-ipc-server=" + sockPath]
+    readonly property var mpvCommand: ["mpv", "--no-config", "--idle=yes", "--no-video", "--force-window=no", "--no-terminal", "--audio-display=no", "--load-scripts=no", "--load-unsafe-playlists=yes", "--keep-open=no", "--audio-client-name=quickshell-music", "--ytdl=yes", "--ytdl-format=ba[ext=m4a]/ba", "--volume=70", "--volume-max=130", "--input-ipc-server=" + sockPath]
 
     // ---- Library --------------------------------------------------------
     // [{ path, artist, album, title }], sorted
@@ -68,8 +72,36 @@ Singleton {
         return i > 0 ? f.slice(0, i) : f;
     }
 
+    // Streamed tracks: url -> { path, title, artist, album, duration, cover }
+    property var remote: ({})
+
+    function isRemote(p) {
+        return /^https?:\/\//.test(p || "");
+    }
+
+    // Tell the player what a URL is before it is queued
+    function remember(list) {
+        const m = Object.assign({}, remote);
+        let any = false;
+        for (const e of list) {
+            if (e && isRemote(e.path)) {
+                m[e.path] = {
+                    "path": e.path,
+                    "title": e.title || "",
+                    "artist": e.artist || "",
+                    "album": e.album || "",
+                    "duration": e.duration || 0,
+                    "cover": e.cover || ""
+                };
+                any = true;
+            }
+        }
+        if (any)
+            remote = m;
+    }
+
     function lookup(p) {
-        return byPath[p] || null;
+        return byPath[p] || remote[p] || null;
     }
 
     // path → library entry, rebuilt with the library
@@ -128,6 +160,7 @@ Singleton {
                         filename: e.filename,
                         current: e.current === true
                     }));
+            saveSoon();
             return;
         }
         if (m.event !== "property-change")
@@ -154,6 +187,7 @@ Singleton {
             }
         case "duration":
             duration = typeof d === "number" ? d : 0;
+            tryResumeSeek();
             break;
         case "volume":
             volume = typeof d === "number" ? Math.round(d) : volume;
@@ -172,12 +206,23 @@ Singleton {
                 artist = "";
                 album = "";
                 cover = "";
+            } else if (remote[path]) {
+                const r = remote[path];
+                title = r.title;
+                artist = r.artist;
+                album = r.album;
+                cover = r.cover;
+            } else if (isRemote(path)) {
+                title = path;
+                cover = "";
             } else {
                 // Until the tags arrive, show the file name
                 title = baseName(path);
                 fetchCover();
             }
+            tryResumeSeek();
             requestQueue();
+            saveSoon();
             break;
         case "metadata":
             applyMeta(d);
@@ -203,7 +248,7 @@ Singleton {
 
     // mpv hands tags over with whatever case the file used
     function applyMeta(d) {
-        if (!d || typeof d !== "object")
+        if (!d || typeof d !== "object" || remote[path])
             return;
         const m = {};
         for (const k of Object.keys(d))
@@ -233,6 +278,8 @@ Singleton {
     }
 
     function fetchCover() {
+        if (isRemote(path))
+            return;
         if (coverProc.running) {
             coverDirty = true;
             return;
@@ -316,6 +363,19 @@ Singleton {
         send(["loadfile", p, "append-play"]);
     }
 
+    // Entries are { path, title, artist, album, duration, cover }: files or URLs
+    function playEntries(list, start) {
+        const l = list.slice(start || 0);
+        remember(l);
+        playList(l.map(e => e.path), 0);
+    }
+
+    function enqueueEntries(list) {
+        remember(list);
+        list.forEach(e => enqueue(e.path));
+        requestQueue();
+    }
+
     function jumpTo(i) {
         send(["playlist-play-index", i]);
     }
@@ -338,7 +398,224 @@ Singleton {
 
     property var scanBuf: []
 
-    Component.onCompleted: sock.connected = true
+    Component.onCompleted: {
+        sock.connected = true;
+        loadArchive();
+        Quickshell.execDetached(["mkdir", "-p", stateDir]);
+    }
+
+    // ---- Downloads --------------------------------------------------------
+    // One yt-dlp at a time, with the settings of the ytm aliases
+    // (yt-dlp/music.conf): ~/Music/Artist/Album/Title.m4a, tags and cover.
+    // [{ id, target, mode, title, state: queued | running, pct }]
+    property var jobs: []
+    property int jobSeq: 0
+    property string lastError: ""
+    // YouTube ids yt-dlp has already filed (its download archive)
+    property var archive: ({})
+    property var archiveBuf: ({})
+    readonly property int dlCount: jobs.length
+    readonly property bool dlActive: jobs.length > 0
+    readonly property real dlPct: {
+        for (const j of jobs) {
+            if (j.state === "running")
+                return j.pct;
+        }
+        return 0;
+    }
+
+    signal downloadFinished(var job)
+    signal downloadFailed(var job, string message)
+
+    function videoId(u) {
+        const m = /[?&]v=([\w-]{11})/.exec(u || "");
+        return m ? m[1] : "";
+    }
+
+    function downloaded(p) {
+        const id = videoId(p);
+        return id !== "" && archive[id] === true;
+    }
+
+    function jobFor(target) {
+        for (const j of jobs) {
+            if (j.target === target)
+                return j;
+        }
+        return null;
+    }
+
+    // target: a URL, "ytsearch1:words" or "browse:<album id>". mode: track | album
+    function download(target, mode, title) {
+        if (!target || isRemote(target) === false && target.indexOf("ytsearch") !== 0 && target.indexOf("browse:") !== 0)
+            return false;
+        if (jobFor(target) !== null)
+            return false;
+        jobSeq++;
+        jobs = jobs.concat([
+            {
+                "id": jobSeq,
+                "target": target,
+                "mode": mode === "album" ? "album" : "track",
+                "title": title || target,
+                "state": "queued",
+                "pct": 0
+            }
+        ]);
+        pumpJobs();
+        return true;
+    }
+
+    function patchJob(id, patch) {
+        jobs = jobs.map(j => j.id === id ? Object.assign({}, j, patch) : j);
+    }
+
+    function pumpJobs() {
+        if (dlProc.running)
+            return;
+        for (const j of jobs) {
+            if (j.state === "queued") {
+                runningJob = j.id;
+                lastError = "";
+                patchJob(j.id, {
+                    "state": "running"
+                });
+                dlProc.command = ["bash", Quickshell.shellPath("music/dl.sh"), j.mode, j.target];
+                dlProc.running = true;
+                return;
+            }
+        }
+    }
+
+    property int runningJob: 0
+
+    function onDlLine(line) {
+        if (line.indexOf("PCT ") === 0) {
+            const f = line.trim().split(/\s+/);
+            const pct = parseFloat(f[1]);
+            const idx = parseInt(f[2]);
+            const n = parseInt(f[3]);
+            if (!isFinite(pct))
+                return;
+            // A playlist is one bar across all its songs
+            const all = isFinite(idx) && isFinite(n) && n > 1 ? ((idx - 1) + pct / 100) / n * 100 : pct;
+            patchJob(runningJob, {
+                "pct": Math.min(99, all)
+            });
+        } else if (line.indexOf("ERROR") === 0) {
+            lastError = line.replace(/^ERROR:\s*(\[[^\]]*\]\s*)?/, "").slice(0, 120);
+        }
+    }
+
+    function onDlExit(code) {
+        let job = null;
+        for (const j of jobs) {
+            if (j.id === runningJob)
+                job = j;
+        }
+        jobs = jobs.filter(j => j.id !== runningJob);
+        runningJob = 0;
+        if (job !== null) {
+            if (code === 0)
+                downloadFinished(job);
+            else
+                downloadFailed(job, lastError !== "" ? lastError : "yt-dlp stopped (exit " + code + ")");
+        }
+        loadArchive();
+        scan();
+        pumpJobs();
+    }
+
+    function loadArchive() {
+        if (archiveProc.running)
+            return;
+        archiveBuf = {};
+        archiveProc.running = true;
+    }
+
+    // ---- Resume -----------------------------------------------------------
+    // The queue and the position are kept in ~/.local/state/quickshell, so a
+    // new session can pick up where the last one stopped.
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell"
+    readonly property string stateFilePath: stateDir + "/music-state.json"
+    // { queue: [paths], index, position, remote: [entries] } or null
+    property var saved: null
+    readonly property bool resumable: saved !== null && Array.isArray(saved.queue) && saved.queue.length > 0 && !hasTrack
+    readonly property string resumeTitle: {
+        if (!resumable)
+            return "";
+        const p = saved.queue[Math.min(saved.index || 0, saved.queue.length - 1)];
+        const t = lookup(p);
+        return t ? t.title : baseName(p);
+    }
+    property int resumeIdx: -1
+    property string resumePath: ""
+    property real resumeAt: 0
+
+    function saveSoon() {
+        if (online && !idle)
+            saveTimer.restart();
+    }
+
+    function saveNow() {
+        if (!online || idle || path === "" || queue.length === 0)
+            return;
+        let idx = 0;
+        for (let i = 0; i < queue.length; i++) {
+            if (queue[i].current)
+                idx = i;
+        }
+        const paths = queue.map(e => e.filename);
+        const rem = [];
+        for (const p of paths) {
+            if (remote[p])
+                rem.push(remote[p]);
+        }
+        stateFile.setText(JSON.stringify({
+            "queue": paths,
+            "index": idx,
+            "position": Math.floor(position),
+            "remote": rem
+        }));
+    }
+
+    function restore(text) {
+        let d = null;
+        try {
+            d = JSON.parse(text);
+        } catch (e) {
+            d = null;
+        }
+        if (d === null || !Array.isArray(d.queue))
+            return;
+        remember(d.remote || []);
+        saved = d;
+    }
+
+    function resume() {
+        if (!resumable)
+            return;
+        const list = saved.queue.slice(0, queueCap);
+        resumeIdx = Math.max(0, Math.min(saved.index || 0, list.length - 1));
+        resumePath = list[resumeIdx];
+        resumeAt = saved.position || 0;
+        ensure();
+        if (listWriter.running) {
+            nextList = list;
+            return;
+        }
+        writeList(list);
+    }
+
+    function tryResumeSeek() {
+        if (resumePath !== "" && path === resumePath && duration > 0) {
+            const at = resumeAt;
+            resumePath = "";
+            resumeAt = 0;
+            if (at > 2 && at < duration - 2)
+                seekTo(at);
+        }
+    }
 
     // ---- Plumbing -------------------------------------------------------
     Socket {
@@ -401,10 +678,18 @@ Singleton {
 
         onExited: code => {
             if (code === 0) {
+                // Resuming: stay paused and go to the saved entry
+                if (root.resumeIdx >= 0)
+                    root.send(["set_property", "pause", true]);
                 root.send(["loadlist", root.queueFile, "replace"]);
-                if (root.shuffle)
-                    root.send(["playlist-shuffle"]);
-                root.send(["set_property", "pause", false]);
+                if (root.resumeIdx >= 0) {
+                    root.send(["playlist-play-index", root.resumeIdx]);
+                    root.resumeIdx = -1;
+                } else {
+                    if (root.shuffle)
+                        root.send(["playlist-shuffle"]);
+                    root.send(["set_property", "pause", false]);
+                }
             }
             if (root.nextList) {
                 const l = root.nextList;
@@ -440,6 +725,54 @@ Singleton {
             root.scanning = false;
             root.scanned = true;
         }
+    }
+
+    Process {
+        id: dlProc
+
+        stdout: SplitParser {
+            onRead: line => root.onDlLine(line)
+        }
+        onExited: code => root.onDlExit(code)
+    }
+
+    // ~/Music/.yt-dlp-archive.txt: lines of "youtube <id>"
+    Process {
+        id: archiveProc
+
+        command: ["sh", "-c", "cat \"$1\" 2>/dev/null; true", "sh", root.libraryDir + "/.yt-dlp-archive.txt"]
+        stdout: SplitParser {
+            onRead: line => {
+                const f = line.trim().split(" ");
+                if (f.length >= 2)
+                    root.archiveBuf[f[1]] = true;
+            }
+        }
+        onExited: root.archive = root.archiveBuf
+    }
+
+    FileView {
+        id: stateFile
+
+        path: root.stateFilePath
+        printErrors: false
+        onLoaded: root.restore(text())
+    }
+
+    // A moment after the queue or the track changes, and every few seconds
+    // while playing (for the position)
+    Timer {
+        id: saveTimer
+
+        interval: 1500
+        onTriggered: root.saveNow()
+    }
+
+    Timer {
+        interval: 8000
+        repeat: true
+        running: root.playing
+        onTriggered: root.saveNow()
     }
 
     Process {

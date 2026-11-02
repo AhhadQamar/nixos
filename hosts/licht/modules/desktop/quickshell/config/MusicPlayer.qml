@@ -3,22 +3,27 @@
 // bottom edge, the same fine ruler, glass squircles and accent underline.
 //
 // Two things are on screen at once and neither hides the other:
-//   BROWSE   a dial of covers. Three tabs, one key apart (Tab):
+//   BROWSE   a dial of covers. Five tabs, one key apart (Tab):
 //              Albums  one cover per album: the quick way to put something on
 //              Tracks  every song, an album's tracks together, a gap between
 //              Queue   what is coming up
-//            Type to search: the dial jumps to the best matching song (and
-//            goes back to Albums when you clear it).
+//              Online  search YouTube Music; Enter streams, Ctrl+D downloads
+//              Lists   playlists (plain .m3u8 files), Liked Songs first
+//            Type to search: on the library tabs the dial jumps to the best
+//            matching song (and goes back to Albums when you clear it); on
+//            Online the same box searches the web; on Lists it filters.
 //   PLAYING  a glass card at the foot, always there: cover, title, transport,
 //            volume, and a ruler that is the track itself. Click or drag the
 //            ruler to seek.
 // Opening lands you on the album that is playing.
 //
 //   qs ipc call music toggle | open | close | playpause | next | prev | stop | rescan
+//   qs ipc call music download <url | ytsearch1:words | browse:id> <track|album>
+//   qs ipc call music resume | like
 //   qs ipc call music media <playpause|next|prev>   (media keys: falls back to playerctl)
 //
 // Keys   browse   ← → ↑ ↓ (Ctrl+N / Ctrl+P) move   PgUp PgDn jump 8   Home End ends
-//                 Tab (Shift+Tab) next / previous tab   Ctrl+1 2 3 pick a tab
+//                 Tab (Shift+Tab) next / previous tab   Ctrl+1 .. 5 pick a tab
 //                 Ctrl+← Ctrl+→ previous / next album (in Tracks)   Ctrl+J back to what is playing
 //        play     Enter  Albums: play the album   Tracks: play from this song on
 //                 Ctrl+Enter  Albums: play from this album on   Tracks: play this album
@@ -26,6 +31,14 @@
 //        player   Alt+← Alt+→ previous / next track   Shift+← Shift+→ seek 10 s
 //                 Shift+↑ Shift+↓ volume   Ctrl+M mute   Ctrl+S shuffle   Ctrl+R repeat
 //        queue    Delete (or Ctrl+D) remove the highlighted entry
+//        online   Ctrl+T songs / albums / playlists / artists   Enter stream (from here on)
+//                 Shift+Enter queue   Ctrl+Enter open an album, playlist or artist
+//                 Ctrl+D download (Ctrl+Shift+D: the whole album you are in)
+//                 Esc or Backspace (search empty) goes back out of an album
+//        lists    Enter play   Ctrl+Enter open   Delete remove (twice, for a whole list)
+//                 Ctrl+L like the song (or the one playing)   Ctrl+A add to a playlist:
+//                 pick one with Enter, or type a new name and press Enter
+//        space    Space with nothing playing picks up the last queue and position
 //        Esc clears the search, then closes
 // Mouse  click a cover to bring it to the middle, click it again to play from
 //        there; scroll the dial to move, scroll the player card for volume;
@@ -83,7 +96,7 @@ PanelWindow {
     property real breath: 0
     // 0 -> 1 each time the selection changes: the read-out fades up
     property real swap: 1
-    // 0 = albums, 1 = tracks, 2 = queue
+    // 0 = albums, 1 = tracks, 2 = queue, 3 = online, 4 = lists
     property int tab: 0
     // The search moved us from Albums to Tracks by itself (so clearing it goes back)
     property bool autoTracks: false
@@ -100,6 +113,29 @@ PanelWindow {
     property var libPos: []
     property var qItems: []
     property var qPos: []
+    // Online results (or the songs of the album you opened), and the lists
+    property var oItems: []
+    property var oPos: []
+    property var lItems: []
+    property var lPos: []
+    property int osel: 0
+    property int lsel: 0
+    // An album, playlist or artist opened from the results: { item, title, items, playlist }
+    property var oOpened: null
+    property int oBackSel: 0
+    property string oBackQuery: ""
+    // The playlist whose songs are shown ("" = the playlists themselves)
+    property string lOpen: ""
+    property var lTracks: []
+    property int lBackSel: 0
+    // Songs waiting for a playlist to be picked, and where to go back to
+    property var pickFor: []
+    property int pickBack: 0
+    property string pickQuery: ""
+    // What an album, playlist or list that is being loaded is wanted for
+    property var fetchTag: null
+    property var listTag: null
+    property int listSeq: 0
     // The Clear button of the queue has been pressed once
     property bool clearArmed: false
     // A short message that takes the place of the small line over the name
@@ -116,10 +152,15 @@ PanelWindow {
     // Opens on the monitor that has focus (set in open())
     property var targetScreen: Focus.screen
 
-    readonly property var items: tab === 0 ? albItems : (tab === 1 ? libItems : qItems)
-    readonly property var poss: tab === 0 ? albPos : (tab === 1 ? libPos : qPos)
+    readonly property var items: [albItems, libItems, qItems, oItems, lItems][tab]
+    readonly property var poss: [albPos, libPos, qPos, oPos, lPos][tab]
     readonly property int n: items.length
-    readonly property int selIdx: n > 0 ? clamp(tab === 0 ? asel : (tab === 1 ? sel : qsel), 0, n - 1) : 0
+    readonly property int selIdx: n > 0 ? clamp([asel, sel, qsel, osel, lsel][tab], 0, n - 1) : 0
+    // Something to step back out of: an album you opened, a playlist
+    readonly property bool canGoBack: (tab === 3 && oOpened !== null) || (tab === 4 && lOpen !== "")
+    // The song that is playing, as the hearts see it
+    readonly property bool playingLiked: Music.hasTrack && MusicLists.isLiked(Music.path)
+    readonly property var playingJob: Music.hasTrack ? Music.jobFor(Music.path) : null
     // The album that is playing right now
     readonly property string playingGroup: {
         const t = Music.lookup(Music.path);
@@ -168,6 +209,12 @@ PanelWindow {
         }
         refilter(q === "" ? "playing" : "best");
         refilterQueue(q === "");
+        // Online it is a web search; inside an album it filters its songs
+        if (oOpened !== null)
+            refilterOnline(false);
+        else if (tab === 3 && pickFor.length === 0)
+            MusicNet.setQuery(q);
+        refilterLists(false);
     }
 
     // ---- Helpers --------------------------------------------------------
@@ -244,6 +291,8 @@ PanelWindow {
             return m.current === true;
         if (tab === 0)
             return playingGroup !== "" && m.group === playingGroup;
+        if (tab === 3 || tab === 4)
+            return m.kind === "song" && Music.hasTrack && m.path === Music.path;
         return Music.hasTrack && m.path === Music.path;
     }
 
@@ -262,7 +311,8 @@ PanelWindow {
     }
 
     function wantCover(m, front) {
-        if (!m || m.group === "" || covers[m.group] !== undefined || coverBusy === m.group)
+        // Streamed songs and online results bring their own cover (a URL)
+        if (!m || m.group === "" || m.cover || Music.isRemote(m.path) || covers[m.group] !== undefined || coverBusy === m.group)
             return;
         for (const q of coverQueue) {
             if (q.group === m.group)
@@ -458,6 +508,7 @@ PanelWindow {
                 "artist": artist,
                 "album": info ? info.album : "",
                 "group": info ? groupOf(info) : "",
+                "cover": info && info.cover ? info.cover : "",
                 "current": e.current === true
             });
         }
@@ -483,6 +534,549 @@ PanelWindow {
         say("Queue cleared");
     }
 
+    // ---- Online ---------------------------------------------------------
+    // The search box is a web search here (music/search.py, YouTube Music).
+    // Results are songs, albums, playlists or artists; an album, playlist or
+    // artist opens into its songs.
+    function entryOf(m) {
+        return {
+            "path": m.path,
+            "title": m.title || "",
+            "artist": m.artist || "",
+            "album": m.album || "",
+            "duration": m.duration || 0,
+            "cover": m.cover || ""
+        };
+    }
+
+    function kindWord(k) {
+        return ({
+                "song": "Song",
+                "album": "Album",
+                "playlist": "Playlist",
+                "artist": "Artist",
+                "list": "Playlist",
+                "new": "New playlist"
+            })[k] || "";
+    }
+
+    function songsWord(c) {
+        return c + (c === 1 ? " song" : " songs");
+    }
+
+    function refilterOnline(keepSel) {
+        const q = query.trim();
+        const src = oOpened !== null ? oOpened.items : MusicNet.results;
+        const out = [];
+        const pos = [];
+        for (const r of src) {
+            if (oOpened !== null && q !== "" && Fuzzy.score(r.artist + " " + r.album + " " + r.title, q) < 0)
+                continue;
+            pos.push(out.length);
+            out.push(r);
+        }
+        animateView = false;
+        oItems = out;
+        oPos = pos;
+        osel = keepSel ? clamp(osel, 0, Math.max(0, out.length - 1)) : 0;
+        animateView = true;
+        coverTimer.restart();
+    }
+
+    function cycleKind() {
+        if (tab === 3 && oOpened === null)
+            MusicNet.cycleKind();
+    }
+
+    // Load the songs of an album, playlist or artist, then do `action`:
+    // play | queue | open | pick | download
+    function fetchThen(item, action) {
+        if (item.kind === "song")
+            return;
+        const id = MusicNet.fetchTracks(item.kind, item.id);
+        fetchTag = {
+            "id": id,
+            "action": action,
+            "item": item
+        };
+        say("Loading  ·  " + (item.title || ""), 8000);
+    }
+
+    function onTracks(id, data) {
+        const t = fetchTag;
+        if (t === null || t.id !== id)
+            return;
+        fetchTag = null;
+        note = "";
+        noteTimer.stop();
+        const entries = data.items.map(entryOf);
+        if (entries.length === 0) {
+            say("Nothing in it");
+            return;
+        }
+        if (t.action === "play") {
+            Music.playEntries(entries, 0);
+            say("Playing " + songsWord(entries.length));
+            watchPlay();
+        } else if (t.action === "queue") {
+            Music.enqueueEntries(entries);
+            say("Added " + songsWord(entries.length) + " to the queue");
+        } else if (t.action === "open") {
+            openCollection(t.item, data);
+        } else if (t.action === "pick") {
+            startPick(entries);
+        } else if (t.action === "download") {
+            downloadEntries(entries);
+        }
+    }
+
+    function onTracksFailed(id, message) {
+        if (fetchTag !== null && fetchTag.id === id) {
+            fetchTag = null;
+            say(message, 6000);
+        }
+    }
+
+    function openCollection(item, data) {
+        oBackSel = osel;
+        oBackQuery = query;
+        oOpened = {
+            "item": item,
+            "title": data.title || item.title,
+            "items": data.items,
+            "playlist": data.playlist || item.playlist || ""
+        };
+        search.clear();
+        refilterOnline(false);
+    }
+
+    // Esc or Backspace: out of an album, out of a playlist
+    function goBack() {
+        if (tab === 3 && oOpened !== null) {
+            oOpened = null;
+            search.text = oBackQuery;
+            refilterOnline(false);
+            osel = clamp(oBackSel, 0, Math.max(0, oItems.length - 1));
+        } else if (tab === 4 && lOpen !== "") {
+            lOpen = "";
+            lTracks = [];
+            search.clear();
+            refilterLists(false);
+            lsel = clamp(lBackSel, 0, Math.max(0, lItems.length - 1));
+        }
+    }
+
+    function activateOnline() {
+        const c = curItem;
+        if (c.kind !== "song") {
+            fetchThen(c, "play");
+            return;
+        }
+        // This song and the ones after it
+        const list = [];
+        for (let k = selIdx; k < oItems.length; k++) {
+            if (oItems[k].kind === "song")
+                list.push(entryOf(oItems[k]));
+        }
+        Music.playEntries(list, 0);
+        say("Streaming " + songsWord(list.length));
+        watchPlay();
+    }
+
+    // ---- Lists ----------------------------------------------------------
+    function refilterLists(keepSel) {
+        const q = query.trim();
+        const out = [];
+        const pos = [];
+        if (lOpen === "") {
+            let exact = false;
+            for (const l of MusicLists.lists) {
+                if (q !== "" && l.name.toLowerCase() === q.toLowerCase())
+                    exact = true;
+                if (q !== "" && Fuzzy.score(l.name, q) < 0)
+                    continue;
+                pos.push(out.length);
+                out.push({
+                    "key": "l:" + l.name,
+                    "kind": "list",
+                    "name": l.name,
+                    "count": l.count,
+                    "path": "",
+                    "title": l.name,
+                    "artist": "",
+                    "album": "",
+                    "group": "",
+                    "cover": ""
+                });
+            }
+            // A name that matches nothing can be made into a list
+            if (q !== "" && !exact) {
+                pos.push(out.length);
+                out.push({
+                    "key": "new:" + q,
+                    "kind": "new",
+                    "name": q,
+                    "count": 0,
+                    "path": "",
+                    "title": "New playlist  “" + q + "”",
+                    "artist": "",
+                    "album": "",
+                    "group": "",
+                    "cover": ""
+                });
+            }
+        } else {
+            for (let i = 0; i < lTracks.length; i++) {
+                const t = lTracks[i];
+                if (q !== "" && Fuzzy.score(t.artist + " " + t.album + " " + t.title, q) < 0)
+                    continue;
+                pos.push(out.length);
+                out.push({
+                    "key": "t" + i + ":" + t.path,
+                    "kind": "song",
+                    "path": t.path,
+                    "title": t.title,
+                    "artist": t.artist,
+                    "album": t.album,
+                    "duration": t.duration,
+                    "cover": t.cover,
+                    "group": Music.isRemote(t.path) ? "" : groupOf(t)
+                });
+            }
+        }
+        animateView = false;
+        lItems = out;
+        lPos = pos;
+        // With nothing matching, the "new playlist" entry is the one to land on
+        lsel = keepSel ? clamp(lsel, 0, Math.max(0, out.length - 1)) : 0;
+        animateView = true;
+        coverTimer.restart();
+    }
+
+    function listFetchThen(name, action) {
+        listSeq++;
+        listTag = {
+            "seq": listSeq,
+            "action": action,
+            "name": name
+        };
+        MusicLists.fetch(name, listSeq);
+    }
+
+    function onListFetched(tag, name, entries) {
+        const t = listTag;
+        if (t === null || t.seq !== tag)
+            return;
+        listTag = null;
+        if (t.action === "reopen") {
+            if (lOpen === name) {
+                lTracks = entries;
+                refilterLists(true);
+            }
+            return;
+        }
+        if (entries.length === 0) {
+            say(name + " is empty");
+            return;
+        }
+        if (t.action === "play") {
+            Music.playEntries(entries, 0);
+            say("Playing " + name + "  ·  " + songsWord(entries.length));
+            watchPlay();
+        } else if (t.action === "queue") {
+            Music.enqueueEntries(entries);
+            say("Added " + songsWord(entries.length) + " to the queue");
+        } else if (t.action === "open") {
+            lBackSel = lsel;
+            lOpen = name;
+            lTracks = entries;
+            search.clear();
+            refilterLists(false);
+        } else if (t.action === "pick") {
+            startPick(entries);
+        } else if (t.action === "download") {
+            downloadEntries(entries);
+        }
+    }
+
+    function onListWritten(name) {
+        if (lOpen === name)
+            listFetchThen(name, "reopen");
+    }
+
+    // Enter on a list: play it; on its songs: play from here on
+    function activateList() {
+        const c = curItem;
+        if (pickFor.length > 0) {
+            pickList(c);
+            return;
+        }
+        if (c.kind === "new") {
+            MusicLists.create(c.name);
+            say("Created  ·  " + c.name);
+            search.clear();
+        } else if (c.kind === "list") {
+            listFetchThen(c.name, "play");
+        } else {
+            const list = [];
+            for (let k = selIdx; k < lItems.length; k++)
+                list.push(entryOf(lItems[k]));
+            Music.playEntries(list, 0);
+            say("Playing " + songsWord(list.length));
+            watchPlay();
+        }
+    }
+
+    // ---- Picking a playlist to add songs to -------------------------------
+    // The Lists tab with a different Enter: it adds, rather than plays. A
+    // name typed there that matches nothing makes a new list.
+    function startPick(entries) {
+        if (entries.length === 0 || pickFor.length > 0)
+            return;
+        pickFor = entries;
+        pickBack = tab;
+        pickQuery = query;
+        lOpen = "";
+        lTracks = [];
+        autoTracks = false;
+        search.clear();
+        setTab(4);
+        refilterLists(false);
+        say("Add " + songsWord(entries.length) + " to…", 4000);
+    }
+
+    function endPick() {
+        const back = pickBack;
+        const q = pickQuery;
+        pickFor = [];
+        pickQuery = "";
+        search.text = q;
+        setTab(back);
+    }
+
+    function cancelPick() {
+        if (pickFor.length === 0)
+            return;
+        endPick();
+        say("Cancelled");
+    }
+
+    function pickList(c) {
+        if (c.kind !== "list" && c.kind !== "new")
+            return;
+        const cnt = pickFor.length;
+        MusicLists.add(c.name, pickFor);
+        endPick();
+        say("Added " + songsWord(cnt) + " to " + c.name);
+    }
+
+    // Ctrl+A
+    function pickSel() {
+        const c = curItem;
+        if (pickFor.length > 0)
+            return;
+        if (c !== null && tab === 0) {
+            const list = [];
+            for (let k = 0; k < libItems.length; k++) {
+                if (libItems[k].group === c.group)
+                    list.push(entryOf(libItems[k]));
+            }
+            startPick(list);
+        } else if (c !== null && tab === 3 && c.kind !== "song") {
+            fetchThen(c, "pick");
+        } else if (c !== null && tab === 4 && lOpen === "" && c.kind === "list") {
+            listFetchThen(c.name, "pick");
+        } else {
+            const e = likeTarget();
+            if (e === null)
+                say("Nothing to add");
+            else
+                startPick([e]);
+        }
+    }
+
+    // ---- Likes ------------------------------------------------------------
+    function playingEntry() {
+        if (!Music.hasTrack)
+            return null;
+        const t = Music.lookup(Music.path);
+        return {
+            "path": Music.path,
+            "title": Music.title || (t ? t.title : ""),
+            "artist": Music.artist || (t ? t.artist : ""),
+            "album": Music.album || (t ? t.album : ""),
+            "duration": Music.duration || 0,
+            "cover": Music.isRemote(Music.path) ? Music.cover : ""
+        };
+    }
+
+    // The highlighted song when the dial is on songs, otherwise what plays
+    function likeTarget() {
+        const c = curItem;
+        const onSongs = tab === 1 || tab === 2 || (tab === 3 && c !== null && c.kind === "song") || (tab === 4 && lOpen !== "");
+        if (c !== null && onSongs && c.path)
+            return entryOf(c);
+        return playingEntry();
+    }
+
+    function likeSel() {
+        const e = likeTarget();
+        if (e === null) {
+            say("Nothing to like");
+            return;
+        }
+        say(MusicLists.toggleLike(e) ? "Added to Liked Songs" : "Removed from Liked Songs");
+    }
+
+    function likePlaying() {
+        const e = playingEntry();
+        if (e === null)
+            return;
+        say(MusicLists.toggleLike(e) ? "Added to Liked Songs" : "Removed from Liked Songs");
+    }
+
+    // ---- Downloads --------------------------------------------------------
+    function downloadEntries(entries) {
+        let c = 0;
+        for (const e of entries) {
+            if (Music.isRemote(e.path) && !Music.downloaded(e.path) && Music.download(e.path, "track", e.title))
+                c++;
+        }
+        say(c > 0 ? "Downloading " + songsWord(c) : "Nothing new to download");
+    }
+
+    function downloadCollection(item, playlist) {
+        const ok = Music.download(playlist || ("browse:" + item.id), "album", item.title);
+        say(ok ? "Downloading  ·  " + item.title : "Already in the queue");
+    }
+
+    // Ctrl+D. `all`: the whole album you are inside, not the highlighted song
+    function downloadSel(all) {
+        const c = curItem;
+        if (c === null)
+            return;
+        if (tab === 4 && lOpen === "") {
+            if (c.kind === "list")
+                listFetchThen(c.name, "download");
+            return;
+        }
+        if (c.kind === "song") {
+            if (all && tab === 3 && oOpened !== null) {
+                downloadCollection(oOpened.item, oOpened.playlist);
+                return;
+            }
+            if (!Music.isRemote(c.path))
+                say("Already on this computer");
+            else if (Music.downloaded(c.path))
+                say("Already downloaded");
+            else
+                say(Music.download(c.path, "track", c.title) ? "Downloading  ·  " + c.title : "Already in the queue");
+        } else if (c.kind === "album" || c.kind === "playlist") {
+            downloadCollection(c, c.playlist);
+        } else if (c.kind === "artist") {
+            fetchThen(c, "download");
+        }
+    }
+
+    function ctrlD(all) {
+        if (tab === 2)
+            removeSel();
+        else if (tab === 3 || tab === 4)
+            downloadSel(all);
+    }
+
+    function downloadPlaying() {
+        if (!Music.hasTrack || !Music.isRemote(Music.path) || Music.downloaded(Music.path))
+            return;
+        say(Music.download(Music.path, "track", Music.title) ? "Downloading  ·  " + Music.title : "Already in the queue");
+    }
+
+    // ---- Words for the middle of the stage ---------------------------------
+    function lineOne() {
+        if (note !== "")
+            return note;
+        if (Music.dlActive)
+            return "Downloading " + Music.dlCount + "  ·  " + Math.round(Music.dlPct) + "%";
+        if (curItem === null)
+            return "";
+        let word = "";
+        if (curPlaying)
+            word = "Now playing";
+        else if (tab === 3)
+            word = oOpened !== null ? oOpened.title : kindWord(curItem.kind);
+        else if (tab === 4)
+            word = lOpen !== "" ? lOpen : kindWord(curItem.kind);
+        else
+            word = ["Album", "Track", "Queue"][tab];
+        return word + "  ·  " + (selIdx + 1) + " / " + n;
+    }
+
+    function emptyTitle() {
+        if (tab === 3) {
+            if (oOpened !== null)
+                return query.trim() !== "" ? "No match" : "Nothing here";
+            if (query.trim() === "")
+                return "Search YouTube Music";
+            if (MusicNet.busy)
+                return "Searching";
+            return MusicNet.error !== "" ? "Search failed" : "No results";
+        }
+        if (tab === 4)
+            return query.trim() !== "" ? "No match" : (lOpen !== "" ? "Nothing in " + lOpen : "No playlists yet");
+        if (query.trim() !== "")
+            return "No match";
+        if (tab === 2)
+            return "The queue is empty";
+        return Music.scanning || !Music.scanned ? "Reading your music" : "No music found";
+    }
+
+    function emptySub() {
+        if (tab === 3) {
+            if (oOpened !== null || query.trim() !== "")
+                return MusicNet.error !== "" && oOpened === null ? MusicNet.error : "";
+            return "";
+        }
+        if (tab === 4)
+            return "";
+        if (query.trim() !== "" || tab === 2)
+            return "";
+        return Music.scanning || !Music.scanned ? "This takes a moment the first time" : "Nothing in " + Config.musicDir;
+    }
+
+    function subLine(c) {
+        if (tab === 0)
+            return (c.artist !== "" ? c.artist + "  ·  " : "") + c.count + (c.count === 1 ? " song" : " songs");
+        if (c.kind === "list")
+            return songsWord(c.count);
+        if (c.kind === "new")
+            return "";
+        if (c.kind === "album")
+            return [c.artist, c.type !== "Album" ? c.type : "", c.year].filter(x => x).join("  ·  ");
+        if (c.kind === "playlist")
+            return [c.artist, c.count ? c.count + " songs" : ""].filter(x => x).join("  ·  ");
+        if (c.kind === "artist")
+            return "Artist";
+        return c.artist !== "" && c.album !== "" ? c.artist + "  ·  " + c.album : (c.artist || c.album);
+    }
+
+    function placeholderText() {
+        if (tab === 2)
+            return "Filter the queue";
+        if (tab === 3)
+            return oOpened !== null ? "Filter  ·  " + oOpened.title : (MusicNet.kind === "top" ? "Search YouTube Music" : "Search " + MusicNet.kindLabel.toLowerCase() + " on YouTube Music");
+        if (tab === 4)
+            return pickFor.length > 0 ? "Type a new name, or pick a playlist" : (lOpen !== "" ? "Filter  ·  " + lOpen : "Filter, or type a new name");
+        return "Search songs, albums, artists";
+    }
+
+    function badgeText() {
+        if (query.trim() === "")
+            return "";
+        if (tab === 3 && oOpened === null)
+            return MusicNet.busy ? "" : String(n);
+        return String(n);
+    }
+
     // ---- Moving ---------------------------------------------------------
     function setSel(i) {
         if (n === 0)
@@ -492,8 +1086,12 @@ PanelWindow {
             asel = v;
         else if (tab === 1)
             sel = v;
-        else
+        else if (tab === 2)
             qsel = v;
+        else if (tab === 3)
+            osel = v;
+        else
+            lsel = v;
     }
 
     function move(delta) {
@@ -542,6 +1140,11 @@ PanelWindow {
     function setTab(i) {
         if (tab === i)
             return;
+        // Leaving the playlist picker any other way is cancelling it
+        if (pickFor.length > 0 && i !== 4) {
+            cancelPick();
+            return;
+        }
         autoTracks = false;
         clearArmed = false;
         const c = curItem;
@@ -560,6 +1163,13 @@ PanelWindow {
         if (i === 2) {
             Music.requestQueue();
             refilterQueue(true);
+        } else if (i === 3) {
+            if (oOpened === null)
+                MusicNet.setQuery(query);
+            refilterOnline(true);
+        } else if (i === 4) {
+            MusicLists.refresh();
+            refilterLists(true);
         }
         animateView = true;
     }
@@ -568,11 +1178,16 @@ PanelWindow {
     function togglePlay() {
         if (Music.hasTrack)
             Music.playPause();
-        else
+        else if (Music.resumable && query.trim() === "") {
+            Music.resume();
+            say("Resuming  ·  " + Music.resumeTitle, 3000);
+            watchPlay();
+        } else
             activate();
     }
 
     // Enter. Albums: the album. Tracks: this song and what follows it.
+    // Online: stream it. Lists: play the list.
     function activate() {
         if (curItem === null)
             return;
@@ -580,13 +1195,17 @@ PanelWindow {
             playGroup(curItem.group);
         else if (tab === 1)
             playFrom(selIdx);
-        else {
+        else if (tab === 2) {
             Music.jumpTo(curItem.idx);
             watchPlay();
-        }
+        } else if (tab === 3)
+            activateOnline();
+        else
+            activateList();
     }
 
     // Ctrl+Enter, the other one. Albums: from this album on. Tracks: its album.
+    // Online and Lists: open it.
     function activateAlt() {
         if (curItem === null)
             return;
@@ -594,11 +1213,28 @@ PanelWindow {
             playFrom(curItem.first);
         else if (tab === 1)
             playGroup(curItem.group);
+        else if (tab === 3) {
+            if (curItem.kind === "song")
+                activateOnline();
+            else
+                fetchThen(curItem, "open");
+        } else if (tab === 4 && lOpen === "" && curItem.kind === "list" && pickFor.length === 0)
+            listFetchThen(curItem.name, "open");
     }
 
     function enqueueSel() {
         if (curItem === null || tab === 2)
             return;
+        if (tab === 3 || tab === 4) {
+            if (curItem.kind === "song") {
+                Music.enqueueEntries([entryOf(curItem)]);
+                say("Added to the queue");
+            } else if (tab === 3)
+                fetchThen(curItem, "queue");
+            else if (curItem.kind === "list")
+                listFetchThen(curItem.name, "queue");
+            return;
+        }
         if (tab === 1) {
             Music.enqueue(curItem.path);
             say("Added to the queue");
@@ -613,9 +1249,31 @@ PanelWindow {
         Music.requestQueue();
     }
 
-    // Remove the highlighted queue entry (not the one playing)
+    // Remove the highlighted entry: from the queue (not the one playing), from
+    // an open playlist, or a whole playlist (asks twice; Liked Songs stays)
     function removeSel() {
-        if (tab !== 2 || curItem === null || curItem.current)
+        if (curItem === null)
+            return;
+        if (tab === 4) {
+            if (lOpen !== "") {
+                MusicLists.removeTrack(lOpen, curItem.path);
+                say("Removed from " + lOpen);
+            } else if (curItem.kind === "list") {
+                if (curItem.name === MusicLists.likedName) {
+                    say("Liked Songs stays");
+                } else if (!clearArmed) {
+                    clearArmed = true;
+                    clearTimer.restart();
+                    say("Press again to delete  ·  " + curItem.name, 3000);
+                } else {
+                    clearArmed = false;
+                    MusicLists.del(curItem.name);
+                    say("Deleted  ·  " + curItem.name);
+                }
+            }
+            return;
+        }
+        if (tab !== 2 || curItem.current)
             return;
         Music.removeFromQueue(curItem.idx);
         say("Removed from the queue");
@@ -633,14 +1291,24 @@ PanelWindow {
         closeAnim.stop();
         clearArmed = false;
         note = "";
+        oOpened = null;
+        lOpen = "";
+        lTracks = [];
+        pickFor = [];
+        fetchTag = null;
+        listTag = null;
         search.text = "";
         tab = 0;
+        MusicNet.setQuery("");
+        MusicLists.refresh();
         if (!Music.scanned)
             Music.scan();
         Music.requestQueue();
         seedCover();
         refilter("playing");
         refilterQueue(true);
+        refilterOnline(false);
+        refilterLists(false);
         reveal = 0;
         spinIn = 3.2;
         fan = 1;
@@ -709,6 +1377,48 @@ PanelWindow {
             if (Music.failed)
                 panel.say("mpv isn't answering. Is it installed?", 6000);
         }
+
+        function onDownloadFinished(job) {
+            panel.say("Downloaded  ·  " + job.title, 3500);
+        }
+
+        function onDownloadFailed(job, message) {
+            panel.say("Download failed  ·  " + message, 7000);
+        }
+    }
+
+    Connections {
+        target: MusicNet
+
+        function onResultsChanged() {
+            if (panel.oOpened === null)
+                panel.refilterOnline(false);
+        }
+
+        function onTracksReady(id, data) {
+            panel.onTracks(id, data);
+        }
+
+        function onTracksFailed(id, message) {
+            panel.onTracksFailed(id, message);
+        }
+    }
+
+    Connections {
+        target: MusicLists
+
+        function onListsChanged() {
+            if (panel.lOpen === "")
+                panel.refilterLists(true);
+        }
+
+        function onFetched(tag, name, entries) {
+            panel.onListFetched(tag, name, entries);
+        }
+
+        function onWritten(name) {
+            panel.onListWritten(name);
+        }
     }
 
     Connections {
@@ -748,9 +1458,25 @@ PanelWindow {
             Music.stop();
         }
 
-        // Re-read ~/Music (the ytm download aliases call this)
+        // Re-read ~/Music
         function rescan() {
             Music.scan();
+        }
+
+        // The ytm / ytal / ytms aliases: target is a URL, "ytsearch1:words"
+        // or "browse:<album id>"; mode is track or album
+        function download(target: string, mode: string): string {
+            return Music.download(target, mode, target) ? "queued" : "skipped (already queued, or not something to download)";
+        }
+
+        // Pick up the last queue and position
+        function resume() {
+            Music.resume();
+        }
+
+        // Heart the song that is playing
+        function like() {
+            panel.likePlaying();
         }
 
         // Media keys: drive this player when it has a track, otherwise leave
@@ -1016,6 +1742,91 @@ PanelWindow {
         }
     }
 
+    // Download: the arrow, a ring that fills while it works, a check when done
+    component DlButton: Item {
+        id: dl
+
+        property real progress: 0
+        property bool busy: false
+        property bool done: false
+        readonly property bool hovered: dlHover.hovered
+
+        signal clicked
+
+        implicitWidth: 28
+        implicitHeight: 28
+        opacity: done || busy || hovered ? 1 : 0.9
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            antialiasing: true
+            color: dl.done ? Qt.alpha(Colors.accent, 0.2) : (dl.hovered ? Style.hoverFill : "transparent")
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Style.baseMs
+                }
+            }
+        }
+
+        Shape {
+            anchors.fill: parent
+            visible: dl.busy
+            layer.enabled: true
+            layer.samples: 4
+
+            ShapePath {
+                strokeColor: Qt.alpha(Colors.foreground, 0.16)
+                strokeWidth: 2
+                fillColor: "transparent"
+
+                PathAngleArc {
+                    centerX: dl.width / 2
+                    centerY: dl.height / 2
+                    radiusX: 11
+                    radiusY: 11
+                    startAngle: 0
+                    sweepAngle: 359.9
+                }
+            }
+
+            ShapePath {
+                strokeColor: Colors.accent
+                strokeWidth: 2
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+
+                PathAngleArc {
+                    centerX: dl.width / 2
+                    centerY: dl.height / 2
+                    radiusX: 11
+                    radiusY: 11
+                    startAngle: -90
+                    sweepAngle: Math.max(14, 359 * dl.progress)
+                }
+            }
+        }
+
+        Txt {
+            anchors.centerIn: parent
+            text: dl.done ? Icons.check : Icons.download
+            color: dl.done || dl.busy ? Colors.accent : (dl.hovered ? Colors.foreground : Colors.muted)
+            font.pixelSize: dl.busy ? 11 : 14
+        }
+
+        HoverHandler {
+            id: dlHover
+
+            cursorShape: dl.done || dl.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
+        }
+
+        TapHandler {
+            onTapped: if (!dl.done && !dl.busy)
+                dl.clicked()
+        }
+    }
+
     // Click above the stage to close. It stops at the stage's top edge: a
     // click on a button inside must not fall through to this as well.
     MouseArea {
@@ -1206,7 +2017,7 @@ PanelWindow {
                 // Arrive in a left-to-right wave, each with a small overshoot
                 readonly property real appear: panel.clamp(panel.reveal * 2.2 - (panel.clamp(rel, -6, 6) + 6) * 0.09, 0, 1)
                 readonly property real edge: panel.clamp((stage.cx - Math.abs(px - stage.cx)) / 230, 0, 1)
-                readonly property string coverUrl: m ? (playing && Music.cover !== "" ? Music.cover : panel.coverOf(m)) : ""
+                readonly property string coverUrl: m ? (m.cover ? m.cover : (playing && Music.cover !== "" ? Music.cover : panel.coverOf(m))) : ""
 
                 visible: m !== null && Math.abs(a) < 1.3 && opacity > 0.01
                 width: sz
@@ -1429,14 +2240,8 @@ PanelWindow {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     visible: text !== ""
-                    text: {
-                        if (panel.note !== "")
-                            return panel.note;
-                        if (panel.curItem === null)
-                            return "";
-                        return (panel.curPlaying ? "Now playing" : ["Album", "Track", "Queue"][panel.tab]) + "  ·  " + (panel.selIdx + 1) + " / " + panel.n;
-                    }
-                    color: panel.note !== "" || panel.curPlaying ? Colors.accent : Colors.muted
+                    text: panel.lineOne()
+                    color: panel.note !== "" || panel.curPlaying || Music.dlActive ? Colors.accent : Colors.muted
                     font.pixelSize: Style.fontXs
                     font.letterSpacing: 1.4
                     font.capitalization: Font.AllUppercase
@@ -1464,15 +2269,7 @@ PanelWindow {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
-                        text: {
-                            if (panel.curItem !== null)
-                                return panel.curItem.title;
-                            if (panel.query.trim() !== "")
-                                return "No match";
-                            if (panel.tab === 2)
-                                return "The queue is empty";
-                            return Music.scanning || !Music.scanned ? "Reading your music" : "No music found";
-                        }
+                        text: panel.curItem !== null ? panel.curItem.title : panel.emptyTitle()
                         color: Colors.foreground
                         font.pixelSize: Style.fontXl + 2
                         font.bold: true
@@ -1484,17 +2281,7 @@ PanelWindow {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     visible: text !== ""
-                    text: {
-                        const c = panel.curItem;
-                        if (c !== null) {
-                            if (panel.tab === 0)
-                                return (c.artist !== "" ? c.artist + "  ·  " : "") + c.count + (c.count === 1 ? " song" : " songs");
-                            return c.artist !== "" && c.album !== "" ? c.artist + "  ·  " + c.album : (c.artist || c.album);
-                        }
-                        if (panel.query.trim() !== "" || panel.tab === 2)
-                            return "";
-                        return Music.scanning || !Music.scanned ? "This takes a moment the first time" : "Nothing in " + Config.musicDir;
-                    }
+                    text: panel.curItem !== null ? panel.subLine(panel.curItem) : panel.emptySub()
                     color: Colors.muted
                     font.pixelSize: Style.fontMd
                 }
@@ -1518,7 +2305,7 @@ PanelWindow {
             Rectangle {
                 id: seg
 
-                Layout.preferredWidth: 300
+                Layout.preferredWidth: 420
                 Layout.preferredHeight: Style.fieldHeight
                 radius: height / 2
                 antialiasing: true
@@ -1526,9 +2313,9 @@ PanelWindow {
 
                 // The highlight glides between them
                 Rectangle {
-                    x: 3 + panel.tab * (seg.width - 6) / 3
+                    x: 3 + panel.tab * (seg.width - 6) / 5
                     y: 3
-                    width: (seg.width - 6) / 3
+                    width: (seg.width - 6) / 5
                     height: seg.height - 6
                     radius: height / 2
                     antialiasing: true
@@ -1555,6 +2342,14 @@ PanelWindow {
                         {
                             "label": "Queue",
                             "count": Music.queue.length
+                        },
+                        {
+                            "label": "Online",
+                            "count": panel.oItems.length
+                        },
+                        {
+                            "label": "Lists",
+                            "count": MusicLists.lists.length
                         }
                     ]
 
@@ -1566,9 +2361,9 @@ PanelWindow {
 
                         readonly property bool on: panel.tab === index
 
-                        x: 3 + index * (seg.width - 6) / 3
+                        x: 3 + index * (seg.width - 6) / 5
                         y: 3
-                        width: (seg.width - 6) / 3
+                        width: (seg.width - 6) / 5
                         height: seg.height - 6
 
                         Row {
@@ -1619,9 +2414,9 @@ PanelWindow {
                 id: search
 
                 Layout.fillWidth: true
-                placeholder: panel.tab === 2 ? "Filter the queue" : "Search songs, albums, artists"
-                badge: panel.query.trim() !== "" ? String(panel.n) : ""
-                busy: Music.scanning
+                placeholder: panel.placeholderText()
+                badge: panel.badgeText()
+                busy: panel.tab === 3 ? MusicNet.busy : Music.scanning
                 onTextChanged: panel.query = text
                 Keys.onPressed: event => {
                     const k = event.key;
@@ -1632,11 +2427,17 @@ PanelWindow {
                     const left = k === Qt.Key_Left;
                     const right = k === Qt.Key_Right;
                     if (k === Qt.Key_Escape) {
-                        if (panel.query !== "")
+                        if (panel.pickFor.length > 0)
+                            panel.cancelPick();
+                        else if (panel.query !== "")
                             search.clear();
+                        else if (panel.canGoBack)
+                            panel.goBack();
                         else
                             panel.close();
-                    } else if (alt && left)
+                    } else if (k === Qt.Key_Backspace && panel.query === "" && panel.canGoBack)
+                        panel.goBack();
+                    else if (alt && left)
                         Music.prev();
                     else if (alt && right)
                         Music.next();
@@ -1661,17 +2462,23 @@ PanelWindow {
                     else if (ctrl && k === Qt.Key_R)
                         Music.cycleRepeat();
                     else if (ctrl && k === Qt.Key_D)
-                        panel.removeSel();
+                        panel.ctrlD(shift);
+                    else if (ctrl && k === Qt.Key_T)
+                        panel.cycleKind();
+                    else if (ctrl && k === Qt.Key_L)
+                        panel.likeSel();
+                    else if (ctrl && k === Qt.Key_A)
+                        panel.pickSel();
                     else if (ctrl && k === Qt.Key_Space)
                         panel.togglePlay();
                     else if (k === Qt.Key_Space && panel.query === "" && plain)
                         panel.togglePlay();
-                    else if (ctrl && k >= Qt.Key_1 && k <= Qt.Key_3)
+                    else if (ctrl && k >= Qt.Key_1 && k <= Qt.Key_5)
                         panel.setTab(k - Qt.Key_1);
                     else if (k === Qt.Key_Tab)
-                        panel.setTab((panel.tab + 1) % 3);
+                        panel.setTab((panel.tab + 1) % 5);
                     else if (k === Qt.Key_Backtab)
-                        panel.setTab((panel.tab + 2) % 3);
+                        panel.setTab((panel.tab + 4) % 5);
                     else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
                         if (ctrl)
                             panel.activateAlt();
@@ -1695,7 +2502,7 @@ PanelWindow {
                         panel.setSel(0);
                     else if (plain && k === Qt.Key_End)
                         panel.setSel(panel.n - 1);
-                    else if (plain && k === Qt.Key_Delete && panel.query === "" && panel.tab === 2)
+                    else if (plain && k === Qt.Key_Delete && panel.query === "" && (panel.tab === 2 || panel.tab === 4))
                         panel.removeSel();
                     else
                         return;
@@ -1706,7 +2513,7 @@ PanelWindow {
             // Library: read the folder again
             IconButton {
                 Layout.alignment: Qt.AlignVCenter
-                visible: panel.tab !== 2
+                visible: panel.tab < 2
                 glyph: Icons.refresh
                 size: Style.fieldHeight - 4
                 active: !Music.scanning
@@ -1728,6 +2535,32 @@ PanelWindow {
                 text: panel.clearArmed ? "Press again" : "Clear"
                 onClicked: {
                     panel.requestClear();
+                    search.forceActiveFocus();
+                }
+            }
+
+            // Online: what is being searched for; click to change (Ctrl+T)
+            TextButton {
+                Layout.alignment: Qt.AlignVCenter
+                visible: panel.tab === 3 && panel.oOpened === null
+                compact: true
+                minWidth: 84
+                text: MusicNet.kindLabel
+                onClicked: {
+                    panel.cycleKind();
+                    search.forceActiveFocus();
+                }
+            }
+
+            // Choosing a playlist for some songs: back out
+            TextButton {
+                Layout.alignment: Qt.AlignVCenter
+                visible: panel.tab === 4 && panel.pickFor.length > 0
+                compact: true
+                minWidth: 84
+                text: "Cancel"
+                onClicked: {
+                    panel.cancelPick();
                     search.forceActiveFocus();
                 }
             }
@@ -2039,15 +2872,47 @@ PanelWindow {
                 width: Math.max(40, controls.x - 70 - 14)
                 height: 44
 
+                // Like, and (for a streamed song) keep a copy
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    visible: Music.hasTrack
+
+                    IconButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: panel.playingLiked ? Icons.heart : Icons.heartOutline
+                        on: panel.playingLiked
+                        size: 28
+                        glyphSize: 15
+                        onClicked: {
+                            panel.likePlaying();
+                            search.forceActiveFocus();
+                        }
+                    }
+
+                    DlButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: Music.isRemote(Music.path)
+                        busy: panel.playingJob !== null
+                        progress: panel.playingJob !== null ? panel.playingJob.pct / 100 : 0
+                        done: Music.downloaded(Music.path)
+                        onClicked: {
+                            panel.downloadPlaying();
+                            search.forceActiveFocus();
+                        }
+                    }
+                }
+
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
+                    width: parent.width - (Music.hasTrack ? (Music.isRemote(Music.path) ? 62 : 32) : 0)
                     spacing: 2
 
                     Txt {
                         width: parent.width
                         elide: Text.ElideRight
-                        text: Music.hasTrack ? (Music.title || "Unknown") : "Nothing playing"
+                        text: Music.hasTrack ? (Music.title || "Unknown") : (Music.resumable ? "Pick up where you left off" : "Nothing playing")
                         color: Music.hasTrack ? Colors.foreground : Colors.muted
                         font.pixelSize: Style.fontLg
                         font.bold: Music.hasTrack
@@ -2056,7 +2921,7 @@ PanelWindow {
                     Txt {
                         width: parent.width
                         elide: Text.ElideRight
-                        text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : "Pick something and press Enter"
+                        text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : (Music.resumable ? Music.resumeTitle : "Pick something and press Enter")
                         color: Colors.muted
                         font.pixelSize: Style.fontMd
                     }

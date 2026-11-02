@@ -15,6 +15,7 @@
     playerctl
     github-copilot-cli
     bluetui
+    bombsquad
   ];
 
   services.udiskie = {

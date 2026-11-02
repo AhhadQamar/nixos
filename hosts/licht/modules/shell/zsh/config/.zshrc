@@ -78,14 +78,24 @@ alias vpnoff='sudo systemctl stop wg-quick-wg0'
 
 # Download audio for the Quickshell player: m4a with tags and a square cover,
 # filed as ~/Music/Artist/Album/Title. Settings: ~/.config/yt-dlp/music.conf.
-# The player is told to rescan afterwards, so new tracks show up on their own.
+# With the player running, the job goes into its download queue (progress shows
+# in the panel and the library refreshes by itself). Without it, yt-dlp runs
+# right here, as before.
 _ytm() {
   yt-dlp --ignore-config --config-locations ~/.config/yt-dlp/music.conf "$@" || return
   qs ipc call music rescan >/dev/null 2>&1 || true
 }
-alias ytm='_ytm --no-playlist'                                                        # one track (URL)
-alias ytal='_ytm --yes-playlist --parse-metadata "playlist_index:%(track_number)s"'   # album / playlist, numbered in order
-ytms() { _ytm --no-playlist "ytsearch1:$*"; }                                         # search, take the top result
+_ytq() {  # _ytq <track|album> <url or ytsearch1:words>
+  qs ipc call music download "$2" "$1" >/dev/null 2>&1 && { echo "queued in the music player"; return 0; }
+  if [ "$1" = album ]; then
+    _ytm --yes-playlist --parse-metadata "playlist_index:%(track_number)s" "$2"
+  else
+    _ytm --no-playlist "$2"
+  fi
+}
+ytm()  { _ytq track "$1"; }                  # one track (URL)
+ytal() { _ytq album "$1"; }                  # album / playlist, numbered in order
+ytms() { _ytq track "ytsearch1:$*"; }        # search, take the top result
 
 # ─── ALIASES — GIT ──────────────────────────────────────────────
 alias g='git'

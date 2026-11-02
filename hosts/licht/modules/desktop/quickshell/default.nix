@@ -11,12 +11,25 @@
   # .gitignore.
   liveReload = false;
   configDir = "${config.home.homeDirectory}/nixos/hosts/licht/modules/desktop/quickshell/config";
+
+  # Python with ytmusicapi, for the music player's online search and playlists
+  # (music/search.py, music/lists.py). Under its own name so it cannot clash
+  # with, or be shadowed by, any other python3 on PATH.
+  musicPython = pkgs.python3.withPackages (p: [p.ytmusicapi]);
+  qsMusicPy = pkgs.writeShellScriptBin "qs-music-py" ''
+    exec ${musicPython}/bin/python3 "$@"
+  '';
 in {
   home.packages = with pkgs; [
     quickshell
     imagemagick
     sound-theme-freedesktop
     grim
+
+    # Music player: streaming and downloads. yt-dlp (programs/yt-dlp) needs an
+    # external JavaScript runtime for full YouTube support since 2025.11.12.
+    qsMusicPy
+    deno
   ];
 
   xdg.configFile."quickshell" =

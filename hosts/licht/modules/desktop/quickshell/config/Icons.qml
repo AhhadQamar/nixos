@@ -110,6 +110,13 @@ Singleton {
     // computers (md-laptop)
     readonly property string laptop: String.fromCodePoint(0xF0322)
 
+    // liked (md-heart)
+    readonly property string heart: String.fromCodePoint(0xF02D1)
+    // not liked (md-heart_outline)
+    readonly property string heartOutline: String.fromCodePoint(0xF02D5)
+    // add to a playlist (md-playlist_plus)
+    readonly property string playlistPlus: String.fromCodePoint(0xF0412)
+
     // ---- Adding an icon -------------------------------------------------
     // 1. Find the glyph on https://pictogrammers.com/library/mdi/ (or the
     //    Nerd Fonts cheat sheet, search "md-") and copy its codepoint,
