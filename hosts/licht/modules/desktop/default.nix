@@ -5,6 +5,5 @@
     ./pywal
     ./theme
     ./cava
-    ./pyprland
   ];
 }

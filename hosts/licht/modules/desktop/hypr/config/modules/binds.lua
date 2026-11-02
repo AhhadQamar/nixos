@@ -73,8 +73,10 @@ hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
 -- Scratch workspace (Super+S shows / hides it, Super+Shift+S sends a window there)
 hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
-hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
-
+hl.bind(mainMod .. " +  O", hl.dsp.workspace.toggle_special("extra"))
+hl.bind(mainMod .. " +  SHIFT + O", hl.dsp.window.move({ workspace = "special:extra" }))
+hl.bind(mainMod .. " + C", hl.dsp.workspace.toggle_special("extra_term"))
+hl.bind(mainMod .. " + SHIFT + C", hl.dsp.window.move({ workspace = "special:extra_term" }))
 -- Quickshell panels (workspace keys live in workspaces.lua) ---------------------
 --   Space  launcher        M  power menu        V  clipboard
 --   Shift+Space  nix package search
@@ -83,6 +85,7 @@ hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("pypr toggle term"))
 --   T      screen time     D  downloads         I  capture
 --   U      system updates  Shift+U  check for updates now (opens the panel)
 --   P      music player    Shift+P  play / pause    ]  next track    [  previous track
+--   Z      focus session: starts / pauses a Pomodoro and holds toasts back
 --   (these go to the music player when it has a track, otherwise to playerctl)
 -- Applying an update is deliberately not bound: press "a" twice inside the
 -- updater panel, so a stray key can never start a switch.
@@ -105,6 +108,7 @@ hl.bind(mainMod .. " + SHIFT + Space", qs("pkgsearch", "toggle"))
 hl.bind(mainMod .. " + U", qs("sysupd", "toggle"))
 hl.bind(mainMod .. " + SHIFT + U", qs("sysupd", "check"))
 hl.bind(mainMod .. " + P", qs("music", "toggle"))
+hl.bind(mainMod .. " + Z", qs("focus", "toggle"))
 hl.bind(mainMod .. " + SHIFT + P", qs("music", "media playpause"))
 hl.bind(mainMod .. " + bracketright", qs("music", "media next"))
 hl.bind(mainMod .. " + bracketleft", qs("music", "media prev"))

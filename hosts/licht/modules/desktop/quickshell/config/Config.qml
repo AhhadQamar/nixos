@@ -112,6 +112,10 @@ Singleton {
     readonly property int pomodoroLongEvery: 4
     // Start the next phase by itself when one ends (false: wait for you)
     readonly property bool pomodoroAutoStart: false
+    // While a Pomodoro focus session runs, hold back notification toasts (they
+    // still land in the notification centre) and let them through again at the
+    // break. Super+Z starts and pauses a session.
+    readonly property bool focusSilencesNotifications: true
     // The countdown timer: the length it starts with, and the discs on its dial
     // (minutes). +/- in the panel can set any other length.
     readonly property int timerDefaultMin: 10

@@ -7,6 +7,13 @@
 //   pomodoro   start or pause the Pomodoro
 //   stopwatch  start or stop the stopwatch
 //   alarm      add an alarm at that time (24-hour, "07:30")
+//
+//   qs ipc call focus toggle | start | stop | status
+//   toggle     start a focus session (a Pomodoro), or pause the running one
+//   start      start one now, ending a break early
+//   stop       end the session and put the clock back to the full length
+//   status     "off", or the phase and the time left ("focus 18:32")
+//   Toasts are held back while a focus session runs (Config.qml).
 
 import QtQuick
 import Quickshell
@@ -57,5 +64,30 @@ Scope {
         }
 
         target: "clock"
+    }
+
+    IpcHandler {
+        function toggle(): void {
+            if (Clocks.focusing)
+                Clocks.pomPause();
+            else
+                start();
+        }
+
+        function start(): void {
+            if (Clocks.pomPhase !== "focus")
+                Clocks.pomSetPhase("focus");
+            Clocks.pomStart();
+        }
+
+        function stop(): void {
+            Clocks.pomReset();
+        }
+
+        function status(): string {
+            return Clocks.pomRunning ? Clocks.pomPhase + " " + Clocks.fmt(Clocks.pomLeft) : "off";
+        }
+
+        target: "focus"
     }
 }

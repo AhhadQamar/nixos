@@ -236,6 +236,33 @@ Singleton {
         save();
     }
 
+    // ---- Focus mode -----------------------------------------------------
+    // While a Pomodoro focus session runs, notification toasts are held back.
+    // Do not disturb ends with the session, whether it finishes, is paused,
+    // reset or skipped. If do not disturb was already on when the session
+    // started, it is yours and is left alone.
+    property bool focusDnd: false
+    readonly property bool focusing: pomRunning && pomPhase === "focus"
+
+    function syncFocus() {
+        if (!Config.focusSilencesNotifications)
+            return;
+        if (focusing) {
+            if (!NotificationServer.doNotDisturb) {
+                NotificationServer.doNotDisturb = true;
+                focusDnd = true;
+            }
+            if (focusDnd)
+                NotificationServer.dndUntil = pomEndsAt;
+        } else if (focusDnd) {
+            NotificationServer.doNotDisturb = false;
+            NotificationServer.dndUntil = 0;
+            focusDnd = false;
+        }
+    }
+
+    onFocusingChanged: syncFocus()
+
     function pomSkip() {
         pomAdvance(false);
     }

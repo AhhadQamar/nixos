@@ -115,6 +115,24 @@ alias gs='git status -sb'
 alias gst='git stash'
 alias grb='git rebase'
 alias gri='git rebase -i'
+alias gsw='git switch'
+alias lg='lazygit'
+alias ghd='gh dash'
+
+# Pick a branch (newest first, with its recent commits on the right) and switch
+gb() {
+    local b
+    b=$(git branch --sort=-committerdate --format='%(refname:short)' |
+        fzf --preview 'git log --oneline --color=always -20 {}') || return
+    git switch "$b"
+}
+
+# Pick a commit and fold the staged changes into it (then `gri --autosquash`)
+gfix() {
+    local c
+    c=$(git log --oneline -30 | fzf --preview 'git show --color=always --stat {1}') || return
+    git commit --fixup "${c%% *}"
+}
 
 # ─── ALIASES — SYSTEM ───────────────────────────────────────────
 alias grep='grep --color=auto'
