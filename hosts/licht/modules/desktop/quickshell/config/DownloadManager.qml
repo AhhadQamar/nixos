@@ -56,6 +56,17 @@
 // unless a folder is picked under "Save to". A link already in the list is not
 // added twice.
 //
+// Video pages, from any site: a link to a page is downloaded with yt-dlp (it
+// knows well over a thousand sites, and looks for videos on any other page), with
+// your yt-dlp config for the folder and the default quality. It sits in the same
+// list, with the same pause, resume, retry and remove. How a link is told from a
+// file: a known video site or an .html page goes to yt-dlp; a link that ends in a
+// file type (.zip, .mp4, .pdf...) goes to aria2; anything else is asked about
+// first (what does the server send?): a web page goes to yt-dlp, a download to
+// aria2. video:link or G forces yt-dlp, direct:link forces aria2. Q picks the
+// quality (Config.downloadVideoQualities).
+//   qs ipc call downloads grab <link>
+//
 // The scheduler (Z): downloads run only inside Config.downloadSchedule and wait
 // outside it; anything added outside the window waits for it. "When finished"
 // (W) puts the computer to sleep or shuts it down a minute after the last
@@ -179,6 +190,14 @@ PanelWindow {
             "d": "filter tabs"
         },
         {
+            "k": ["g"],
+            "d": "grab the video of the copied link (any site)"
+        },
+        {
+            "k": ["q"],
+            "d": "video quality"
+        },
+        {
             "k": ["z"],
             "d": "schedule on / off"
         },
@@ -216,7 +235,8 @@ PanelWindow {
             "link": "",
             "uris": [],
             "files": [],
-            "info": []
+            "info": [],
+            "statusText": ""
         })
     readonly property string rpcKeys: "gid,status,totalLength,completedLength,uploadLength,downloadSpeed,uploadSpeed,connections,numSeeders,seeder,infoHash,dir,errorCode,errorMessage,followedBy,verifiedLength,verifyIntegrityPending,files,bittorrent"
 
@@ -315,6 +335,12 @@ PanelWindow {
     property bool seenBusy: false
     property int actionLeft: 0            // seconds until that happens (0 = not counting)
     property bool clipSeeded: false
+    // Video grabs (yt-dlp): rows of their own in the list, with ids "yt:N"
+    property var grabs: []
+    property int grabSeq: 0
+    property int videoQuality: 0
+    // Links waiting to be asked "page or file?" (downloads/probe.sh)
+    property var probeQueue: []
     readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell"
     // Where each shown download sits along the dial, in disc units
     property var posMap: ({})
@@ -536,6 +562,8 @@ PanelWindow {
             return "Seeding";
         case "checking":
             return "Checking";
+        case "merging":
+            return "Finishing";
         case "paused":
             return "Paused";
         case "done":
@@ -551,6 +579,8 @@ PanelWindow {
 
     // The line under a download's name
     function statusLine(m) {
+        if (m.statusText)
+            return m.statusText;
         switch (m.state) {
         case "failed":
             return m.error !== "" ? m.error : "Failed";
@@ -599,6 +629,7 @@ PanelWindow {
     function toneOf(s) {
         switch (s) {
         case "downloading":
+        case "merging":
             return Colors.accent;
         case "seeding":
         case "done":
@@ -620,6 +651,7 @@ PanelWindow {
         case "seeding":
             return Icons.upload;
         case "checking":
+        case "merging":
             return Icons.refresh;
         case "paused":
             return Icons.pause;
@@ -762,7 +794,7 @@ PanelWindow {
         const real = stopped.filter(function (d) {
             return !(d.followedBy && d.followedBy.length > 0);
         });
-        const arr = active.concat(waiting, real).map(d => Aria2.toRow(d));
+        const arr = active.concat(waiting, real).map(d => Aria2.toRow(d)).concat(grabRows());
         const map = {};
         const c = {
             "all": arr.length,
@@ -1113,7 +1145,7 @@ PanelWindow {
         return n > 0 ? "ok" : "skipped";
     }
 
-    function addTextTo(text, dir) {
+    function addTextTo(text, dir, mode) {
         if (/^\s*curl\s/.test(text)) {
             const c = Aria2.parseCurl(text);
             if (c.error) {
@@ -1132,6 +1164,7 @@ PanelWindow {
         const seen = {};
         let added = 0;
         let dups = 0;
+        let probing = 0;
         let cut = false;
         let bad = "";
         tokens.forEach(function (tok) {
@@ -1145,6 +1178,31 @@ PanelWindow {
             }
             if (t.indexOf("~/") === 0 && home !== "")
                 t = home + t.slice(1);
+            // video:link forces yt-dlp, direct:link forces aria2
+            const forced = /^(video|grab):/i.test(t);
+            const direct = mode === "direct" || /^direct:/i.test(t);
+            if (forced || /^direct:/i.test(t))
+                t = t.replace(/^(video|grab|direct):/i, "");
+            if (/^https?:\/\//i.test(t) && !direct) {
+                const route = forced ? "video" : Aria2.routeOf(t, Config.downloadVideoSites);
+                if (route === "video") {
+                    if (addGrab(t))
+                        added++;
+                    else
+                        dups++;
+                    return;
+                }
+                if (route === "probe") {
+                    if (isDuplicate(t) || probeQueue.some(q => q.url === t))
+                        dups++;
+                    else {
+                        probeLink(t, dir);
+                        added++;
+                        probing++;
+                    }
+                    return;
+                }
+            }
             if (/^(magnet:|https?:|ftp:|sftp:)/i.test(t)) {
                 const p = Aria2.parseToken(t, 1000);
                 cut = cut || p.cut;
@@ -1181,7 +1239,9 @@ PanelWindow {
             lastAdded = text.trim();
         if (bad !== "")
             say("Not a link or .torrent path: " + (bad.length > 40 ? bad.slice(0, 40) + "\u2026" : bad), true);
-        else if (added > 0) {
+        else if (added > 0 && probing === added) {
+            say(probing === 1 ? "Checking the link\u2026" : "Checking " + probing + " links\u2026", false);
+        } else if (added > 0) {
             let msg = added === 1 ? "Added 1 download" : "Added " + added + " downloads";
             if (holdNew)
                 msg += "  ·  wait for " + Config.downloadSchedule.start;
@@ -1251,7 +1311,10 @@ PanelWindow {
         return cursorGid !== "" ? [cursorGid] : [];
     }
 
-    function togglePause(gids) {
+    function togglePause(all) {
+        // Video grabs are paused by stopping yt-dlp (it carries on from the partial file)
+        const gids = all.filter(g => !isGrab(g));
+        all.filter(g => isGrab(g)).forEach(g => toggleGrabPause(g));
         const rs = gids.map(function (g) {
             return rowMap[g];
         }).filter(function (r) {
@@ -1276,7 +1339,10 @@ PanelWindow {
         const anyRunning = counts.active > 0 || rows.some(function (r) {
             return r.state === "queued";
         });
-        act(anyRunning ? "aria2.forcePauseAll" : "aria2.unpauseAll", []);
+        if (anyRunning)
+            pauseEverything();
+        else
+            resumeEverything();
     }
 
     function removeRows(gids, deleteFiles) {
@@ -1284,6 +1350,10 @@ PanelWindow {
             const r = rowMap[gid];
             if (!r)
                 return;
+            if (isGrab(gid)) {
+                removeGrab(gid, deleteFiles && !r.complete);
+                return;
+            }
             const finish = function () {
                 call("aria2.removeDownloadResult", [gid], function () {
                     refresh();
@@ -1355,6 +1425,11 @@ PanelWindow {
             const r = rowMap[gid];
             if (!r || r.state !== "failed")
                 return;
+            if (isGrab(gid)) {
+                retryGrab(gid);
+                n++;
+                return;
+            }
             const uris = r.isBt ? (r.link !== "" ? [r.link] : []) : r.uris;
             if (uris.length === 0)
                 return;
@@ -1388,7 +1463,7 @@ PanelWindow {
     function moveQueue(how) {
         let gids = targets().filter(function (g) {
             const r = rowMap[g];
-            return r && (r.state === "queued" || r.state === "paused");
+            return r && !isGrab(g) && (r.state === "queued" || r.state === "paused");
         });
         if (gids.length === 0)
             return;
@@ -1522,6 +1597,408 @@ PanelWindow {
         retryTimer.restart();
     }
 
+    // ---- Page or file? ------------------------------------------------------------
+    // A link that could be either is asked about first: downloads/probe.sh looks at
+    // what the server sends. A web page is a video's job (yt-dlp), anything else
+    // is a file (aria2). Four at a time.
+    function probeLink(url, dir) {
+        probeQueue.push({
+            "url": url,
+            "dir": dir
+        });
+        pumpProbes();
+    }
+
+    function pumpProbes() {
+        const slots = [probeA, probeB, probeC, probeD];
+        for (let i = 0; i < slots.length && probeQueue.length > 0; i++) {
+            if (slots[i].running)
+                continue;
+            const q = probeQueue.shift();
+            slots[i].url = q.url;
+            slots[i].dir = q.dir;
+            slots[i].verdict = "";
+            slots[i].command = ["sh", Quickshell.shellPath("downloads/probe.sh"), q.url];
+            slots[i].running = true;
+        }
+    }
+
+    function onProbed(url, dir, verdict) {
+        if (verdict === "page") {
+            if (addGrab(url))
+                say("It is a web page  ·  looking for a video", false);
+        } else {
+            addTextTo(url, dir, "direct");
+        }
+        pumpProbes();
+    }
+
+    // ---- Video grabber ---------------------------------------------------------
+    // yt-dlp does the work (login-free sites, merging, tags, your own config for
+    // the folder). The jobs show up as rows in the same list as aria2's downloads.
+    function isGrab(gid) {
+        return String(gid).indexOf("yt:") === 0;
+    }
+
+    function grabOf(id) {
+        for (let i = 0; i < grabs.length; i++) {
+            if (grabs[i].id === id)
+                return grabs[i];
+        }
+        return null;
+    }
+
+    function patchGrab(id, patch) {
+        grabs = grabs.map(j => j.id === id ? Object.assign({}, j, patch) : j);
+    }
+
+    function qualityDef() {
+        const q = Config.downloadVideoQualities;
+        return q[Math.max(0, Math.min(q.length - 1, videoQuality))];
+    }
+
+    function cycleQuality() {
+        videoQuality = (videoQuality + 1) % Config.downloadVideoQualities.length;
+        say("Video quality: " + qualityDef().label, false);
+        saveSettings();
+    }
+
+    function addGrab(url) {
+        for (let i = 0; i < grabs.length; i++) {
+            if (grabs[i].url === url && grabs[i].state !== "failed" && grabs[i].state !== "done") {
+                say("Already grabbing that", true);
+                return false;
+            }
+        }
+        grabSeq++;
+        const q = qualityDef();
+        grabs = grabs.concat([
+            {
+                "id": "yt:" + grabSeq,
+                "url": url,
+                "title": url,
+                "state": holdNew ? "paused" : "queued",
+                "pct": 0,
+                "done": 0,
+                "total": 0,
+                "speed": 0,
+                "eta": 0,
+                "error": "",
+                "path": "",
+                "part": "",
+                "parts": [],
+                "quality": q.label,
+                "args": q.args,
+                "audioOnly": q.audio === true,
+                "sawVideo": false,
+                "stopReq": "",
+                "archived": false
+            }
+        ]);
+        pumpGrabs();
+        return true;
+    }
+
+    // qs ipc call downloads grab <link>, and G
+    function grabLink(text) {
+        const m = /(https?:\/\/\S+)/i.exec(text || "");
+        if (!m) {
+            say("Copy a video link first", true);
+            return 0;
+        }
+        const ok = addGrab(m[1]);
+        if (ok)
+            say("Grabbing the video  ·  " + qualityDef().label, false);
+        return ok ? 1 : 0;
+    }
+
+    function grabArgs(j) {
+        const a = ["--newline", "--no-colors", "--progress", "--concurrent-fragments", "8", "--progress-template", "download:GRAB %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s %(info.vcodec)s %(info.acodec)s %(progress.tmpfilename)s", "--progress-template", "postprocess:POST %(progress.postprocessor)s %(progress.status)s", "--exec", "echo GRABFILE {}", "--no-playlist"];
+        if (Config.downloadVideoCookies !== "")
+            a.push("--cookies-from-browser", Config.downloadVideoCookies);
+        return a.concat(j.args, ["--", j.url]);
+    }
+
+    function slotList() {
+        return [grabA, grabB].slice(0, Math.max(1, Math.min(2, Config.downloadVideoParallel)));
+    }
+
+    function pumpGrabs() {
+        const slots = slotList();
+        for (let i = 0; i < grabs.length; i++) {
+            const j = grabs[i];
+            if (j.state !== "queued")
+                continue;
+            let slot = null;
+            for (let k = 0; k < slots.length; k++) {
+                if (!slots[k].running) {
+                    slot = slots[k];
+                    break;
+                }
+            }
+            if (slot === null)
+                return;
+            slot.jobId = j.id;
+            // 2>&1: yt-dlp's errors arrive on stdout with the rest
+            slot.command = ["sh", "-c", "exec yt-dlp \"$@\" 2>&1", "sh"].concat(grabArgs(j));
+            patchGrab(j.id, {
+                "state": "downloading",
+                "stopReq": "",
+                "error": "",
+                "archived": false
+            });
+            slot.running = true;
+        }
+    }
+
+    function stopSlot(id) {
+        [grabA, grabB].forEach(function (sl) {
+            if (sl.running && sl.jobId === id)
+                sl.running = false;
+        });
+    }
+
+    function onGrabLine(id, line) {
+        const j = grabOf(id);
+        if (j === null || j.stopReq !== "")
+            return;
+        if (line.indexOf("GRAB ") === 0) {
+            const g = Aria2.parseGrab(line);
+            const frac = g.total > 0 ? Math.min(1, g.done / g.total) : 0;
+            let all = frac;
+            let saw = j.sawVideo;
+            // Video and sound arrive as two downloads: weigh them 85 / 15
+            if (!j.audioOnly) {
+                if (g.kind === "video") {
+                    all = 0.85 * frac;
+                    saw = true;
+                } else if (g.kind === "audio" && saw) {
+                    all = 0.85 + 0.15 * frac;
+                }
+            }
+            const patch = {
+                "state": "downloading",
+                "pct": Math.min(0.99, all),
+                "done": g.done,
+                "total": g.total,
+                "speed": g.speed,
+                "eta": g.eta,
+                "sawVideo": saw
+            };
+            if (g.tmp !== "" && g.tmp !== "NA") {
+                patch["part"] = g.tmp;
+                // Video and sound are separate files: remember each of them
+                if (j.parts.indexOf(g.tmp) < 0)
+                    patch["parts"] = j.parts.concat([g.tmp]);
+                if (j.title === j.url)
+                    patch["title"] = Aria2.titleFromPart(g.tmp);
+            }
+            patchGrab(id, patch);
+        } else if (line.indexOf("POST ") === 0) {
+            if (/ started$/.test(line))
+                patchGrab(id, {
+                    "state": "merging",
+                    "pct": 0.99,
+                    "speed": 0
+                });
+        } else if (line.indexOf("GRABFILE ") === 0) {
+            patchGrab(id, {
+                "path": line.slice(9).replace(/^'|'$/g, "")
+            });
+        } else if (/has already been recorded in the archive/.test(line)) {
+            patchGrab(id, {
+                "archived": true,
+                "error": "Already downloaded (it is in your yt-dlp archive)"
+            });
+        } else if (line.indexOf("ERROR:") === 0 && /Unsupported URL|No video formats found|no video could be found/i.test(line)) {
+            patchGrab(id, {
+                "error": "No video found on that page. If it is a file, use direct:link"
+            });
+        } else if (line.indexOf("ERROR:") === 0) {
+            patchGrab(id, {
+                "error": line.replace(/^ERROR:\s*(\[[^\]]*\]\s*)?([\w-]{11}:\s*)?/, "").slice(0, 140)
+            });
+        }
+    }
+
+    function onGrabExit(id, code) {
+        const j = grabOf(id);
+        if (j !== null) {
+            if (j.stopReq === "pause") {
+                patchGrab(id, {
+                    "state": "paused",
+                    "stopReq": "",
+                    "speed": 0
+                });
+            } else if (j.stopReq === "") {
+                if (code === 0 && !j.archived) {
+                    patchGrab(id, {
+                        "state": "done",
+                        "pct": 1,
+                        "speed": 0,
+                        "eta": 0
+                    });
+                    Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Download complete", defang(j.title)]);
+                } else {
+                    patchGrab(id, {
+                        "state": "failed",
+                        "speed": 0,
+                        "error": j.error !== "" ? j.error : "yt-dlp stopped (exit " + code + ")"
+                    });
+                }
+            }
+        }
+        pumpGrabs();
+    }
+
+    function pauseGrab(id) {
+        const j = grabOf(id);
+        if (j === null)
+            return;
+        if (j.state === "queued") {
+            patchGrab(id, {
+                "state": "paused"
+            });
+        } else if (j.state === "downloading" || j.state === "merging") {
+            patchGrab(id, {
+                "state": "paused",
+                "stopReq": "pause",
+                "speed": 0
+            });
+            stopSlot(id);
+        }
+    }
+
+    function resumeGrab(id) {
+        const j = grabOf(id);
+        if (j !== null && j.state === "paused") {
+            patchGrab(id, {
+                "state": "queued"
+            });
+            pumpGrabs();
+        }
+    }
+
+    function toggleGrabPause(id) {
+        const j = grabOf(id);
+        if (j === null)
+            return;
+        if (j.state === "paused")
+            resumeGrab(id);
+        else
+            pauseGrab(id);
+    }
+
+    function retryGrab(id) {
+        const j = grabOf(id);
+        if (j !== null && j.state === "failed") {
+            patchGrab(id, {
+                "state": "queued",
+                "error": "",
+                "pct": 0
+            });
+            pumpGrabs();
+        }
+    }
+
+    function removeGrab(id, wipe) {
+        const j = grabOf(id);
+        if (j === null)
+            return;
+        if (j.state === "downloading" || j.state === "merging") {
+            patchGrab(id, {
+                "stopReq": "remove"
+            });
+            stopSlot(id);
+        }
+        if (wipe && j.parts.length > 0)
+            wipeParts(j.parts);
+        grabs = grabs.filter(x => x.id !== id);
+        pumpGrabs();
+    }
+
+    // Delete what a grab left behind: for each stream file (Title.f137.mp4.part,
+    // Title.f140.m4a.part): the partial, its .ytdl bookkeeping, fragments, and
+    // the stream file itself if it had just finished (kept until the merge).
+    // A second's wait lets yt-dlp finish dying first.
+    function wipeParts(parts) {
+        const script = "sleep 1; for f in \"$@\"; do rm -f -- \"$f\" \"$f.ytdl\" \"$f\"-Frag*; b=\"${f%.part}\"; if [ \"$b\" != \"$f\" ]; then rm -f -- \"$b\" \"$b.ytdl\"; fi; done";
+        Quickshell.execDetached(["sh", "-c", script, "sh"].concat(parts));
+    }
+
+    function pauseGrabs() {
+        grabs.forEach(j => pauseGrab(j.id));
+    }
+
+    function resumeGrabs() {
+        grabs.forEach(j => resumeGrab(j.id));
+    }
+
+    function pauseEverything() {
+        act("aria2.forcePauseAll", []);
+        pauseGrabs();
+    }
+
+    function resumeEverything() {
+        act("aria2.unpauseAll", []);
+        resumeGrabs();
+    }
+
+    function clearFinished() {
+        act("aria2.purgeDownloadResult", []);
+        grabs = grabs.filter(j => j.state !== "done" && j.state !== "failed");
+    }
+
+    // The grabs as rows of the list
+    function grabRows() {
+        return grabs.map(function (j, i) {
+            const live = j.state !== "done" && j.state !== "failed";
+            const group = j.state === "downloading" || j.state === "merging" ? "active" : (j.state === "queued" || j.state === "paused" ? "queued" : (j.state === "failed" ? "failed" : "done"));
+            const pct = Math.round(j.pct * 100) + "%";
+            let text = "";
+            if (j.state === "downloading")
+                text = "Video  ·  " + pct + (j.speed > 0 ? "  ·  " + Aria2.rate(j.speed) : "") + (j.eta > 0 ? "  ·  " + Aria2.dur(j.eta) + " left" : "");
+            else if (j.state === "merging")
+                text = "Merging and tagging\u2026";
+            else if (j.state === "paused")
+                text = "Paused  ·  " + pct;
+            else if (j.state === "queued")
+                text = "Waiting for a free slot";
+            else if (j.state === "done")
+                text = "Done  ·  " + (j.path !== "" ? Aria2.basename(j.path) : j.quality);
+            const base = j.path !== "" ? j.path : j.part;
+            const dir = base !== "" ? base.slice(0, Math.max(0, base.lastIndexOf("/"))) : "";
+            return {
+                "gid": j.id,
+                "name": j.title,
+                "state": j.state,
+                "group": group,
+                "live": live,
+                "total": j.total,
+                "done": j.done,
+                "fraction": j.pct,
+                "speed": j.speed,
+                "upSpeed": 0,
+                "up": 0,
+                "ratio": 0,
+                "conns": 0,
+                "seeders": 0,
+                "error": j.error,
+                "dir": dir,
+                "path": j.path,
+                "isBt": false,
+                "complete": j.state === "done",
+                "metadata": false,
+                "pos": 1000000 + i,
+                "link": j.url,
+                "uris": [j.url],
+                "files": [],
+                "statusText": text,
+                "info": [["Source", j.url], ["Quality", j.quality], ["Saved as", j.path !== "" ? Aria2.basename(j.path) : ""], ["Folder", dir]].filter(x => x[1] !== "")
+            };
+        });
+    }
+
     // ---- Schedule, and what to do when everything is finished -------------------
     function nowMinutes() {
         const d = new Date();
@@ -1539,7 +2016,10 @@ PanelWindow {
         if (w === windowLast)
             return;
         windowLast = w;
-        act(w ? "aria2.unpauseAll" : "aria2.forcePauseAll", []);
+        if (w)
+            resumeEverything();
+        else
+            pauseEverything();
         say(w ? "Schedule  ·  downloads running until " + c.stop : "Schedule  ·  waiting for " + c.start, false);
     }
 
@@ -1556,7 +2036,7 @@ PanelWindow {
         } else {
             windowOpen = true;
             if (wasHolding)
-                act("aria2.unpauseAll", []);
+                resumeEverything();
             say("Schedule off", false);
         }
         saveSettings();
@@ -1564,7 +2044,8 @@ PanelWindow {
 
     function saveSettings() {
         settingsFile.setText(JSON.stringify({
-            "schedOn": schedOn
+            "schedOn": schedOn,
+            "quality": videoQuality
         }));
     }
 
@@ -1608,7 +2089,7 @@ PanelWindow {
     // Called with aria2's global stats each time they are read. busy -> idle with
     // an action chosen starts the countdown; any new work cancels it.
     function checkIdle(st) {
-        const busy = Number(st.numActive || 0) + Number(st.numWaiting || 0) > 0;
+        const busy = Number(st.numActive || 0) + Number(st.numWaiting || 0) > 0 || grabs.some(j => j.state === "downloading" || j.state === "queued" || j.state === "merging" || j.state === "paused");
         if (busy) {
             seenBusy = true;
             if (actionLeft > 0) {
@@ -1765,6 +2246,11 @@ PanelWindow {
             return dl.addSpec(spec);
         }
 
+        // Download the video of a page with yt-dlp
+        function grab(link: string): string {
+            return dl.grabLink(link) > 0 ? "queued" : "skipped";
+        }
+
         function schedule(state: string): string {
             if (state === "on" || state === "off" || state === "toggle") {
                 dl.setSchedule(state === "toggle" ? !dl.schedOn : state === "on");
@@ -1857,6 +2343,8 @@ PanelWindow {
                     dl.schedOn = true;
                     dl.windowLast = null;
                 }
+                if (typeof d.quality === "number" && d.quality >= 0 && d.quality < Config.downloadVideoQualities.length)
+                    dl.videoQuality = d.quality;
             } catch (e) {}
         }
     }
@@ -1883,6 +2371,56 @@ PanelWindow {
             else if (dl.isOpen)
                 dl.say(dl.whenLabel(dl.whenDone) + " in " + dl.actionLeft + " s  ·  W cancels", false);
         }
+    }
+
+    // Two yt-dlp slots for the video grabs
+    component GrabProc: Process {
+        id: gp
+
+        property string jobId: ""
+
+        stdout: SplitParser {
+            onRead: line => dl.onGrabLine(gp.jobId, line)
+        }
+        onExited: code => dl.onGrabExit(gp.jobId, code)
+    }
+
+    // Four slots for "page or file?" questions
+    component ProbeProc: Process {
+        id: pp
+
+        property string url: ""
+        property string dir: ""
+        property string verdict: ""
+
+        stdout: SplitParser {
+            onRead: line => pp.verdict = line.trim()
+        }
+        onExited: dl.onProbed(pp.url, pp.dir, pp.verdict)
+    }
+
+    ProbeProc {
+        id: probeA
+    }
+
+    ProbeProc {
+        id: probeB
+    }
+
+    ProbeProc {
+        id: probeC
+    }
+
+    ProbeProc {
+        id: probeD
+    }
+
+    GrabProc {
+        id: grabA
+    }
+
+    GrabProc {
+        id: grabB
     }
 
     // Copied links that are files, when Config.downloadClipboardAdd is on
@@ -2164,7 +2702,7 @@ PanelWindow {
             } else if (k === Qt.Key_Y) {
                 dl.copyLink(row);
             } else if (k === Qt.Key_C) {
-                dl.act("aria2.purgeDownloadResult", []);
+                dl.clearFinished();
             } else if (k === Qt.Key_P && shift) {
                 dl.pauseAllToggle();
             } else if (k === Qt.Key_L && shift) {
@@ -2173,6 +2711,10 @@ PanelWindow {
                 dl.stepParallel(1);
             } else if (k === Qt.Key_Minus) {
                 dl.stepParallel(-1);
+            } else if (k === Qt.Key_G) {
+                dl.grabLink(dl.clip);
+            } else if (k === Qt.Key_Q) {
+                dl.cycleQuality();
             } else if (k === Qt.Key_W) {
                 dl.cycleWhenDone();
             } else if (k === Qt.Key_Z) {
@@ -3563,14 +4105,14 @@ PanelWindow {
                 TextButton {
                     compact: true
                     glyph: Icons.pause
-                    onClicked: dl.act("aria2.forcePauseAll", [])
+                    onClicked: dl.pauseEverything()
                     onHoveredChanged: dl.tip = hovered ? "Pause all" : ""
                 }
 
                 TextButton {
                     compact: true
                     glyph: Icons.play
-                    onClicked: dl.act("aria2.unpauseAll", [])
+                    onClicked: dl.resumeEverything()
                     onHoveredChanged: dl.tip = hovered ? "Resume all" : ""
                 }
 
@@ -3578,7 +4120,7 @@ PanelWindow {
                     compact: true
                     danger: true
                     glyph: Icons.trash
-                    onClicked: dl.act("aria2.purgeDownloadResult", [])
+                    onClicked: dl.clearFinished()
                     onHoveredChanged: dl.tip = hovered ? "Clear finished" : ""
                 }
 
@@ -3600,6 +4142,15 @@ PanelWindow {
                     text: dl.actionLeft > 0 ? String(dl.actionLeft) : (dl.whenDone === "none" ? "" : dl.whenLabel(dl.whenDone))
                     onClicked: dl.cycleWhenDone()
                     onHoveredChanged: dl.tip = hovered ? "When finished" : ""
+                }
+
+                // Quality for video grabs (Q)
+                TextButton {
+                    compact: true
+                    glyph: Icons.video
+                    text: dl.qualityDef().label
+                    onClicked: dl.cycleQuality()
+                    onHoveredChanged: dl.tip = hovered ? "Video quality" : ""
                 }
             }
 

@@ -88,6 +88,46 @@ Singleton {
     // link to send to someone then starts a download.
     readonly property bool downloadClipboardAdd: false
 
+    // ---- Video grabber --------------------------------------------------------
+    // Any link to a web page is downloaded with yt-dlp (it knows well over a
+    // thousand sites, and looks for videos on the rest); your yt-dlp config decides
+    // the folder and the default quality. Links to files go to aria2. A link that
+    // could be either is asked about first. These sites skip the question:
+    readonly property var downloadVideoSites: ["youtube.com", "youtu.be", "vimeo.com", "twitch.tv", "dailymotion.com", "twitter.com", "x.com", "reddit.com", "tiktok.com", "facebook.com", "instagram.com", "bilibili.com", "rumble.com", "streamable.com", "odysee.com", "soundcloud.com", "bandcamp.com", "nicovideo.jp", "vk.com", "ok.ru"]
+    // Q in the panel steps through these. Default: whatever ~/.config/yt-dlp says.
+    readonly property var downloadVideoQualities: [
+        {
+            "label": "Default",
+            "args": []
+        },
+        {
+            "label": "Best",
+            "args": ["-f", "bv*+ba/b"]
+        },
+        {
+            "label": "1080p",
+            "args": ["-f", "bv*[height<=1080]+ba/b[height<=1080]"]
+        },
+        {
+            "label": "720p",
+            "args": ["-f", "bv*[height<=720]+ba/b[height<=720]"]
+        },
+        {
+            "label": "480p",
+            "args": ["-f", "bv*[height<=480]+ba/b[height<=480]"]
+        },
+        {
+            "label": "Audio",
+            "audio": true,
+            "args": ["-f", "ba[ext=m4a]/ba/b", "-x", "--audio-format", "m4a"]
+        }
+    ]
+    // How many videos are fetched at once
+    readonly property int downloadVideoParallel: 2
+    // A browser to take your logins from, for sites that want you signed in
+    // (age-restricted or members-only videos), e.g. "brave". Empty: none.
+    readonly property string downloadVideoCookies: ""
+
     // ---- System updater ---------------------------------------------------
     // Same variable your `rebuild` script and nh use
     readonly property string flakeDir: {

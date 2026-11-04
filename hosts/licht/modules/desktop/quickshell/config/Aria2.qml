@@ -329,6 +329,77 @@ Singleton {
         return categoryDir(t, cats) !== "" && e !== "";
     }
 
+    // ---- Video pages ---------------------------------------------------------
+    // A page (not a file) on one of the video sites: yt-dlp downloads it, aria2
+    // can't. A direct link to a media file always goes to aria2.
+    function hostOf(url) {
+        const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@\/]*@)?([^\/:?#]+)/i.exec(url);
+        return m ? m[1].toLowerCase() : "";
+    }
+
+    function isVideoPage(url, sites) {
+        const h = hostOf(url);
+        if (h === "")
+            return false;
+        const e = extOf(url);
+        if (["mp4", "webm", "mkv", "mov", "m4v", "mp3", "m4a", "flac", "ogg", "opus", "wav", "zip", "torrent"].indexOf(e) >= 0)
+            return false;
+        for (let i = 0; i < sites.length; i++) {
+            if (h === sites[i] || h.endsWith("." + sites[i]))
+                return true;
+        }
+        return false;
+    }
+
+    // Where a web link goes: "video" (yt-dlp), "file" (aria2) or "probe" (ask the
+    // server what it sends, see downloads/probe.sh). Any site works: known video
+    // sites and .html pages go straight to yt-dlp, links that end in a file type
+    // go straight to aria2, and the rest are asked about first.
+    function routeOf(url, sites) {
+        if (isVideoPage(url, sites))
+            return "video";
+        const e = extOf(url);
+        if (e === "")
+            return "probe";
+        if (["html", "htm", "xhtml", "shtml"].indexOf(e) >= 0)
+            return "video";
+        if (["php", "asp", "aspx", "jsp", "cgi", "do", "action"].indexOf(e) >= 0)
+            return "probe";
+        const files = ["mp4", "webm", "mkv", "avi", "mov", "wmv", "flv", "m4v", "mpg", "mpeg", "ts", "mp3", "flac", "ogg", "opus", "m4a", "aac", "wav", "wma", "zip", "rar", "7z", "tar", "gz", "xz", "bz2", "zst", "tgz", "iso", "img", "bin", "exe", "msi", "deb", "rpm", "appimage", "apk", "dmg", "pkg", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "epub", "djvu", "mobi", "txt", "csv", "json", "xml", "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tif", "tiff", "ico", "torrent", "metalink", "meta4", "jar", "whl", "patch", "diff", "sig", "asc", "sha256", "md5", "ttf", "otf", "woff", "woff2", "srt", "vtt", "ass", "m3u8", "mpd"];
+        return files.indexOf(e) >= 0 ? "file" : "probe";
+    }
+
+    // What yt-dlp prints for a stream it is downloading ("GRAB ..." line, see the
+    // panel) -> { done, total, speed, eta, kind, tmp }. kind: video | audio | both
+    function parseGrab(line) {
+        const f = line.split(" ");
+        const num = function (x) {
+            const v = parseFloat(x);
+            return isFinite(v) ? v : 0;
+        };
+        const tb = num(f[2]);
+        const te = num(f[3]);
+        const vc = f[6] || "";
+        const ac = f[7] || "";
+        return {
+            "done": num(f[1]),
+            "total": tb > 0 ? tb : te,
+            "speed": num(f[4]),
+            "eta": num(f[5]),
+            "kind": vc === "none" ? "audio" : (ac === "none" ? "video" : "both"),
+            "tmp": f.slice(8).join(" ")
+        };
+    }
+
+    // A readable title from the file yt-dlp is writing: "Title.f137.mp4.part"
+    function titleFromPart(path) {
+        let b = path.split("/").pop();
+        b = b.replace(/\.(part|ytdl)$/i, "").replace(/\.(part|ytdl)$/i, "");
+        b = b.replace(/\.[A-Za-z0-9]{2,5}$/, "");
+        b = b.replace(/\.f\d+$/, "");
+        return b;
+    }
+
     // ---- Schedule ----------------------------------------------------------
     // "02:30" -> minutes since midnight, or -1
     function parseTime(t) {
