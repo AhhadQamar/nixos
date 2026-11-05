@@ -16,6 +16,14 @@
 // Motion: the three buttons grow out of the record on hover and fold back in
 // when the pointer leaves; when the track changes the title and artist slide
 // in from the right.
+//
+// Lyrics (Config.musicBarLyrics): when the song has synced lyrics, the label is
+// the line being sung, fading up with each new line and filling from dim to
+// bright as it is sung. A line wider than the capsule drifts across it over the
+// length of the line, so all of it can be read. In the gaps between lines, and
+// for songs without synced lyrics, the label is the title and artist as before.
+// The capsule keeps one width while lyrics are on, so it does not jump from
+// line to line. Click the line to open the panel on the full lyrics.
 
 import QtQuick
 
@@ -34,6 +42,23 @@ Item {
     readonly property real labelRoom: Math.max(0, maxWidth - fixedWidth - Style.spaceMd - (hover.hovered ? 3 * glyphW + 3 * Style.spaceSm : 0))
     // 0..1..0 while hovered: the ring and underline breathe with it
     property real breath: 0
+    // The line being sung, where the title and artist usually are
+    readonly property bool lyricMode: Config.musicBarLyrics && Music.lyricState === "ok" && Music.lyricSynced
+    readonly property string lyric: lyricMode && Music.lyricIndex >= 0 && Music.lyricIndex < Music.lyricLines.length ? Music.lyricLines[Music.lyricIndex].text : ""
+    readonly property bool showLyric: lyric !== ""
+    readonly property real lyricWidth: 260
+    // How far through the current line the song is, 0..1 (a line is given at
+    // most 8 seconds, so a long instrumental gap does not stall it)
+    readonly property real lineStart: lyricMode && Music.lyricIndex >= 0 && Music.lyricIndex < Music.lyricLines.length ? Music.lyricLines[Music.lyricIndex].t : 0
+    readonly property real lineEnd: {
+        const i = Music.lyricIndex + 1;
+        const next = lyricMode && i > 0 && i < Music.lyricLines.length ? Music.lyricLines[i].t : lineStart + 5;
+        return Math.min(next, lineStart + 8);
+    }
+    readonly property real lineFrac: Math.max(0, Math.min(1, (Music.position - lineStart) / Math.max(0.5, lineEnd - lineStart)))
+    // The drift of a long line: waits a moment, then moves, and has arrived a bit
+    // before the line ends
+    readonly property real lineDrift: Math.max(0, Math.min(1, (lineFrac - 0.1) / 0.7))
 
     implicitHeight: Style.barHeight
     implicitWidth: glass.implicitWidth + padding * 2
@@ -45,6 +70,32 @@ Item {
 
         function onTitleChanged() {
             swap.restart();
+        }
+
+        function onLyricIndexChanged() {
+            lyricSwap.restart();
+        }
+    }
+
+    // A new line of lyrics rises into place
+    ParallelAnimation {
+        id: lyricSwap
+
+        NumberAnimation {
+            target: lyricShift
+            property: "y"
+            from: 7
+            to: 0
+            duration: Style.moveMs
+            easing.type: Style.easeMove
+        }
+        NumberAnimation {
+            target: lyricText
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: Style.moveMs
+            easing.type: Style.easeMove
         }
     }
 
@@ -321,8 +372,88 @@ Item {
 
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.labelRoom >= 44
-                width: labelRow.implicitWidth
+                width: root.lyricMode ? Math.min(root.lyricWidth, root.labelRoom) : labelRow.implicitWidth
                 height: glass.height
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Style.fadeMs
+                        easing.type: Style.easeMove
+                    }
+                }
+
+                // The line being sung; the title and artist step aside for it
+                Item {
+                    anchors.fill: parent
+                    clip: true
+                    opacity: root.showLyric ? 1 : 0
+                    visible: opacity > 0.01
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Style.fadeMs
+                        }
+                    }
+
+                    // The line, dim, with the sung part of it bright on top
+                    Item {
+                        id: lyricText
+
+                        readonly property real overflow: Math.max(0, width - parent.width)
+
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: lyricDim.implicitWidth
+                        height: lyricDim.implicitHeight
+                        x: -overflow * root.lineDrift
+
+                        transform: Translate {
+                            id: lyricShift
+                        }
+
+                        Text {
+                            id: lyricDim
+
+                            text: root.lyric
+                            textFormat: Text.PlainText
+                            color: Qt.alpha(Colors.foreground, 0.5)
+
+                            font {
+                                family: Style.fontFamily
+                                pixelSize: Style.fontMd
+                            }
+                        }
+
+                        Item {
+                            width: lyricDim.implicitWidth * root.lineFrac
+                            height: parent.height
+                            clip: true
+
+                            Text {
+                                text: root.lyric
+                                textFormat: Text.PlainText
+                                color: Colors.foreground
+
+                                font {
+                                    family: Style.fontFamily
+                                    pixelSize: Style.fontMd
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    id: titleWrap
+
+                    anchors.fill: parent
+                    opacity: root.showLyric ? 0 : 1
+                    visible: opacity > 0.01
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Style.fadeMs
+                        }
+                    }
 
                 Row {
                     id: labelRow
@@ -365,8 +496,15 @@ Item {
                     }
                 }
 
+                }
+
                 TapHandler {
-                    onTapped: Panels.toggleMusic()
+                    onTapped: {
+                        // A line of lyrics opens the panel on all of them
+                        if (root.showLyric)
+                            Music.lyricsViewRequest = true;
+                        Panels.toggleMusic();
+                    }
                 }
             }
         }

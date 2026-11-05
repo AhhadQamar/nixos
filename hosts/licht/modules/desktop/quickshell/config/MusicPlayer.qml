@@ -19,7 +19,7 @@
 //
 //   qs ipc call music toggle | open | close | playpause | next | prev | stop | rescan
 //   qs ipc call music download <url | ytsearch1:words | browse:id> <track|album>
-//   qs ipc call music resume | like
+//   qs ipc call music resume | like | lyrics
 //   qs ipc call music media <playpause|next|prev>   (media keys: falls back to playerctl)
 //
 // Keys   browse   ← → ↑ ↓ (Ctrl+N / Ctrl+P) move   PgUp PgDn jump 8   Home End ends
@@ -30,7 +30,9 @@
 //                 Shift+Enter add to the queue   Space play / pause (search empty)   Ctrl+Space always
 //        player   Alt+← Alt+→ previous / next track   Shift+← Shift+→ seek 10 s
 //                 Shift+↑ Shift+↓ volume   Ctrl+M mute   Ctrl+S shuffle   Ctrl+R repeat
-//        queue    Delete (or Ctrl+D) remove the highlighted entry
+//        queue    Delete (or Ctrl+D) remove the highlighted entry   Ctrl+Z puts it back
+//                 Alt+Up / Alt+Down move it up / down   Alt+Enter play it next
+//        any tab  Alt+Enter plays the song (album, playlist) right after the current one
 //        online   Ctrl+T songs / albums / playlists / artists   Enter stream (from here on)
 //                 Shift+Enter queue   Ctrl+Enter open an album, playlist or artist
 //                 Ctrl+D download (Ctrl+Shift+D: the whole album you are in)
@@ -39,6 +41,9 @@
 //                 Ctrl+L like the song (or the one playing)   Ctrl+A add to a playlist:
 //                 pick one with Enter, or type a new name and press Enter
 //        space    Space with nothing playing picks up the last queue and position
+//        lyrics   Ctrl+Y (or the note by the title) shows the lyrics of the song that
+//                 plays, in time with it. Click a line to jump there. Unsynced lyrics
+//                 scroll with the wheel and the arrows. Esc, a search or a tab leaves.
 //        Esc clears the search, then closes
 // Mouse  click a cover to bring it to the middle, click it again to play from
 //        there; scroll the dial to move, scroll the player card for volume;
@@ -96,6 +101,24 @@ PanelWindow {
     property real breath: 0
     // 0 -> 1 each time the selection changes: the read-out fades up
     property real swap: 1
+    // The lyrics take the dial's place; lyricsMix is 0..1 as it fades
+    property bool lyricsOn: false
+    property real lyricsMix: lyricsOn ? 1 : 0
+    // Which line unsynced lyrics are scrolled to
+    property real lyricScroll: 0
+
+    Behavior on lyricsMix {
+        NumberAnimation {
+            duration: Style.baseMs * 1.5
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    onLyricsOnChanged: {
+        Music.lyricsView = lyricsOn;
+        if (lyricsOn)
+            Music.ensureLyrics();
+    }
     // 0 = albums, 1 = tracks, 2 = queue, 3 = online, 4 = lists
     property int tab: 0
     // The search moved us from Albums to Tracks by itself (so clearing it goes back)
@@ -199,6 +222,8 @@ PanelWindow {
     }
     onQueryChanged: {
         const q = query.trim();
+        if (q !== "")
+            lyricsOn = false;
         // Searching is for songs: go there, and come back when it is cleared
         if (q !== "" && tab === 0) {
             tab = 1;
@@ -620,7 +645,9 @@ PanelWindow {
             watchPlay();
         } else if (t.action === "queue") {
             Music.enqueueEntries(entries);
-            say("Added " + songsWord(entries.length) + " to the queue");
+            say("Added " + songsWord(entries.length) + " to the end of the queue");
+        } else if (t.action === "next") {
+            playNextEntries(entries);
         } else if (t.action === "open") {
             openCollection(t.item, data);
         } else if (t.action === "pick") {
@@ -785,7 +812,9 @@ PanelWindow {
             watchPlay();
         } else if (t.action === "queue") {
             Music.enqueueEntries(entries);
-            say("Added " + songsWord(entries.length) + " to the queue");
+            say("Added " + songsWord(entries.length) + " to the end of the queue");
+        } else if (t.action === "next") {
+            playNextEntries(entries);
         } else if (t.action === "open") {
             lBackSel = lsel;
             lOpen = name;
@@ -1095,7 +1124,25 @@ PanelWindow {
     }
 
     function move(delta) {
+        if (lyricsOn) {
+            if (!Music.lyricSynced)
+                lyricScroll = clamp(lyricScroll + delta, 0, Math.max(0, Music.lyricLines.length - 1));
+            return;
+        }
         setSel(selIdx + delta);
+    }
+
+    function toggleLyrics() {
+        if (lyricsOn) {
+            lyricsOn = false;
+            return;
+        }
+        if (!Music.hasTrack) {
+            say("Nothing playing");
+            return;
+        }
+        lyricScroll = 0;
+        lyricsOn = true;
     }
 
     // Tracks: to the start of the next album, or of this one (and then the
@@ -1145,6 +1192,7 @@ PanelWindow {
             cancelPick();
             return;
         }
+        lyricsOn = false;
         autoTracks = false;
         clearArmed = false;
         const c = curItem;
@@ -1228,7 +1276,7 @@ PanelWindow {
         if (tab === 3 || tab === 4) {
             if (curItem.kind === "song") {
                 Music.enqueueEntries([entryOf(curItem)]);
-                say("Added to the queue");
+                say("Added to the end of the queue");
             } else if (tab === 3)
                 fetchThen(curItem, "queue");
             else if (curItem.kind === "list")
@@ -1237,16 +1285,83 @@ PanelWindow {
         }
         if (tab === 1) {
             Music.enqueue(curItem.path);
-            say("Added to the queue");
+            say("Added to the end of the queue");
         } else {
             let c = 0;
             for (let k = curItem.first; k < libItems.length && libItems[k].group === curItem.group; k++) {
                 Music.enqueue(libItems[k].path);
                 c++;
             }
-            say("Added " + c + (c === 1 ? " song" : " songs") + " to the queue");
+            say("Added " + c + (c === 1 ? " song" : " songs") + " to the end of the queue");
         }
         Music.requestQueue();
+    }
+
+    // ---- Play next, and moving things around in the queue ----------------------
+    function nextNote(entries, queued) {
+        if (!queued)
+            say("Playing");
+        else
+            say(entries.length === 1 ? "Playing next" : "Playing next  ·  " + songsWord(entries.length));
+    }
+
+    function playNextEntries(entries) {
+        nextNote(entries, Music.playNext(entries));
+        watchPlay();
+    }
+
+    // Alt+Enter: the highlighted song, album or list goes right after the one playing
+    function playNextSel() {
+        const c = curItem;
+        if (c === null)
+            return;
+        if (tab === 0) {
+            const list = [];
+            for (let k = 0; k < libItems.length; k++) {
+                if (libItems[k].group === c.group)
+                    list.push(entryOf(libItems[k]));
+            }
+            playNextEntries(list);
+        } else if (tab === 2) {
+            // An entry of the queue: move it to just after the current one
+            const cur = Music.currentIndex();
+            if (query.trim() !== "")
+                say("Clear the search first");
+            else if (cur < 0 || c.current)
+                say(c.current ? "That one is playing" : "Nothing is playing");
+            else {
+                Music.moveInQueue(c.idx, cur + 1);
+                say("Playing next");
+                qsel = clamp(c.idx < cur ? cur : cur + 1, 0, Math.max(0, Music.queue.length - 1));
+            }
+        } else if (c.kind === "album" || c.kind === "playlist" || c.kind === "artist") {
+            fetchThen(c, "next");
+        } else if (c.kind === "list") {
+            listFetchThen(c.name, "next");
+        } else if (c.path) {
+            playNextEntries([entryOf(c)]);
+        }
+    }
+
+    // Alt+Up / Alt+Down in the queue: one place up or down
+    function moveEntry(dir) {
+        if (tab !== 2 || curItem === null)
+            return;
+        if (query.trim() !== "") {
+            say("Clear the search first");
+            return;
+        }
+        const i = curItem.idx;
+        const j = i + dir;
+        if (j < 0 || j >= Music.queue.length)
+            return;
+        Music.moveInQueue(i, dir > 0 ? i + 2 : i - 1);
+        qsel = j;
+    }
+
+    // Ctrl+Z
+    function undoRemove() {
+        say(Music.undoRemove() ? "Put back" : "Nothing to put back");
     }
 
     // Remove the highlighted entry: from the queue (not the one playing), from
@@ -1309,6 +1424,14 @@ PanelWindow {
         refilterQueue(true);
         refilterOnline(false);
         refilterLists(false);
+        // The bar's chip asked for the lyrics
+        if (Music.lyricsViewRequest) {
+            Music.lyricsViewRequest = false;
+            if (Music.hasTrack) {
+                lyricScroll = 0;
+                lyricsOn = true;
+            }
+        }
         reveal = 0;
         spinIn = 3.2;
         fan = 1;
@@ -1320,6 +1443,8 @@ PanelWindow {
         if (!isOpen)
             return;
         isOpen = false;
+        lyricsOn = false;
+        Music.lyricsViewRequest = false;
         openAnim.stop();
         closeAnim.restart();
     }
@@ -1477,6 +1602,11 @@ PanelWindow {
         // Heart the song that is playing
         function like() {
             panel.likePlaying();
+        }
+
+        // Show or hide the lyrics of the song that is playing
+        function lyrics() {
+            panel.toggleLyrics();
         }
 
         // Media keys: drive this player when it has a track, otherwise leave
@@ -1969,7 +2099,7 @@ PanelWindow {
                 transformOrigin: Item.Top
                 rotation: a * 180 / Math.PI
                 color: Qt.tint(Qt.alpha(Colors.foreground, major ? 0.34 : 0.18), Qt.alpha(panel.tint, 0.7 * near))
-                opacity: panel.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1) * panel.clamp(panel.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1)
+                opacity: panel.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1) * panel.clamp(panel.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1) * (1 - panel.lyricsMix)
             }
         }
 
@@ -1982,7 +2112,7 @@ PanelWindow {
             height: 16
             radius: 1
             color: panel.tint
-            opacity: panel.clamp(panel.reveal * 2 - 0.5, 0, 1)
+            opacity: panel.clamp(panel.reveal * 2 - 0.5, 0, 1) * (1 - panel.lyricsMix)
         }
 
         // ---- The covers --------------------------------------------------
@@ -2025,7 +2155,7 @@ PanelWindow {
                 x: px - sz / 2
                 y: py - sz / 2
                 z: 10 + grow * 10
-                opacity: appear * edge
+                opacity: appear * edge * (1 - panel.lyricsMix)
                 scale: 0.55 + 0.45 * panel.backOut(appear)
                 // Tilts along the dial, and rises from below as it arrives
                 rotation: a * 180 / Math.PI * 0.6
@@ -2172,7 +2302,7 @@ PanelWindow {
             y: panel.topY - 6 - height / 2
             width: panel.selectedSize
             height: panel.selectedSize
-            opacity: panel.n === 0 ? appear : 0
+            opacity: (panel.n === 0 ? appear : 0) * (1 - panel.lyricsMix)
             visible: opacity > 0.01
             scale: 0.55 + 0.45 * panel.backOut(appear)
 
@@ -2212,7 +2342,7 @@ PanelWindow {
             x: stage.cx + panel.dialNow * Math.sin(a) - width / 2
             y: panel.topY + panel.dialNow * (1 - Math.cos(a)) - 6 + panel.selectedSize / 2 + 8
             rotation: a * 180 / Math.PI
-            opacity: panel.clamp(panel.reveal * 2 - 0.6, 0, 1)
+            opacity: panel.clamp(panel.reveal * 2 - 0.6, 0, 1) * (1 - panel.lyricsMix)
         }
 
         // ---- The middle: what the selected entry is ------------------------
@@ -2225,7 +2355,7 @@ PanelWindow {
             height: 60
             // Clicks pass through to the dial
             enabled: false
-            opacity: (0.25 + 0.75 * panel.swap) * panel.stage_(0.2, 0.7)
+            opacity: (0.25 + 0.75 * panel.swap) * panel.stage_(0.2, 0.7) * (1 - panel.lyricsMix)
             transform: Translate {
                 y: (1 - panel.stage_(0.2, 0.7)) * 12 + (1 - panel.swap) * 6
             }
@@ -2285,6 +2415,90 @@ PanelWindow {
                     color: Colors.muted
                     font.pixelSize: Style.fontMd
                 }
+            }
+        }
+
+        // ---- Lyrics: in the dial's place, the line being sung in the middle ---
+        Item {
+            id: lyricsView
+
+            readonly property real lineH: 36
+            // Synced: the line being sung. Plain: where the wheel has scrolled to.
+            readonly property real focusIdx: Music.lyricSynced ? Math.max(0, Music.lyricIndex) : panel.lyricScroll
+
+            x: stage.cx - width / 2
+            y: 16
+            width: Math.min(680, stage.width - 48)
+            height: panel.rowY - 32
+            clip: true
+            visible: panel.lyricsMix > 0.01
+            opacity: panel.lyricsMix * panel.stage_(0.2, 0.7)
+
+            Column {
+                id: lyricCol
+
+                width: parent.width
+                y: lyricsView.height / 2 - (lyricsView.focusIdx + 0.5) * lyricsView.lineH
+
+                Behavior on y {
+                    NumberAnimation {
+                        duration: 340
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Repeater {
+                    model: Music.lyricLines
+
+                    delegate: Item {
+                        id: ln
+
+                        required property var modelData
+                        required property int index
+                        readonly property bool cur: Music.lyricSynced && index === Music.lyricIndex
+
+                        width: lyricCol.width
+                        height: lyricsView.lineH
+                        opacity: Math.max(0.12, 1 - Math.abs(index - lyricsView.focusIdx) * 0.3)
+
+                        Txt {
+                            anchors.fill: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            fontSizeMode: Text.Fit
+                            minimumPixelSize: 11
+                            text: ln.modelData.text !== "" ? ln.modelData.text : "\u266a"
+                            color: ln.cur ? Colors.foreground : Colors.muted
+                            font.pixelSize: ln.cur ? Style.fontXl : Style.fontMd
+                            font.bold: ln.cur
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Style.baseMs
+                                }
+                            }
+                        }
+
+                        // Click a line to jump to it
+                        TapHandler {
+                            enabled: Music.lyricSynced
+                            onTapped: Music.seekTo(ln.modelData.t)
+                        }
+                    }
+                }
+            }
+
+            // Nothing to show yet
+            Txt {
+                anchors.centerIn: parent
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                visible: Music.lyricLines.length === 0
+                text: !Music.hasTrack ? "Nothing playing" : (Music.lyricState === "error" ? Music.lyricError : (Music.lyricState === "none" ? "No lyrics found for this song" : "Looking for lyrics\u2026"))
+                color: Colors.muted
+                font.pixelSize: Style.fontMd
             }
         }
 
@@ -2429,6 +2643,8 @@ PanelWindow {
                     if (k === Qt.Key_Escape) {
                         if (panel.pickFor.length > 0)
                             panel.cancelPick();
+                        else if (panel.lyricsOn)
+                            panel.lyricsOn = false;
                         else if (panel.query !== "")
                             search.clear();
                         else if (panel.canGoBack)
@@ -2441,6 +2657,12 @@ PanelWindow {
                         Music.prev();
                     else if (alt && right)
                         Music.next();
+                    else if (alt && k === Qt.Key_Up)
+                        panel.moveEntry(-1);
+                    else if (alt && k === Qt.Key_Down)
+                        panel.moveEntry(1);
+                    else if (ctrl && k === Qt.Key_Z)
+                        panel.undoRemove();
                     else if (shift && !ctrl && left)
                         Music.seekBy(-10);
                     else if (shift && !ctrl && right)
@@ -2467,6 +2689,8 @@ PanelWindow {
                         panel.cycleKind();
                     else if (ctrl && k === Qt.Key_L)
                         panel.likeSel();
+                    else if (ctrl && k === Qt.Key_Y)
+                        panel.toggleLyrics();
                     else if (ctrl && k === Qt.Key_A)
                         panel.pickSel();
                     else if (ctrl && k === Qt.Key_Space)
@@ -2480,7 +2704,9 @@ PanelWindow {
                     else if (k === Qt.Key_Backtab)
                         panel.setTab((panel.tab + 4) % 5);
                     else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-                        if (ctrl)
+                        if (alt)
+                            panel.playNextSel();
+                        else if (ctrl)
                             panel.activateAlt();
                         else if (shift)
                             panel.enqueueSel();
@@ -2881,6 +3107,18 @@ PanelWindow {
 
                     IconButton {
                         anchors.verticalCenter: parent.verticalCenter
+                        glyph: "\u266a"
+                        on: panel.lyricsOn
+                        size: 28
+                        glyphSize: 15
+                        onClicked: {
+                            panel.toggleLyrics();
+                            search.forceActiveFocus();
+                        }
+                    }
+
+                    IconButton {
+                        anchors.verticalCenter: parent.verticalCenter
                         glyph: panel.playingLiked ? Icons.heart : Icons.heartOutline
                         on: panel.playingLiked
                         size: 28
@@ -2906,7 +3144,7 @@ PanelWindow {
 
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - (Music.hasTrack ? (Music.isRemote(Music.path) ? 62 : 32) : 0)
+                    width: parent.width - (Music.hasTrack ? (Music.isRemote(Music.path) ? 92 : 62) : 0)
                     spacing: 2
 
                     Txt {

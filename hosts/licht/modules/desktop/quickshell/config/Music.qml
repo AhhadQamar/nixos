@@ -223,6 +223,7 @@ Singleton {
             tryResumeSeek();
             requestQueue();
             saveSoon();
+            ensureLyrics();
             break;
         case "metadata":
             applyMeta(d);
@@ -380,8 +381,63 @@ Singleton {
         send(["playlist-play-index", i]);
     }
 
+    // ---- Editing the queue --------------------------------------------------
+    // The entry that is playing (-1 if none)
+    function currentIndex() {
+        for (let i = 0; i < queue.length; i++) {
+            if (queue[i].current)
+                return i;
+        }
+        return -1;
+    }
+
+    // Put songs right after the one that plays, in order. With nothing playing
+    // they just start. Returns true when they were put in the queue.
+    function playNext(list) {
+        if (list.length === 0)
+            return false;
+        remember(list);
+        const cur = currentIndex();
+        if (!online || idle || cur < 0) {
+            playList(list.map(e => e.path), 0);
+            return false;
+        }
+        list.forEach((e, k) => send(["loadfile", e.path, "insert-at", cur + 1 + k]));
+        requestQueue();
+        return true;
+    }
+
+    // Move the entry at `from` so it takes the place of the one at `to`. (mpv
+    // counts `to` before the move: to take one step down, `to` is from + 2.)
+    function moveInQueue(from, to) {
+        send(["playlist-move", from, to]);
+        requestQueue();
+    }
+
+    // What the last removal took out, for Ctrl+Z: { path, idx } or null
+    property var lastRemoved: null
+
     function removeFromQueue(i) {
+        if (i >= 0 && i < queue.length)
+            lastRemoved = {
+                "path": queue[i].filename,
+                "idx": i
+            };
         send(["playlist-remove", i]);
+    }
+
+    // Put the last removed entry back where it was
+    function undoRemove() {
+        const r = lastRemoved;
+        if (r === null)
+            return false;
+        lastRemoved = null;
+        if (!online || idle || queue.length === 0)
+            send(["loadfile", r.path, "append-play"]);
+        else
+            send(["loadfile", r.path, "insert-at", Math.min(r.idx, queue.length)]);
+        requestQueue();
+        return true;
     }
 
     function clearQueue() {
@@ -617,6 +673,110 @@ Singleton {
         }
     }
 
+    // ---- Lyrics -----------------------------------------------------------
+    // Fetched by music/lyrics.py (a .lrc next to the file, then a cache, then
+    // LRCLIB) for the song that is playing, but only while the panel is showing
+    // them. Synced lyrics have a time for every line; plain ones do not.
+    // The panel is showing them, or the bar is (Config.musicBarLyrics)
+    property bool lyricsView: false
+    // Set by the bar chip: open the panel on the lyrics
+    property bool lyricsViewRequest: false
+    readonly property bool lyricsWanted: lyricsView || (Config.musicBarLyrics && hasTrack)
+
+    onLyricsWantedChanged: ensureLyrics()
+    // [{ t, text }]  (t is -1 when the lyrics are not synced)
+    property var lyricLines: []
+    property bool lyricSynced: false
+    // "" | loading | ok | none | error
+    property string lyricState: ""
+    property string lyricError: ""
+    // The song the lyrics above belong to, and the one being asked about
+    property string lyricPath: ""
+    property string lyricReq: ""
+    property string lyricBuf: ""
+    property bool lyricAgain: false
+
+    // The line being sung: the last one that has started (a touch early reads better)
+    readonly property int lyricIndex: {
+        if (!lyricSynced || lyricLines.length === 0)
+            return -1;
+        const t = position + 0.2;
+        let lo = 0;
+        let hi = lyricLines.length - 1;
+        let r = -1;
+        while (lo <= hi) {
+            const m = (lo + hi) >> 1;
+            if (lyricLines[m].t <= t) {
+                r = m;
+                lo = m + 1;
+            } else {
+                hi = m - 1;
+            }
+        }
+        return r;
+    }
+
+    // Look for the lyrics of what is playing, unless they are here already
+    function ensureLyrics() {
+        if (!lyricsWanted || !online || path === "")
+            return;
+        if (lyricPath === path && lyricState !== "error")
+            return;
+        lyricPath = path;
+        lyricState = "loading";
+        lyricLines = [];
+        lyricSynced = false;
+        lyricError = "";
+        // The tags can still be arriving: give them a moment
+        lyricsTimer.restart();
+    }
+
+    function startLyrics() {
+        if (!online || path === "" || lyricPath !== path)
+            return;
+        if (lyricsProc.running) {
+            lyricAgain = true;
+            return;
+        }
+        const t = lookup(path);
+        const dur = duration > 0 ? duration : (t && t.duration ? t.duration : 0);
+        lyricReq = path;
+        lyricBuf = "";
+        lyricsProc.command = ["qs-music-py", Quickshell.shellPath("music/lyrics.py"), path, (t && t.artist) || artist, (t && t.title) || title, (t && t.album) || album, String(Math.round(dur)), Config.musicLyricsSave ? "save" : "nosave"];
+        lyricsProc.running = true;
+    }
+
+    function onLyricsDone() {
+        // The song changed while this was running: ask about the new one
+        if (lyricAgain || lyricReq !== path) {
+            lyricAgain = false;
+            if (lyricPath === path)
+                startLyrics();
+            return;
+        }
+        let d = null;
+        try {
+            d = JSON.parse(lyricBuf);
+        } catch (e) {
+            d = null;
+        }
+        if (d === null || d.ok !== true) {
+            lyricState = "error";
+            lyricError = d && d.error ? d.error : "The lyrics lookup did not answer. Is python set up?";
+            return;
+        }
+        if (d.none === true) {
+            lyricState = "none";
+            return;
+        }
+        lyricSynced = d.synced === true;
+        lyricLines = d.lines.map(l => ({
+                    "t": l[0],
+                    "text": l[1]
+                }));
+        lyricState = "ok";
+    }
+
     // ---- Plumbing -------------------------------------------------------
     Socket {
         id: sock
@@ -773,6 +933,22 @@ Singleton {
         repeat: true
         running: root.playing
         onTriggered: root.saveNow()
+    }
+
+    Process {
+        id: lyricsProc
+
+        stdout: SplitParser {
+            onRead: line => root.lyricBuf += line
+        }
+        onExited: root.onLyricsDone()
+    }
+
+    Timer {
+        id: lyricsTimer
+
+        interval: 450
+        onTriggered: root.startLyrics()
     }
 
     Process {

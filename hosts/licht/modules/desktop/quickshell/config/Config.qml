@@ -45,6 +45,17 @@ Singleton {
         }
     ]
 
+    // ---- Music lyrics ---------------------------------------------------------
+    // Lyrics come from LRCLIB (free, no account). With this on, lyrics found for
+    // a file in your library are saved next to it as Song.lrc, so any player, and
+    // this one offline, can use them.
+    readonly property bool musicLyricsSave: true
+    // The bar's music chip shows the line being sung, in place of the title and
+    // artist (they come back in the gaps, and when a song has no synced lyrics).
+    // Lyrics are then looked up for every song that plays, not only while the
+    // panel shows them.
+    readonly property bool musicBarLyrics: true
+
     // ---- Download manager ---------------------------------------------------
     // New downloads go into a folder by file type, unless you pick one yourself
     // under "Save to" (folders are relative to $HOME, and are made when needed)
