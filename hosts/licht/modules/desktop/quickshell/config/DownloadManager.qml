@@ -67,6 +67,15 @@
 // quality (Config.downloadVideoQualities).
 //   qs ipc call downloads grab <link>
 //
+// Drop links, text or .torrent files onto the open panel to add them.
+//
+// Torrents: a torrent or magnet link is added paused, and when its files are known
+// a list opens: Space ticks, A all, N none, I invert, Enter downloads the ticked
+// ones, Esc leaves it paused. P opens the list again for any torrent.
+// This month: the figure by the speed counts what was downloaded (and uploaded)
+// since the 1st; Config.downloadMonthlyCapGB adds a limit.
+//   qs ipc call downloads usage
+//
 // The scheduler (Z): downloads run only inside Config.downloadSchedule and wait
 // outside it; anything added outside the window waits for it. "When finished"
 // (W) puts the computer to sleep or shuts it down a minute after the last
@@ -188,6 +197,10 @@ PanelWindow {
         {
             "k": ["1\u20135", "tab"],
             "d": "filter tabs"
+        },
+        {
+            "k": ["p"],
+            "d": "choose the files of a torrent"
         },
         {
             "k": ["g"],
@@ -341,6 +354,34 @@ PanelWindow {
     property int videoQuality: 0
     // Links waiting to be asked "page or file?" (downloads/probe.sh)
     property var probeQueue: []
+    // Choosing the files of a torrent: the list, where the cursor is, and what is waiting
+    property bool pickOpen: false
+    property string pickGid: ""
+    property string pickName: ""
+    property var pickFiles: []
+    property int pickCur: 0
+    property bool pickWePaused: false
+    property var pickQueue: []
+    property var pickAsked: ({})
+    property double lastTorrentAdd: 0
+    readonly property int pickRows: 9
+    readonly property int pickTop: Math.max(0, Math.min(pickFiles.length - pickRows, pickCur - 4))
+    readonly property int pickCount: pickFiles.filter(f => f.on).length
+    readonly property real pickBytes: pickFiles.reduce((a, f) => a + (f.on ? f.length : 0), 0)
+    readonly property real pickTotal: pickFiles.reduce((a, f) => a + f.length, 0)
+    // Data used this month, and what the counter needs to tell new bytes from old
+    property var usage: ({
+            "month": "",
+            "down": 0,
+            "up": 0,
+            "history": {},
+            "warn": 0,
+            "capPaused": false
+        })
+    property var usageLast: ({})
+    property var usageFresh: ({})
+    property bool usageReady: false
+    readonly property string usageText: usage.month === "" ? "" : "   \u00b7   " + Aria2.bytes(usage.down) + (Config.downloadMonthlyCapGB > 0 ? " of " + Config.downloadMonthlyCapGB + " GB" : "") + " this month" + (usage.up > 0 ? "  \u2191 " + Aria2.bytes(usage.up) : "")
     readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell"
     // Where each shown download sits along the dial, in disc units
     property var posMap: ({})
@@ -711,7 +752,14 @@ PanelWindow {
 
     // aria2.* methods need the secret as their first parameter.
     function call(method, params, cb) {
-        rpc(method, ["token:" + secret].concat(params), cb);
+        // A download that was just added has done nothing yet: count it from zero
+        const adds = method.indexOf("aria2.add") === 0;
+        rpc(method, ["token:" + secret].concat(params), adds ? function (res) {
+            if (res.result && typeof res.result === "string")
+                usageFresh[res.result] = true;
+            if (cb)
+                cb(res);
+        } : cb);
     }
 
     // Several aria2 calls in one request, executed in order.
@@ -723,7 +771,15 @@ PanelWindow {
                     "methodName": c[0],
                     "params": ["token:" + secret].concat(c[1])
                 };
-            })], cb);
+            })], function (res) {
+            const list = res.result || [];
+            calls.forEach(function (c, i) {
+                if (c[0].indexOf("aria2.add") === 0 && Array.isArray(list[i]) && typeof list[i][0] === "string")
+                    usageFresh[list[i][0]] = true;
+            });
+            if (cb)
+                cb(res);
+        });
     }
 
     function say(text, isError) {
@@ -782,6 +838,10 @@ PanelWindow {
             message = "";
             ingest(r[0][0] || [], r[1][0] || [], r[2][0] || [], r[3][0] || {});
             checkIdle(r[3][0] || {});
+            usageSee(r[0][0] || [], false);
+            usageSee(r[2][0] || [], true);
+            usageReady = true;
+            pickScan(r[1][0] || []);
         });
     }
 
@@ -964,15 +1024,19 @@ PanelWindow {
         rpc("system.multicall", [[
                 {
                     "methodName": "aria2.tellActive",
-                    "params": [t, ["gid", "seeder"]]
+                    "params": [t, ["gid", "seeder", "completedLength", "uploadLength", "downloadSpeed", "followedBy"]]
                 },
                 {
                     "methodName": "aria2.tellStopped",
-                    "params": [t, -1, 15, ["gid", "status", "followedBy", "errorMessage"]]
+                    "params": [t, -1, 15, ["gid", "status", "followedBy", "errorMessage", "completedLength", "uploadLength"]]
                 },
                 {
                     "methodName": "aria2.getGlobalStat",
                     "params": [t]
+                },
+                {
+                    "methodName": "aria2.tellWaiting",
+                    "params": [t, 0, 50, ["gid", "status", "completedLength", "infoHash"]]
                 }
             ]], function (res) {
             const r = res.result;
@@ -982,6 +1046,10 @@ PanelWindow {
                 windowLast = null;
             connected = true;
             checkIdle((r[2] && r[2][0]) || {});
+            usageSee((r[0] && r[0][0]) || [], false);
+            usageSee((r[1] && r[1][0]) || [], true);
+            usageReady = true;
+            pickScan((r[3] && r[3][0]) || []);
             const k = known;
             const events = [];
             (r[0][0] || []).forEach(function (d) {
@@ -1212,14 +1280,14 @@ PanelWindow {
                         return;
                     }
                     seen[uris[0]] = true;
-                    const opts = baseOpts(uris[0], dir);
+                    const opts = metaOpts(uris[0], baseOpts(uris[0], dir));
                     if (p.checksum !== "")
                         opts["checksum"] = p.checksum;
                     calls.push(["aria2.addUri", [uris, opts]]);
                     added++;
                 });
             } else if (t.charAt(0) === "/" && /\.torrent$/i.test(t)) {
-                queueFile(t, "aria2.addTorrent", baseOpts(t, dir));
+                queueFile(t, "aria2.addTorrent", pickOpts(baseOpts(t, dir)));
                 added++;
             } else if (t.charAt(0) === "/" && /\.(metalink|meta4)$/i.test(t)) {
                 queueFile(t, "aria2.addMetalink", baseOpts(t, dir));
@@ -1597,6 +1665,321 @@ PanelWindow {
         retryTimer.restart();
     }
 
+    // ---- Choosing the files inside a torrent ----------------------------------
+    // With Config.downloadTorrentPick, a torrent file is added paused, and a magnet
+    // link (or a link to a .torrent) pauses the torrent it turns into. pickScan
+    // finds those once their files are known and offers the list.
+    function pickOpts(o) {
+        if (Config.downloadTorrentPick) {
+            o["pause"] = "true";
+            lastTorrentAdd = Date.now();
+        }
+        return o;
+    }
+
+    function metaOpts(url, o) {
+        const e = Aria2.extOf(url);
+        if (Config.downloadTorrentPick && (/^magnet:/i.test(url) || e === "torrent" || e === "metalink" || e === "meta4")) {
+            o["pause-metadata"] = "true";
+            lastTorrentAdd = Date.now();
+        }
+        return o;
+    }
+
+    // Raw aria2 statuses of waiting downloads: any paused torrent that has done
+    // nothing yet, after one was added in the last quarter hour, is for choosing
+    function pickScan(list) {
+        if (!Config.downloadTorrentPick || Date.now() - lastTorrentAdd > 900000)
+            return;
+        list.forEach(function (d) {
+            if (d.status !== "paused" || !d.infoHash || Number(d.completedLength || 0) > 0 || pickAsked[d.gid])
+                return;
+            pickAsked[d.gid] = true;
+            call("aria2.tellStatus", [d.gid, ["files", "bittorrent", "infoHash", "dir"]], function (res) {
+                const st = res.result;
+                if (!st || !st.files || st.files.length === 0)
+                    return;
+                // The stub of a magnet link that is still looking for its metadata
+                if (/^\[METADATA\]/.test(st.files[0].path || ""))
+                    return;
+                if (st.files.length === 1) {
+                    act("aria2.unpause", [d.gid]);
+                    return;
+                }
+                const name = defang(Aria2.nameOf(st));
+                pickQueue = pickQueue.concat([
+                    {
+                        "gid": d.gid,
+                        "name": name
+                    }
+                ]);
+                if (isOpen)
+                    nextPick();
+                else
+                    Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Torrent ready", name + "\n" + st.files.length + " files to choose from"]);
+            });
+        });
+    }
+
+    function nextPick() {
+        if (pickOpen || pickQueue.length === 0)
+            return;
+        const it = pickQueue[0];
+        pickQueue = pickQueue.slice(1);
+        openPicker(it.gid);
+    }
+
+    function openPicker(gid) {
+        if (!gid) {
+            say("Pick a torrent first", true);
+            return;
+        }
+        const r = rowMap[gid];
+        if (r && (!r.isBt || r.metadata)) {
+            say("Only a torrent has files to choose", true);
+            return;
+        }
+        call("aria2.tellStatus", [gid, ["files", "bittorrent", "infoHash", "status", "dir"]], function (res) {
+            const st = res.result;
+            // The panel was put away meanwhile: it is offered again when it opens
+            if (!isOpen) {
+                pickQueue = [
+                    {
+                        "gid": gid,
+                        "name": ""
+                    }
+                ].concat(pickQueue);
+                return;
+            }
+            if (!st || !st.files || st.files.length === 0 || /^\[METADATA\]/.test(st.files[0].path || "")) {
+                say("No files to choose yet", true);
+                return;
+            }
+            if (st.status === "complete" || st.status === "error" || st.status === "removed") {
+                say("A finished torrent can't be changed", true);
+                return;
+            }
+            pickFiles = Aria2.torrentFiles(st.files, st.dir);
+            pickGid = gid;
+            pickName = defang(Aria2.nameOf(st));
+            pickCur = 0;
+            pickWePaused = false;
+            // Choosing changes what it will fetch: hold it while you do
+            if (st.status === "active" || st.status === "waiting") {
+                act("aria2.forcePause", [gid]);
+                pickWePaused = true;
+            }
+            pickOpen = true;
+            showHelp = true;
+            // The keys go to the list, even if you were typing a link
+            keys.forceActiveFocus();
+        });
+    }
+
+    function closePicker() {
+        pickOpen = false;
+        showHelp = false;
+        pickFiles = [];
+        if (isOpen)
+            nextPick();
+    }
+
+    // Esc: leave it as it was (a torrent that was waiting for you stays paused)
+    function cancelPicker() {
+        if (pickWePaused)
+            act("aria2.unpause", [pickGid]);
+        closePicker();
+    }
+
+    function applyPick() {
+        const on = pickFiles.filter(f => f.on).map(f => f.index);
+        if (on.length === 0) {
+            say("Tick at least one file", true);
+            return;
+        }
+        const gid = pickGid;
+        const n = pickFiles.length;
+        call("aria2.changeOption", [gid, {
+                "select-file": Aria2.fileRanges(on)
+            }], function (res) {
+            if (res.error) {
+                say(res.error.message, true);
+                return;
+            }
+            act("aria2.unpause", [gid]);
+            say(on.length === n ? "Downloading all " + n + " files" : "Downloading " + on.length + " of " + n + " files", false);
+            refresh();
+        });
+        closePicker();
+    }
+
+    function pickToggle(i) {
+        pickFiles = pickFiles.map((f, k) => k === i ? Object.assign({}, f, {
+                    "on": !f.on
+                }) : f);
+    }
+
+    function pickSet(fn) {
+        pickFiles = pickFiles.map(f => Object.assign({}, f, {
+                    "on": fn(f)
+                }));
+    }
+
+    function pickMove(d) {
+        pickCur = Math.max(0, Math.min(pickFiles.length - 1, pickCur + d));
+    }
+
+    function pickKey(event) {
+        const k = event.key;
+        if (k === Qt.Key_Escape)
+            cancelPicker();
+        else if (k === Qt.Key_Return || k === Qt.Key_Enter)
+            applyPick();
+        else if (k === Qt.Key_Space)
+            pickToggle(pickCur);
+        else if (k === Qt.Key_Down || k === Qt.Key_J)
+            pickMove(1);
+        else if (k === Qt.Key_Up || k === Qt.Key_K)
+            pickMove(-1);
+        else if (k === Qt.Key_PageDown)
+            pickMove(pickRows - 1);
+        else if (k === Qt.Key_PageUp)
+            pickMove(-(pickRows - 1));
+        else if (k === Qt.Key_A)
+            pickSet(f => true);
+        else if (k === Qt.Key_N)
+            pickSet(f => false);
+        else if (k === Qt.Key_I)
+            pickSet(f => !f.on);
+    }
+
+    // ---- Data used this month ----------------------------------------------------
+    // aria2 does not keep a total, so the panel adds up how far each download has
+    // got between looks (and how far each video grab has). A download that was
+    // added here counts from zero; one that was already running when we first
+    // looked counts what it has done since, unless it plainly began just now.
+    function rollMonth(m) {
+        const old = usage;
+        const h = Object.assign({}, old.history || {});
+        if (old.month !== "")
+            h[old.month] = {
+                "down": old.down,
+                "up": old.up
+            };
+        const keys = Object.keys(h).sort();
+        while (keys.length > 12)
+            delete h[keys.shift()];
+        // The limit starts over, and so does anything it paused
+        if (old.capPaused)
+            resumeEverything();
+        return {
+            "month": m,
+            "down": 0,
+            "up": 0,
+            "history": h,
+            "warn": 0,
+            "capPaused": false
+        };
+    }
+
+    function usageAdd(down, up) {
+        if (down <= 0 && up <= 0)
+            return;
+        const m = Aria2.monthKey(new Date());
+        const u = usage.month === m ? usage : rollMonth(m);
+        usage = Object.assign({}, u, {
+            "down": u.down + down,
+            "up": u.up + up
+        });
+        usageCheckCap();
+        if (!usageSaveTimer.running)
+            usageSaveTimer.start();
+    }
+
+    function usageSee(list, stopped) {
+        let dd = 0;
+        let uu = 0;
+        const last = usageLast;
+        const secs = (isOpen ? pollMs : watchMs) / 1000;
+        list.forEach(function (d) {
+            const done = Number(d.completedLength || 0);
+            const up = Number(d.uploadLength || 0);
+            // The torrent a magnet link turns into starts from nothing too
+            if (d.followedBy && usageFresh[d.gid])
+                d.followedBy.forEach(g => usageFresh[g] = true);
+            const prev = last[d.gid];
+            if (prev === undefined) {
+                const speed = Number(d.downloadSpeed || 0);
+                const mine = usageReady && (usageFresh[d.gid] || (!stopped && done <= speed * secs * 1.5 + 65536));
+                if (mine) {
+                    dd += done;
+                    uu += up;
+                }
+            } else {
+                if (done > prev[0])
+                    dd += done - prev[0];
+                if (up > prev[1])
+                    uu += up - prev[1];
+            }
+            last[d.gid] = [done, up];
+        });
+        usageAdd(dd, uu);
+    }
+
+    // A video grab's stream: bytes so far (the first look counts what is there
+    // if it is small enough to have come in the last moment)
+    function usageGrab(key, done) {
+        const prev = usageLast[key];
+        usageLast[key] = [done, 0];
+        if (prev === undefined) {
+            if (done < 2097152)
+                usageAdd(done, 0);
+        } else if (done > prev[0]) {
+            usageAdd(done - prev[0], 0);
+        }
+    }
+
+    function usageCheckCap() {
+        const cap = Number(Config.downloadMonthlyCapGB) * 1e9;
+        if (cap <= 0)
+            return;
+        const frac = usage.down / cap;
+        const w = frac >= 1 ? 2 : (frac >= 0.8 ? 1 : 0);
+        if (w <= usage.warn)
+            return;
+        usage = Object.assign({}, usage, {
+            "warn": w,
+            "capPaused": w === 2 && Config.downloadPauseAtCap
+        });
+        Quickshell.execDetached(["notify-send", "-a", "Downloads", "-u", w === 2 ? "critical" : "normal", "-i", "folder-download", w === 2 ? "Monthly limit reached" : "80% of the monthly limit used", Aria2.bytes(usage.down) + " of " + Config.downloadMonthlyCapGB + " GB" + (w === 2 && Config.downloadPauseAtCap ? "\nDownloads are paused until next month" : "")]);
+        if (w === 2 && Config.downloadPauseAtCap)
+            pauseEverything();
+        saveSettings();
+    }
+
+    function usageSummary() {
+        const m = usage.month === "" ? Aria2.monthKey(new Date()) : usage.month;
+        return m + ": " + Aria2.bytes(usage.down) + " downloaded, " + Aria2.bytes(usage.up) + " uploaded" + (Config.downloadMonthlyCapGB > 0 ? " (limit " + Config.downloadMonthlyCapGB + " GB)" : "");
+    }
+
+    // ---- Things dropped on the panel -----------------------------------------------
+    function handleDrop(drop) {
+        const parts = [];
+        if (drop.hasUrls)
+            drop.urls.forEach(u => parts.push(u.toString()));
+        if (parts.length === 0 && drop.hasText) {
+            // Selected text may be a sentence with links in it: take the links
+            const found = drop.text.match(/(https?:\/\/|ftp:\/\/|sftp:\/\/|magnet:\?)\S+/gi);
+            parts.push(found ? found.join("\n") : drop.text);
+        }
+        drop.acceptProposedAction();
+        const text = parts.join("\n").trim();
+        if (text === "")
+            say("Nothing to download in that", true);
+        else
+            addText(text, saveDir());
+    }
+
     // ---- Page or file? ------------------------------------------------------------
     // A link that could be either is asked about first: downloads/probe.sh looks at
     // what the server sends. A web page is a video's job (yt-dlp), anything else
@@ -1764,6 +2147,7 @@ PanelWindow {
             return;
         if (line.indexOf("GRAB ") === 0) {
             const g = Aria2.parseGrab(line);
+            usageGrab(id + g.tmp, g.done);
             const frac = g.total > 0 ? Math.min(1, g.done / g.total) : 0;
             let all = frac;
             let saw = j.sawVideo;
@@ -2045,7 +2429,8 @@ PanelWindow {
     function saveSettings() {
         settingsFile.setText(JSON.stringify({
             "schedOn": schedOn,
-            "quality": videoQuality
+            "quality": videoQuality,
+            "usage": usage
         }));
     }
 
@@ -2153,6 +2538,9 @@ PanelWindow {
         secretFile.reload();
         refresh();
         loadGlobal();
+        pickOpen = false;
+        if (pickQueue.length > 0)
+            nextPick();
         clip = "";
         if (!clipProc.running)
             clipProc.running = true;
@@ -2175,7 +2563,10 @@ PanelWindow {
     function close() {
         if (!isOpen)
             return;
+        const choosing = pickOpen;
         isOpen = false;
+        if (choosing)
+            cancelPicker();
         openAnim.stop();
         closeAnim.restart();
     }
@@ -2263,6 +2654,11 @@ PanelWindow {
             return dl.setWhenDone(mode);
         }
 
+        // This month's download and upload totals
+        function usage(): string {
+            return dl.usageSummary();
+        }
+
         function cancelaction(): void {
             dl.cancelAction();
         }
@@ -2345,11 +2741,28 @@ PanelWindow {
                 }
                 if (typeof d.quality === "number" && d.quality >= 0 && d.quality < Config.downloadVideoQualities.length)
                     dl.videoQuality = d.quality;
+                if (d.usage && typeof d.usage.month === "string")
+                    dl.usage = Object.assign({
+                        "month": "",
+                        "down": 0,
+                        "up": 0,
+                        "history": {},
+                        "warn": 0,
+                        "capPaused": false
+                    }, d.usage);
             } catch (e) {}
         }
     }
 
     Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", stateDir])
+
+    // The month's count is written out now and then, not at every byte
+    Timer {
+        id: usageSaveTimer
+
+        interval: 30000
+        onTriggered: dl.saveSettings()
+    }
 
     // Check the schedule even while the panel is closed
     Timer {
@@ -2641,7 +3054,9 @@ PanelWindow {
                 return;
             }
             event.accepted = true;
-            if (dl.showHelp) {
+            if (dl.pickOpen) {
+                dl.pickKey(event);
+            } else if (dl.showHelp) {
                 dl.showHelp = false;
             } else if (k === Qt.Key_Escape) {
                 if (dl.selectedCount > 0)
@@ -2705,6 +3120,8 @@ PanelWindow {
                 dl.clearFinished();
             } else if (k === Qt.Key_P && shift) {
                 dl.pauseAllToggle();
+            } else if (k === Qt.Key_P) {
+                dl.openPicker(dl.cursorGid);
             } else if (k === Qt.Key_L && shift) {
                 dl.cycleLimit("max-overall-download-limit");
             } else if (k === Qt.Key_Plus || k === Qt.Key_Equal) {
@@ -3772,6 +4189,56 @@ PanelWindow {
             }
         }
 
+        // ---- A drop zone: links, text or .torrent files dropped on the panel ----
+        DropArea {
+            id: dropZone
+
+            anchors.fill: parent
+            onEntered: drag => {
+                drag.accepted = drag.hasUrls || drag.hasText;
+            }
+            onDropped: drop => dl.handleDrop(drop)
+        }
+
+        Rectangle {
+            x: stage.cx - width / 2
+            y: dl.readoutTop - 16
+            width: Math.min(520, dl.contentW)
+            height: 132
+            radius: 18
+            antialiasing: true
+            color: Qt.alpha(Colors.foreground, 0.07)
+            border.width: 2
+            border.color: Colors.accent
+            opacity: dropZone.containsDrag ? 1 : 0
+            visible: opacity > 0.01
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: Style.fadeMs
+                }
+            }
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 8
+
+                Txt {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Icons.download
+                    color: Colors.accent
+                    font.pixelSize: 30
+                }
+
+                OutText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Drop to download"
+                    color: Colors.foreground
+                    font.pixelSize: Style.fontLg
+                }
+            }
+        }
+
         // ---- The sheet of keys: takes the readout's place ---------------------
         Item {
             id: sheet
@@ -3779,7 +4246,7 @@ PanelWindow {
             x: stage.cx - width / 2
             y: dl.readoutTop
             width: Math.min(640, dl.contentW)
-            height: sheetCol.implicitHeight
+            height: dl.pickOpen ? pickCol.implicitHeight : sheetCol.implicitHeight
             opacity: dl.showHelp ? dl.helpSwap : 0
             visible: opacity > 0.01
 
@@ -3794,7 +4261,106 @@ PanelWindow {
             // Any click puts it away
             MouseArea {
                 anchors.fill: parent
-                onClicked: dl.showHelp = false
+                onClicked: {
+                    if (!dl.pickOpen)
+                        dl.showHelp = false;
+                }
+            }
+
+            // The files of a torrent, to tick
+            Column {
+                id: pickCol
+
+                width: parent.width
+                spacing: 6
+                visible: dl.pickOpen
+
+                OutText {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideMiddle
+                    text: dl.pickName
+                    color: Qt.alpha(Colors.foreground, 0.78)
+                    font.pixelSize: Style.fontSm
+                    font.letterSpacing: 1.4
+                    font.capitalization: Font.AllUppercase
+                }
+
+                Repeater {
+                    model: dl.pickOpen ? Math.min(dl.pickRows, dl.pickFiles.length) : 0
+
+                    delegate: Item {
+                        id: pf
+
+                        required property int index
+                        readonly property int fi: dl.pickTop + index
+                        readonly property var f: dl.pickFiles[fi]
+
+                        width: pickCol.width
+                        height: 24
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 6
+                            visible: pf.fi === dl.pickCur
+                            color: Qt.alpha(Colors.accent, 0.14)
+                        }
+
+                        Rectangle {
+                            x: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 14
+                            height: 14
+                            radius: 4
+                            color: pf.f && pf.f.on ? Colors.accent : "transparent"
+                            border.width: 1
+                            border.color: pf.f && pf.f.on ? Colors.accent : Qt.alpha(Colors.foreground, 0.4)
+
+                            Txt {
+                                anchors.centerIn: parent
+                                visible: pf.f && pf.f.on
+                                text: Icons.check
+                                color: Qt.alpha("black", 0.85)
+                                font.pixelSize: 10
+                            }
+                        }
+
+                        OutText {
+                            x: 32
+                            width: parent.width - 32 - 96
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideMiddle
+                            text: pf.f ? pf.f.name : ""
+                            color: pf.f && pf.f.on ? Colors.foreground : Qt.alpha(Colors.foreground, 0.5)
+                            font.pixelSize: Style.fontMd
+                        }
+
+                        OutText {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: pf.f ? Aria2.bytes(pf.f.length) : ""
+                            color: Qt.alpha(Colors.foreground, 0.6)
+                            font.pixelSize: Style.fontSm
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                dl.pickCur = pf.fi;
+                                dl.pickToggle(pf.fi);
+                            }
+                        }
+                    }
+                }
+
+                OutText {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: dl.pickCount + " of " + dl.pickFiles.length + " files  \u00b7  " + Aria2.bytes(dl.pickBytes) + " of " + Aria2.bytes(dl.pickTotal)
+                    color: Qt.alpha(Colors.foreground, 0.7)
+                    font.pixelSize: Style.fontSm
+                }
             }
 
             Column {
@@ -3802,6 +4368,7 @@ PanelWindow {
 
                 width: parent.width
                 spacing: 14
+                visible: !dl.pickOpen
 
                 OutText {
                     width: parent.width
@@ -3974,7 +4541,7 @@ PanelWindow {
                 }
 
                 OutText {
-                    text: "\u2191 " + Aria2.rate(dl.stat.uploadSpeed) + "   " + dl.stat.numActive + " active   " + dl.stat.numWaiting + " queued"
+                    text: "\u2191 " + Aria2.rate(dl.stat.uploadSpeed) + "   " + dl.stat.numActive + " active   " + dl.stat.numWaiting + " queued" + dl.usageText
                     color: Qt.alpha(Colors.foreground, 0.65)
                     font.pixelSize: Style.fontSm
                 }

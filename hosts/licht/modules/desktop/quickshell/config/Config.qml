@@ -98,6 +98,16 @@ Singleton {
     // (an archive, a video, a torrent, a magnet link...). Off, because copying a
     // link to send to someone then starts a download.
     readonly property bool downloadClipboardAdd: false
+    // Torrents and magnet links are added paused, and a list of their files opens
+    // for you to tick the ones you want (P opens it again on any torrent). A
+    // torrent with a single file just starts.
+    readonly property bool downloadTorrentPick: true
+    // The monthly data counter always runs: it is the "this month" figure by the
+    // speed. Give it a limit in GB (0 = none) and you are told at 80% and at 100%.
+    // With downloadPauseAtCap on, everything also pauses at 100%, and carries on
+    // when the next month starts.
+    readonly property real downloadMonthlyCapGB: 0
+    readonly property bool downloadPauseAtCap: false
 
     // ---- Video grabber --------------------------------------------------------
     // Any link to a web page is downloaded with yt-dlp (it knows well over a

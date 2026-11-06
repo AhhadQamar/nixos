@@ -400,6 +400,46 @@ Singleton {
         return b;
     }
 
+    // ---- Torrent files and the monthly count -----------------------------------
+    // The files of a torrent as the picker lists them. `files` is aria2's list
+    // ({ index, path, length, selected }); the folder it downloads into comes off
+    // the front of each path.
+    function torrentFiles(files, dir) {
+        const cut = dir && dir !== "" ? dir.replace(/\/+$/, "") + "/" : "";
+        return files.map(function (f) {
+            const p = f.path || "";
+            return {
+                "index": parseInt(f.index, 10),
+                "name": cut !== "" && p.indexOf(cut) === 0 ? p.slice(cut.length) : p,
+                "length": Number(f.length || 0),
+                "on": f.selected !== "false"
+            };
+        });
+    }
+
+    // [1,2,3,5,7,8] -> "1-3,5,7-8", what aria2's select-file wants
+    function fileRanges(indices) {
+        const a = indices.slice().sort(function (x, y) {
+            return x - y;
+        });
+        const out = [];
+        let i = 0;
+        while (i < a.length) {
+            let j = i;
+            while (j + 1 < a.length && a[j + 1] === a[j] + 1)
+                j++;
+            out.push(j > i ? a[i] + "-" + a[j] : String(a[i]));
+            i = j + 1;
+        }
+        return out.join(",");
+    }
+
+    // "2026-11", for the month a date falls in
+    function monthKey(d) {
+        const m = d.getMonth() + 1;
+        return d.getFullYear() + "-" + (m < 10 ? "0" + m : m);
+    }
+
     // ---- Schedule ----------------------------------------------------------
     // "02:30" -> minutes since midnight, or -1
     function parseTime(t) {
