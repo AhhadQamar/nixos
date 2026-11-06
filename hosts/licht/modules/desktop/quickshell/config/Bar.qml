@@ -116,13 +116,21 @@ Variants {
                 onClicked: clockPop.toggle()
             }
 
+            // A place to drop links, and the downloads at a glance; click for the panel
+            DownloadChip {
+                id: dlChip
+
+                anchors.left: clockChip.right
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
             Workspaces {
                 id: workspaces
 
                 anchors.centerIn: parent
                 targetMonitor: bar.modelData.name
                 // Keep clear of the clock and the right cluster, which may differ in width
-                maxWidth: bar.width - 2 * Math.max(clock.width + clockChip.width, bar.rightFixed + (Music.hasTrack ? bar.chipExtra : 0)) - bar.centreGap
+                maxWidth: bar.width - 2 * Math.max(clock.width + clockChip.width + dlChip.width, bar.rightFixed + (Music.hasTrack ? bar.chipExtra : 0)) - bar.centreGap
             }
 
             Row {

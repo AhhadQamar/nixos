@@ -400,6 +400,23 @@ Singleton {
         return b;
     }
 
+    // What a drop carries, as text for the add box. Links dragged from a browser
+    // arrive as URLs (and also as text: the URLs are the better of the two); a
+    // selection of text may be a sentence with links in it, so the links are picked
+    // out of it. `drop` is a Qt DragEvent: hasUrls, urls, hasText, text.
+    function dropText(drop) {
+        const parts = [];
+        if (drop.hasUrls)
+            drop.urls.forEach(function (u) {
+                parts.push(u.toString());
+            });
+        if (parts.length === 0 && drop.hasText) {
+            const found = drop.text.match(/(https?:\/\/|ftp:\/\/|sftp:\/\/|magnet:\?)\S+/gi);
+            parts.push(found ? found.join("\n") : drop.text);
+        }
+        return parts.join("\n").trim();
+    }
+
     // ---- Torrent files and the monthly count -----------------------------------
     // The files of a torrent as the picker lists them. `files` is aria2's list
     // ({ index, path, length, selected }); the folder it downloads into comes off

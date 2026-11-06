@@ -67,7 +67,8 @@
 // quality (Config.downloadVideoQualities).
 //   qs ipc call downloads grab <link>
 //
-// Drop links, text or .torrent files onto the open panel to add them.
+// Drop links, text or .torrent files onto the open panel to add them, or onto the
+// download chip in the bar (DownloadChip.qml), which needs no panel at all.
 //
 // Torrents: a torrent or magnet link is added paused, and when its files are known
 // a list opens: Space ticks, A all, N none, I invert, Enter downloads the ticked
@@ -354,6 +355,8 @@ PanelWindow {
     property int videoQuality: 0
     // Links waiting to be asked "page or file?" (downloads/probe.sh)
     property var probeQueue: []
+    // The last global stat, for the bar's chip between looks
+    property var lastStat: ({})
     // Choosing the files of a torrent: the list, where the cursor is, and what is waiting
     property bool pickOpen: false
     property string pickGid: ""
@@ -1964,20 +1967,42 @@ PanelWindow {
 
     // ---- Things dropped on the panel -----------------------------------------------
     function handleDrop(drop) {
-        const parts = [];
-        if (drop.hasUrls)
-            drop.urls.forEach(u => parts.push(u.toString()));
-        if (parts.length === 0 && drop.hasText) {
-            // Selected text may be a sentence with links in it: take the links
-            const found = drop.text.match(/(https?:\/\/|ftp:\/\/|sftp:\/\/|magnet:\?)\S+/gi);
-            parts.push(found ? found.join("\n") : drop.text);
-        }
+        const text = Aria2.dropText(drop);
         drop.acceptProposedAction();
-        const text = parts.join("\n").trim();
         if (text === "")
             say("Nothing to download in that", true);
         else
             addText(text, saveDir());
+    }
+
+    // Something was dropped on the bar's chip while the panel may be closed. The
+    // chip is told how many downloads that made; a no is also said out loud,
+    // since the panel's own note is not on screen.
+    function addFromBar(text) {
+        const n = addText(text, saveDir());
+        DownloadStatus.added(n);
+        if (n === 0 && note !== "")
+            Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Not added", note]);
+    }
+
+    // What the bar's chip shows: how many are running (video grabs too), how many
+    // wait, and how fast
+    function pushStatus(st) {
+        let active = Number(st.numActive || 0);
+        let waiting = Number(st.numWaiting || 0);
+        let speed = Number(st.downloadSpeed || 0);
+        grabs.forEach(function (j) {
+            if (j.state === "downloading" || j.state === "merging") {
+                active++;
+                speed += j.speed;
+            } else if (j.state === "queued") {
+                waiting++;
+            }
+        });
+        lastStat = st;
+        DownloadStatus.active = active;
+        DownloadStatus.waiting = waiting;
+        DownloadStatus.speed = speed;
     }
 
     // ---- Page or file? ------------------------------------------------------------
@@ -2206,6 +2231,7 @@ PanelWindow {
     }
 
     function onGrabExit(id, code) {
+        pushStatus(lastStat);
         const j = grabOf(id);
         if (j !== null) {
             if (j.stopReq === "pause") {
@@ -2474,6 +2500,7 @@ PanelWindow {
     // Called with aria2's global stats each time they are read. busy -> idle with
     // an action chosen starts the countdown; any new work cancels it.
     function checkIdle(st) {
+        pushStatus(st);
         const busy = Number(st.numActive || 0) + Number(st.numWaiting || 0) > 0 || grabs.some(j => j.state === "downloading" || j.state === "queued" || j.state === "merging" || j.state === "paused");
         if (busy) {
             seenBusy = true;
@@ -2722,6 +2749,19 @@ PanelWindow {
                 dl.say("Couldn't read " + fileReader.job.path, true);
             dl.fileJobs = dl.fileJobs.slice(1);
             dl.pumpFiles();
+        }
+    }
+
+    // The bar's chip: things dropped on it, and a click to open the panel
+    Connections {
+        target: DownloadStatus
+
+        function onAddRequested(text) {
+            dl.addFromBar(text);
+        }
+
+        function onToggleRequested() {
+            dl.toggle();
         }
     }
 
