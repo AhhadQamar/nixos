@@ -199,7 +199,7 @@ in {
           unrelated = "next";
         };
         position = "left"; # vertical tab list, like your Firefox sidebar
-        width = 220; # sidebar width in pixels (use "15%" to scale with the window)
+        width = 20; # sidebar width in pixels (use "15%" to scale with the window)
         show = "always"; # always visible, so the page never jumps sideways
         title.alignment = "left";
         favicons.show = "always";
