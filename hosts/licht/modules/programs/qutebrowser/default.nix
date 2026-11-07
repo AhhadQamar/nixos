@@ -114,7 +114,7 @@ in {
     greasemonkey = [selectionScript unhookScript];
 
     searchEngines = {
-      DEFAULT = "https://duckduckgo.com/?q={}";
+      DEFAULT = "https://google.com/?q={}";
       yt = "https://www.youtube.com/results?search_query={}";
       gh = "https://github.com/search?q={}";
       w = "https://en.wikipedia.org/w/index.php?search={}";
@@ -222,7 +222,7 @@ in {
       normal = {
         "J" = "tab-prev"; # qutebrowser's default is the other way round
         "K" = "tab-next";
-        "x" = "tab-close";
+        "d" = "tab-close";
         "b" = "cmd-set-text -s :tab-select";
         "<Ctrl-d>" = "scroll-page 0 0.5";
         "<Ctrl-u>" = "scroll-page 0 -0.5";
