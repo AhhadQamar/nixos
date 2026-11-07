@@ -1037,7 +1037,7 @@ PanelWindow {
             word = lOpen !== "" ? lOpen : kindWord(curItem.kind);
         else
             word = ["Album", "Track", "Queue"][tab];
-        return word + "  ·  " + (selIdx + 1) + " / " + n;
+        return word + "  ·  " + (selIdx + 1) + " / " + n + (tab === 3 && oOpened === null && MusicNet.more ? "+" : "");
     }
 
     function emptyTitle() {
@@ -1102,7 +1102,7 @@ PanelWindow {
         if (query.trim() === "")
             return "";
         if (tab === 3 && oOpened === null)
-            return MusicNet.busy ? "" : String(n);
+            return MusicNet.busy ? "" : String(n) + (MusicNet.more ? "+" : "");
         return String(n);
     }
 
@@ -1117,9 +1117,12 @@ PanelWindow {
             sel = v;
         else if (tab === 2)
             qsel = v;
-        else if (tab === 3)
+        else if (tab === 3) {
             osel = v;
-        else
+            // Near the end of the results: fetch the next page
+            if (oOpened === null && n - v <= 8)
+                MusicNet.loadMore();
+        } else
             lsel = v;
     }
 
@@ -1517,7 +1520,7 @@ PanelWindow {
 
         function onResultsChanged() {
             if (panel.oOpened === null)
-                panel.refilterOnline(false);
+                panel.refilterOnline(MusicNet.lastMore);
         }
 
         function onTracksReady(id, data) {

@@ -11,8 +11,8 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property var kinds: ["top", "songs", "albums", "playlists", "artists"]
-    readonly property var labels: ["Top", "Songs", "Albums", "Playlists", "Artists"]
+    readonly property var kinds: ["top", "songs", "videos", "albums", "playlists", "artists"]
+    readonly property var labels: ["Top", "Songs", "Videos", "Albums", "Playlists", "Artists"]
     property int kindIdx: 0
     readonly property string kind: kinds[kindIdx]
     readonly property string kindLabel: labels[kindIdx]
@@ -25,6 +25,13 @@ Singleton {
     // What `results` answers
     property string ranQuery: ""
     property string ranKind: ""
+    // How many results are asked for, and whether there may be more past them
+    property int limit: Config.musicSearchPage
+    property bool more: false
+    // The answer that just arrived was a "load more": the list grew, keep your place
+    property bool lastMore: false
+    property bool reqMore: false
+    property int reqLimit: 0
 
     signal tracksReady(int id, var data)
     signal tracksFailed(int id, string message)
@@ -57,10 +64,14 @@ Singleton {
             ranQuery = "";
             ranKind = "";
             busy = false;
+            more = false;
+            limit = Config.musicSearchPage;
             return;
         }
         if (t === ranQuery && kind === ranKind)
             return;
+        limit = Config.musicSearchPage;
+        more = false;
         timer.restart();
     }
 
@@ -70,6 +81,8 @@ Singleton {
         ranQuery = "";
         ranKind = "";
         error = "";
+        more = false;
+        limit = Config.musicSearchPage;
         if (query !== "")
             timer.restart();
     }
@@ -86,9 +99,26 @@ Singleton {
         error = "";
         reqQuery = query;
         reqKind = kind;
+        reqLimit = limit;
+        reqMore = pendingMore;
+        pendingMore = false;
         buf = "";
-        proc.command = ["qs-music-py", Quickshell.shellPath("music/search.py"), "search", reqKind, reqQuery];
+        proc.command = ["qs-music-py", Quickshell.shellPath("music/search.py"), "search", reqKind, reqQuery, String(reqLimit)];
         proc.running = true;
+    }
+
+    property bool pendingMore: false
+
+    // Ask for the next page of the same search: more results, same query. The list
+    // is replaced by the longer one, so the panel keeps your place (lastMore).
+    function loadMore() {
+        if (!more || busy || query === "" || query !== ranQuery || kind !== ranKind)
+            return;
+        if (limit >= Config.musicSearchMax)
+            return;
+        limit = Math.min(Config.musicSearchMax, limit + Config.musicSearchPage);
+        pendingMore = true;
+        run();
     }
 
     function onSearchDone() {
@@ -118,6 +148,9 @@ Singleton {
             error = d.error || "Search failed";
             return;
         }
+        // Only offer more while the cap is not reached
+        more = d.more === true && reqLimit < Config.musicSearchMax;
+        lastMore = reqMore;
         results = decorate(d.items, reqKind);
         ranQuery = reqQuery;
         ranKind = reqKind;

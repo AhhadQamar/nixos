@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """YouTube Music lookups for the Quickshell player. One JSON line on stdout.
 
-  search.py search <top|songs|albums|playlists|artists> <query> [limit]
+  search.py search <top|songs|videos|albums|playlists|artists> <query> [limit]
   search.py tracks <album|playlist|artist> <id>
   search.py playlist-url <album browseId>        (plain URL, used by dl.sh)
 
@@ -112,45 +112,91 @@ def ytdlp_songs(query, limit):
     return items
 
 
+def convert(r, rt):
+    """One ytmusicapi result as an item for the player, or None."""
+    if rt in ("song", "video"):
+        return song(r)
+    if rt == "album" and r.get("browseId"):
+        return {
+            "kind": "album", "id": r["browseId"], "playlist": plist_url(r.get("playlistId", "")),
+            "title": r.get("title", ""), "artist": names(r.get("artists")),
+            "album": r.get("title", ""), "year": r.get("year") or "",
+            "type": r.get("type") or "Album", "cover": cover(r.get("thumbnails")),
+        }
+    if rt == "playlist" and r.get("browseId"):
+        return {
+            "kind": "playlist", "id": r["browseId"], "playlist": plist_url(r["browseId"]),
+            "title": r.get("title", ""), "artist": r.get("author") or "",
+            "count": r.get("itemCount") or "", "cover": cover(r.get("thumbnails")),
+        }
+    if rt == "artist" and r.get("browseId"):
+        return {
+            "kind": "artist", "id": r["browseId"], "title": r.get("artist") or r.get("title", ""),
+            "artist": "", "cover": cover(r.get("thumbnails")),
+        }
+    return None
+
+
+def key_of(it):
+    return it["kind"] + ":" + (it.get("id") or it.get("path") or "")
+
+
+FILTERS = {"songs": "songs", "videos": "videos", "albums": "albums", "playlists": "playlists", "artists": "artists"}
+SINGLE = {"songs": "song", "videos": "video", "albums": "album", "playlists": "playlist", "artists": "artist"}
+
+
+def one(query, kind, limit):
+    """A single filtered search (a fresh client each, so searches can run side by side)."""
+    return client().search(query, filter=FILTERS[kind], limit=limit)
+
+
 def do_search(kind, query, limit):
-    rtypes = {"top": None, "songs": "song", "albums": "album", "playlists": "playlist", "artists": "artist"}
-    if kind not in rtypes:
+    """Search YouTube Music for `limit` results. For every kind but top, `more` says
+    whether there could be further results beyond `limit`: ask again with a bigger
+    limit to get them. Top is the mixed first results (artists, albums, songs...)
+    followed by a long run of songs."""
+    if kind != "top" and kind not in FILTERS:
         fail("unknown kind " + kind)
+    limit = max(1, min(int(limit), 300))
     try:
-        res = client().search(query, filter=None if kind == "top" else kind, limit=limit)
+        if kind == "top":
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(2) as ex:
+                head_f = ex.submit(lambda: client().search(query, limit=limit))
+                songs_f = ex.submit(one, query, "songs", limit)
+                songs, head = [], []
+                songs_err = None
+                try:
+                    songs = songs_f.result()
+                except Exception as e:  # keep the mixed results if the songs part fails
+                    songs_err = e
+                try:
+                    head = head_f.result()
+                except Exception as e:
+                    if songs_err is not None:
+                        raise e
+            rows = [(r, r.get("resultType")) for r in head] + [(r, "song") for r in songs]
+            more = len(songs) >= limit
+        else:
+            res = one(query, kind, limit)
+            rows = [(r, SINGLE[kind]) for r in res]
+            more = len(res) >= limit
     except Exception as e:  # ytmusicapi missing, offline, or YouTube changed something
-        if kind in ("songs", "top"):
+        if kind in ("songs", "top", "videos"):
             try:
-                return out({"ok": True, "source": "yt-dlp", "items": ytdlp_songs(query, limit)})
+                return out({"ok": True, "source": "yt-dlp", "more": False, "items": ytdlp_songs(query, min(limit, 100))})
             except Exception as e2:
                 fail("search failed: %s / %s" % (e, e2))
         fail("search failed: %s" % e)
-    items = []
-    for r in res:
-        rt = rtypes[kind] or r.get("resultType")
-        if rt in ("song", "video"):
-            s = song(r)
-            if s:
-                items.append(s)
-        elif rt == "album" and r.get("browseId"):
-            items.append({
-                "kind": "album", "id": r["browseId"], "playlist": plist_url(r.get("playlistId", "")),
-                "title": r.get("title", ""), "artist": names(r.get("artists")),
-                "album": r.get("title", ""), "year": r.get("year") or "",
-                "type": r.get("type") or "Album", "cover": cover(r.get("thumbnails")),
-            })
-        elif rt == "playlist" and r.get("browseId"):
-            items.append({
-                "kind": "playlist", "id": r["browseId"], "playlist": plist_url(r["browseId"]),
-                "title": r.get("title", ""), "artist": r.get("author") or "",
-                "count": r.get("itemCount") or "", "cover": cover(r.get("thumbnails")),
-            })
-        elif rt == "artist" and r.get("browseId"):
-            items.append({
-                "kind": "artist", "id": r["browseId"], "title": r.get("artist") or r.get("title", ""),
-                "artist": "", "cover": cover(r.get("thumbnails")),
-            })
-    out({"ok": True, "source": "ytmusicapi", "items": items})
+    items, seen = [], set()
+    for r, rt in rows:
+        it = convert(r, rt)
+        if it is None or key_of(it) in seen:
+            continue
+        seen.add(key_of(it))
+        items.append(it)
+    out({"ok": True, "source": "ytmusicapi", "more": more, "items": items})
 
 
 def do_tracks(kind, ident):
@@ -166,7 +212,7 @@ def do_tracks(kind, ident):
             return out({"ok": True, "title": a.get("title", ""), "cover": art,
                         "playlist": plist_url(a.get("audioPlaylistId", "")), "items": items})
         if kind == "playlist":
-            p = yt.get_playlist(re.sub(r"^VL", "", ident), limit=200)
+            p = yt.get_playlist(re.sub(r"^VL", "", ident), limit=500)
             items = [s for s in (song(t) for t in p.get("tracks", [])) if s]
             return out({"ok": True, "title": p.get("title", ""), "cover": cover(p.get("thumbnails")),
                         "playlist": plist_url(ident), "items": items})
@@ -176,7 +222,7 @@ def do_tracks(kind, ident):
             rows = songs.get("results") or []
             if songs.get("browseId"):
                 try:
-                    rows = yt.get_playlist(songs["browseId"], limit=50).get("tracks", rows)
+                    rows = yt.get_playlist(songs["browseId"], limit=200).get("tracks", rows)
                 except Exception:
                     pass
             items = [s for s in (song(t) for t in rows) if s]

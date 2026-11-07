@@ -50,6 +50,11 @@ Singleton {
     // a file in your library are saved next to it as Song.lrc, so any player, and
     // this one offline, can use them.
     readonly property bool musicLyricsSave: true
+    // Online search: how many results come at first, and how many more each time
+    // you scroll near the end of the list, up to musicSearchMax. (Each page costs
+    // a request; YouTube Music itself hands out about 20 at a time.)
+    readonly property int musicSearchPage: 30
+    readonly property int musicSearchMax: 200
     // The bar's music chip shows the line being sung, in place of the title and
     // artist (they come back in the gaps, and when a song has no synced lyrics).
     // Lyrics are then looked up for every song that plays, not only while the
