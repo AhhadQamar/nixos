@@ -4,7 +4,7 @@
 local terminal = "kitty"
 local fileManager = "nautilus"
 local browser = "firefox"
-local altBrowser = "brave"
+local altBrowser = "qutebrowser"
 
 -------------------------------
 ---- KEYBINDINGS ----

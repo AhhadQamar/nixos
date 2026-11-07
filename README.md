@@ -181,7 +181,7 @@ All of these need `NH_FLAKE=/home/licht/nixos` (set in `configuration.nix`).
 | Keys | Action |
 | --- | --- |
 | `Super+Return` | kitty |
-| `Super+E` / `B` / `Shift+B` | nautilus / firefox / brave |
+| `Super+E` / `B` / `Shift+B` | nautilus / firefox / qutebrowser |
 | `Super+Q` | close window |
 | `Super+h j k l` or arrows | move focus |
 | `Super+Shift+arrows` | swap window |
@@ -230,7 +230,7 @@ Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the secon
 | Change the bar or panels | `modules/desktop/quickshell/config/*.qml` |
 | Edit QML without rebuilding | set `liveReload = true` in `quickshell/default.nix`, rebuild once; saves then reload instantly |
 | Change aliases | `modules/shell/zsh/config/.zshrc` (`zshrc`) |
-| Change Brave extensions | `modules/programs/brave/default.nix` |
+| Change qutebrowser settings, keys, search engines or colours | `modules/programs/qutebrowser/default.nix` |
 | Change Firefox settings, policies or Tridactyl keys | `modules/programs/firefox/default.nix`, `firefox/config/` (`userChrome.css`, `tridactylrc`) |
 | Change the login screen | `system/greeter/` (`Greeter.qml`, `default.nix`) |
 
@@ -317,7 +317,7 @@ hosts/licht/
   modules/
     desktop/         hypr, quickshell, pywal, theme, cava, pyprland
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime
-    programs/        aerc, aria2, brave, firefox, kitty, mpv, nvim, vscodium, yt-dlp
+    programs/        aerc, aria2, firefox, kitty, mpv, nvim, qutebrowser, vscodium, yt-dlp
 ```
 
 **Notes**

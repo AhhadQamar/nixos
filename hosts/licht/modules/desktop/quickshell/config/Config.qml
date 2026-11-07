@@ -146,7 +146,7 @@ Singleton {
     // How many videos are fetched at once
     readonly property int downloadVideoParallel: 2
     // A browser to take your logins from, for sites that want you signed in
-    // (age-restricted or members-only videos), e.g. "brave". Empty: none.
+    // (age-restricted or members-only videos), e.g. "firefox". Empty: none.
     readonly property string downloadVideoCookies: ""
 
     // ---- System updater ---------------------------------------------------

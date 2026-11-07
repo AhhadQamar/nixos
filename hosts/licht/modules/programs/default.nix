@@ -2,7 +2,6 @@
   imports = [
     ./aria2
     ./aerc
-    ./brave
     ./firefox
     ./kitty
     ./mpv
@@ -10,5 +9,6 @@
     ./vscodium
     ./yt-dlp
     ./obsidian
+    ./qutebrowser
   ];
 }

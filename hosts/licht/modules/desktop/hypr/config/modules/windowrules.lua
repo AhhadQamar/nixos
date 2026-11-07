@@ -83,7 +83,7 @@ hl.window_rule({
 -- only hurts legibility.
 hl.window_rule({
 	name = "opaque-browsers",
-	match = { class = "^(firefox|brave-browser|Brave-browser)$" },
+	match = { class = "^(firefox|org\\.qutebrowser\\.qutebrowser)$" },
 
 	opaque = true,
 })
