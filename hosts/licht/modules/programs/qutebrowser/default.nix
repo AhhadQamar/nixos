@@ -114,7 +114,8 @@ in {
     greasemonkey = [selectionScript unhookScript];
 
     searchEngines = {
-      DEFAULT = "https://google.com/?q={}";
+      DEFAULT = "https://www.google.com/search?q={}";
+      ddg = "https://duckduckgo.com/?q={}"; # o ddg <terms> when you want a private search
       yt = "https://www.youtube.com/results?search_query={}";
       gh = "https://github.com/search?q={}";
       w = "https://en.wikipedia.org/w/index.php?search={}";
@@ -147,6 +148,8 @@ in {
         notifications.enabled = false; # ...or for notifications
         dns_prefetch = false; # no prefetching of links you have not clicked
         register_protocol_handler = false; # sites cannot claim mailto: etc.
+        pdfjs = true; # open PDFs in the browser instead of downloading them
+        javascript.clipboard = "access"; # makes "Copy" buttons on sites work
         cookies.accept = "no-3rdparty";
         webrtc_ip_handling_policy = "default-public-interface-only"; # no local IP leak
         headers = {
@@ -176,8 +179,6 @@ in {
       };
 
       # --- Things a normal browser is expected to do ---
-      content.pdfjs = true; # open PDFs in the browser instead of downloading them
-      content.javascript.clipboard = "access"; # makes "Copy" buttons on sites work
       input.insert_mode.auto_load = true; # focused text box on page load: start typing at once
 
       # File upload dialogs open yazi in kitty instead of a Qt dialog.
@@ -197,24 +198,64 @@ in {
           related = "next"; # new tabs open next to the current one, as in Firefox
           unrelated = "next";
         };
-        show = "multiple"; # hide the tab bar when there is only one tab
+        position = "left"; # vertical tab list, like your Firefox sidebar
+        width = 220; # sidebar width in pixels (use "15%" to scale with the window)
+        show = "always"; # always visible, so the page never jumps sideways
+        title.alignment = "left";
+        favicons.show = "always";
+        pinned.shrink = false; # pinned tabs keep their full row in a vertical list
+        title.format_pinned = "{audio}{index} {current_title}";
         last_close = "close"; # closing the last tab closes the window
         select_on_remove = "last-used"; # closing a tab returns to the one you used before
         mousewheel_switching = false; # scrolling over the tab bar does not switch tabs
-        title.format = "{audio}{index}: {current_title}"; # speaker icon on tabs playing sound
+        title.format = "{audio}{index} {current_title}"; # speaker icon on tabs playing sound
       };
       auto_save.session = true; # reopen last tabs on start
-      scrolling.smooth = true;
+      scrolling = {
+        smooth = true;
+        bar = "when-searching"; # no scrollbar except while searching a page
+      };
 
       downloads = {
         location.directory = "${config.home.homeDirectory}/Downloads";
         location.prompt = false; # save straight to Downloads
+        position = "bottom";
+        remove_finished = 8000; # finished downloads disappear after 8 seconds
       };
       url = {
         start_pages = ["about:blank"];
         default_page = "about:blank";
       };
       colors.webpage.preferred_color_scheme = "dark";
+
+      # Status bar: the tab count and history arrows are redundant with the sidebar.
+      statusbar.widgets = ["keypress" "search_match" "url" "scroll" "progress"];
+
+      # The command/completion popup: fits its entries, no scrollbar, quick on big histories.
+      completion = {
+        shrink = true;
+        height = "35%";
+        scrollbar.width = 0;
+        web_history.max_items = 2000;
+      };
+
+      # Link hints: capital letters, no border, rounded.
+      hints = {
+        uppercase = true;
+        border = "none";
+        radius = 4;
+      };
+      keyhint = {
+        delay = 250; # the "which key" popup appears after a short pause
+        radius = 4;
+      };
+      prompt.radius = 4;
+
+      # Same font as the bar, for tabs, status bar, prompts and completion.
+      fonts = {
+        default_family = "JetBrainsMono Nerd Font";
+        default_size = "11pt";
+      };
     };
 
     # Tridactyl-style keys, so muscle memory carries over from Firefox.
@@ -251,6 +292,11 @@ in {
       # than in `settings`, where Home Manager would split it into keys.
       c.content.headers.custom = {"Sec-GPC": "1"}
 
+      # Roomier tab rows and status bar.
+      c.tabs.padding = {"top": 5, "bottom": 5, "left": 8, "right": 8}
+      c.statusbar.padding = {"top": 3, "bottom": 3, "left": 6, "right": 6}
+      c.hints.padding = {"top": 2, "bottom": 2, "left": 5, "right": 5}
+
       # Colours come from pywal, the same palette as the bar and Firefox.
       import json
       import os
@@ -286,6 +332,13 @@ in {
           c.colors.statusbar.url.error.fg = err
           c.colors.statusbar.url.warn.fg = warn
           c.colors.statusbar.progress.bg = accent
+          c.colors.statusbar.url.hover.fg = accent
+          c.colors.statusbar.caret.bg = warn
+          c.colors.statusbar.caret.fg = bg
+          c.colors.statusbar.private.bg = dim
+          c.colors.statusbar.private.fg = fg
+          c.colors.statusbar.command.private.bg = dim
+          c.colors.statusbar.command.private.fg = fg
 
           c.colors.tabs.bar.bg = bg
           c.colors.tabs.odd.bg = bg
@@ -297,6 +350,18 @@ in {
           c.colors.tabs.selected.odd.fg = bg
           c.colors.tabs.selected.even.fg = bg
 
+          c.colors.tabs.pinned.odd.bg = bg
+          c.colors.tabs.pinned.even.bg = bg
+          c.colors.tabs.pinned.odd.fg = dim
+          c.colors.tabs.pinned.even.fg = dim
+          c.colors.tabs.pinned.selected.odd.bg = accent
+          c.colors.tabs.pinned.selected.even.bg = accent
+          c.colors.tabs.pinned.selected.odd.fg = bg
+          c.colors.tabs.pinned.selected.even.fg = bg
+          c.colors.tabs.indicator.start = accent
+          c.colors.tabs.indicator.stop = ok
+          c.colors.tabs.indicator.error = err
+
           c.colors.completion.fg = fg
           c.colors.completion.odd.bg = bg
           c.colors.completion.even.bg = bg
@@ -306,6 +371,10 @@ in {
           c.colors.completion.item.selected.fg = bg
           c.colors.completion.item.selected.match.fg = bg
           c.colors.completion.match.fg = warn
+          c.colors.completion.category.border.top = bg
+          c.colors.completion.category.border.bottom = bg
+          c.colors.completion.item.selected.border.top = accent
+          c.colors.completion.item.selected.border.bottom = accent
 
           c.colors.hints.bg = accent
           c.colors.hints.fg = bg
@@ -317,11 +386,15 @@ in {
           c.colors.messages.warning.fg = bg
           c.colors.messages.error.bg = err
           c.colors.messages.error.fg = bg
+          c.colors.messages.info.border = bg
+          c.colors.messages.warning.border = warn
+          c.colors.messages.error.border = err
 
           # Permission questions, downloads, key hints and the context menu.
           c.colors.prompts.bg = bg
           c.colors.prompts.fg = fg
           c.colors.prompts.selected.bg = accent
+          c.colors.prompts.border = "1px solid " + accent
           c.colors.downloads.bar.bg = bg
           c.colors.downloads.start.bg = accent
           c.colors.downloads.start.fg = bg
