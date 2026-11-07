@@ -163,6 +163,17 @@ Singleton {
             saveSoon();
             return;
         }
+        // A song that would not play: say so (once, not for every entry of a bad run)
+        if (m.event === "end-file") {
+            if (m.reason === "error") {
+                const now = Date.now();
+                if (now - lastFailAt > 2500) {
+                    lastFailAt = now;
+                    playbackFailed(m.file_error || "loading failed", isRemote(path));
+                }
+            }
+            return;
+        }
         if (m.event !== "property-change")
             return;
         const d = m.data;
@@ -673,6 +684,10 @@ Singleton {
         }
     }
 
+    // The song could not be played: why (mpv's words), and whether it was a stream
+    signal playbackFailed(string message, bool remote)
+    property double lastFailAt: 0
+
     // ---- Lyrics -----------------------------------------------------------
     // Fetched by music/lyrics.py (a .lrc next to the file, then a cache, then
     // LRCLIB) for the song that is playing, but only while the panel is showing
@@ -695,12 +710,16 @@ Singleton {
     property string lyricReq: ""
     property string lyricBuf: ""
     property bool lyricAgain: false
+    // Lyrics that run early or late: seconds the lines are moved earlier (+) or
+    // later (-), kept per song in ~/.local/state/quickshell/music-lyric-offsets.json
+    property real lyricOffset: 0
+    property var lyricOffsets: ({})
 
     // The line being sung: the last one that has started (a touch early reads better)
     readonly property int lyricIndex: {
         if (!lyricSynced || lyricLines.length === 0)
             return -1;
-        const t = position + 0.2;
+        const t = position + 0.2 + lyricOffset;
         let lo = 0;
         let hi = lyricLines.length - 1;
         let r = -1;
@@ -727,8 +746,31 @@ Singleton {
         lyricLines = [];
         lyricSynced = false;
         lyricError = "";
+        lyricOffset = lyricOffsets[lyricKey()] || 0;
         // The tags can still be arriving: give them a moment
         lyricsTimer.restart();
+    }
+
+    // A song, as the offsets know it: the same song streamed or on disk is one
+    function lyricKey() {
+        const t = lookup(path);
+        const a = ((t && t.artist) || artist || "").toLowerCase();
+        const ti = ((t && t.title) || title || "").toLowerCase();
+        return a !== "" || ti !== "" ? a + "|" + ti : path;
+    }
+
+    // Move the lines earlier (delta > 0) or later (delta < 0) for this song
+    function nudgeLyrics(delta) {
+        const v = Math.max(-10, Math.min(10, Math.round((lyricOffset + delta) * 100) / 100));
+        lyricOffset = v;
+        const m = Object.assign({}, lyricOffsets);
+        if (v === 0)
+            delete m[lyricKey()];
+        else
+            m[lyricKey()] = v;
+        lyricOffsets = m;
+        lyricOffsetFile.setText(JSON.stringify(m));
+        return v;
     }
 
     function startLyrics() {
@@ -933,6 +975,23 @@ Singleton {
         repeat: true
         running: root.playing
         onTriggered: root.saveNow()
+    }
+
+    FileView {
+        id: lyricOffsetFile
+
+        path: root.stateDir + "/music-lyric-offsets.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const d = JSON.parse(text());
+                if (d && typeof d === "object") {
+                    root.lyricOffsets = d;
+                    if (root.lyricPath === root.path)
+                        root.lyricOffset = d[root.lyricKey()] || 0;
+                }
+            } catch (e) {}
+        }
     }
 
     Process {

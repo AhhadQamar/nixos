@@ -107,6 +107,77 @@ PanelWindow {
     // Which line unsynced lyrics are scrolled to
     property real lyricScroll: 0
 
+    // The shortcuts sheet (F1, or ? with an empty search): any key puts it away
+    property bool helpOn: false
+    property real helpMix: helpOn ? 1 : 0
+    // How far the dial has given way to the lyrics or the sheet
+    readonly property real overlayMix: Math.max(lyricsMix, helpMix)
+    readonly property var keyHelp: [
+        {
+            "k": ["Enter"],
+            "d": "play"
+        },
+        {
+            "k": ["Shift", "Enter"],
+            "d": "add to the end of the queue"
+        },
+        {
+            "k": ["Alt", "Enter"],
+            "d": "play next"
+        },
+        {
+            "k": ["Space"],
+            "d": "play / pause"
+        },
+        {
+            "k": ["Alt", "\u2190\u2192"],
+            "d": "previous / next song"
+        },
+        {
+            "k": ["Shift", "\u2190\u2192"],
+            "d": "seek 10 seconds"
+        },
+        {
+            "k": ["Shift", "\u2191\u2193"],
+            "d": "volume"
+        },
+        {
+            "k": ["Ctrl", "L"],
+            "d": "like"
+        },
+        {
+            "k": ["Ctrl", "A"],
+            "d": "add to a playlist"
+        },
+        {
+            "k": ["Ctrl", "D"],
+            "d": "download, or remove from the queue"
+        },
+        {
+            "k": ["Ctrl", "Z"],
+            "d": "put a removed song back"
+        },
+        {
+            "k": ["Alt", "\u2191\u2193"],
+            "d": "move a song in the queue"
+        },
+        {
+            "k": ["Ctrl", "T"],
+            "d": "what to search for online"
+        },
+        {
+            "k": ["Ctrl", "Y"],
+            "d": "lyrics (\u2191\u2193 nudge the timing)"
+        }
+    ]
+
+    Behavior on helpMix {
+        NumberAnimation {
+            duration: Style.baseMs * 1.5
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Behavior on lyricsMix {
         NumberAnimation {
             duration: Style.baseMs * 1.5
@@ -237,8 +308,11 @@ PanelWindow {
         // Online it is a web search; inside an album it filters its songs
         if (oOpened !== null)
             refilterOnline(false);
-        else if (tab === 3 && pickFor.length === 0)
+        else if (tab === 3 && pickFor.length === 0) {
             MusicNet.setQuery(q);
+            // Typing replaces the recent searches; clearing brings them back
+            refilterOnline(false);
+        }
         refilterLists(false);
     }
 
@@ -581,6 +655,7 @@ PanelWindow {
                 "playlist": "Playlist",
                 "artist": "Artist",
                 "list": "Playlist",
+                "recent": "Recent",
                 "new": "New playlist"
             })[k] || "";
     }
@@ -591,7 +666,17 @@ PanelWindow {
 
     function refilterOnline(keepSel) {
         const q = query.trim();
-        const src = oOpened !== null ? oOpened.items : MusicNet.results;
+        // With nothing typed, the Online tab offers your recent searches
+        const src = oOpened !== null ? oOpened.items : (q === "" ? MusicNet.history.map(h => ({
+                        "key": "r:" + h,
+                        "kind": "recent",
+                        "title": h,
+                        "artist": "",
+                        "album": "",
+                        "path": "",
+                        "group": "",
+                        "cover": ""
+                    })) : MusicNet.results);
         const out = [];
         const pos = [];
         for (const r of src) {
@@ -616,7 +701,7 @@ PanelWindow {
     // Load the songs of an album, playlist or artist, then do `action`:
     // play | queue | open | pick | download
     function fetchThen(item, action) {
-        if (item.kind === "song")
+        if (item.kind === "song" || item.kind === "recent")
             return;
         const id = MusicNet.fetchTracks(item.kind, item.id);
         fetchTag = {
@@ -695,6 +780,11 @@ PanelWindow {
 
     function activateOnline() {
         const c = curItem;
+        // A recent search: run it again
+        if (c.kind === "recent") {
+            search.text = c.title;
+            return;
+        }
         if (c.kind !== "song") {
             fetchThen(c, "play");
             return;
@@ -1085,7 +1175,12 @@ PanelWindow {
             return [c.artist, c.count ? c.count + " songs" : ""].filter(x => x).join("  ·  ");
         if (c.kind === "artist")
             return "Artist";
-        return c.artist !== "" && c.album !== "" ? c.artist + "  ·  " + c.album : (c.artist || c.album);
+        if (c.kind === "recent")
+            return "Recent search";
+        const base = c.artist !== "" && c.album !== "" ? c.artist + "  ·  " + c.album : (c.artist || c.album);
+        // A heart for the ones you like, and a note on streamed songs you have kept
+        const marks = (c.path && MusicLists.isLiked(c.path) ? "  ·  \u2665" : "") + (c.path && Music.isRemote(c.path) && Music.downloaded(c.path) ? "  ·  downloaded" : "");
+        return base + marks;
     }
 
     function placeholderText() {
@@ -1130,9 +1225,18 @@ PanelWindow {
         if (lyricsOn) {
             if (!Music.lyricSynced)
                 lyricScroll = clamp(lyricScroll + delta, 0, Math.max(0, Music.lyricLines.length - 1));
+            else
+                nudgeLyrics(delta);
             return;
         }
         setSel(selIdx + delta);
+    }
+
+    // In synced lyrics, the arrows move the timing: right or down = later, left
+    // or up = earlier, a quarter second a press, remembered for the song
+    function nudgeLyrics(delta) {
+        const off = Music.nudgeLyrics(-0.25 * (delta > 0 ? 1 : -1));
+        say(off === 0 ? "Lyrics in time" : "Lyrics " + Math.abs(off).toFixed(2) + " s " + (off > 0 ? "earlier" : "later"), 2500);
     }
 
     function toggleLyrics() {
@@ -1372,6 +1476,12 @@ PanelWindow {
     function removeSel() {
         if (curItem === null)
             return;
+        // A recent search is forgotten
+        if (tab === 3 && curItem.kind === "recent") {
+            MusicNet.forget(curItem.title);
+            say("Forgotten  ·  " + curItem.title);
+            return;
+        }
         if (tab === 4) {
             if (lOpen !== "") {
                 MusicLists.removeTrack(lOpen, curItem.path);
@@ -1447,6 +1557,7 @@ PanelWindow {
             return;
         isOpen = false;
         lyricsOn = false;
+        helpOn = false;
         Music.lyricsViewRequest = false;
         openAnim.stop();
         closeAnim.restart();
@@ -1516,11 +1627,30 @@ PanelWindow {
     }
 
     Connections {
+        target: Music
+
+        // A stream or a file that would not play. mpv's own words say why; when
+        // the panel is closed the same goes to a notification.
+        function onPlaybackFailed(message, remote) {
+            const text = remote ? "Couldn't stream that  ·  " + message + "  ·  yt-dlp may be out of date" : "Couldn't play that  ·  " + message;
+            if (panel.isOpen)
+                panel.say(text, 7000);
+            else
+                Quickshell.execDetached(["notify-send", "-a", "Music", "-i", "audio-x-generic", "Couldn't play that", text]);
+        }
+    }
+
+    Connections {
         target: MusicNet
 
         function onResultsChanged() {
             if (panel.oOpened === null)
                 panel.refilterOnline(MusicNet.lastMore);
+        }
+
+        function onHistoryChanged() {
+            if (panel.tab === 3 && panel.oOpened === null && panel.query.trim() === "")
+                panel.refilterOnline(true);
         }
 
         function onTracksReady(id, data) {
@@ -2102,7 +2232,7 @@ PanelWindow {
                 transformOrigin: Item.Top
                 rotation: a * 180 / Math.PI
                 color: Qt.tint(Qt.alpha(Colors.foreground, major ? 0.34 : 0.18), Qt.alpha(panel.tint, 0.7 * near))
-                opacity: panel.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1) * panel.clamp(panel.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1) * (1 - panel.lyricsMix)
+                opacity: panel.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1) * panel.clamp(panel.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1) * (1 - panel.overlayMix)
             }
         }
 
@@ -2115,7 +2245,7 @@ PanelWindow {
             height: 16
             radius: 1
             color: panel.tint
-            opacity: panel.clamp(panel.reveal * 2 - 0.5, 0, 1) * (1 - panel.lyricsMix)
+            opacity: panel.clamp(panel.reveal * 2 - 0.5, 0, 1) * (1 - panel.overlayMix)
         }
 
         // ---- The covers --------------------------------------------------
@@ -2158,7 +2288,7 @@ PanelWindow {
                 x: px - sz / 2
                 y: py - sz / 2
                 z: 10 + grow * 10
-                opacity: appear * edge * (1 - panel.lyricsMix)
+                opacity: appear * edge * (1 - panel.overlayMix)
                 scale: 0.55 + 0.45 * panel.backOut(appear)
                 // Tilts along the dial, and rises from below as it arrives
                 rotation: a * 180 / Math.PI * 0.6
@@ -2305,7 +2435,7 @@ PanelWindow {
             y: panel.topY - 6 - height / 2
             width: panel.selectedSize
             height: panel.selectedSize
-            opacity: (panel.n === 0 ? appear : 0) * (1 - panel.lyricsMix)
+            opacity: (panel.n === 0 ? appear : 0) * (1 - panel.overlayMix)
             visible: opacity > 0.01
             scale: 0.55 + 0.45 * panel.backOut(appear)
 
@@ -2345,7 +2475,7 @@ PanelWindow {
             x: stage.cx + panel.dialNow * Math.sin(a) - width / 2
             y: panel.topY + panel.dialNow * (1 - Math.cos(a)) - 6 + panel.selectedSize / 2 + 8
             rotation: a * 180 / Math.PI
-            opacity: panel.clamp(panel.reveal * 2 - 0.6, 0, 1) * (1 - panel.lyricsMix)
+            opacity: panel.clamp(panel.reveal * 2 - 0.6, 0, 1) * (1 - panel.overlayMix)
         }
 
         // ---- The middle: what the selected entry is ------------------------
@@ -2358,7 +2488,7 @@ PanelWindow {
             height: 60
             // Clicks pass through to the dial
             enabled: false
-            opacity: (0.25 + 0.75 * panel.swap) * panel.stage_(0.2, 0.7) * (1 - panel.lyricsMix)
+            opacity: (0.25 + 0.75 * panel.swap) * panel.stage_(0.2, 0.7) * (1 - panel.overlayMix)
             transform: Translate {
                 y: (1 - panel.stage_(0.2, 0.7)) * 12 + (1 - panel.swap) * 6
             }
@@ -2505,6 +2635,63 @@ PanelWindow {
             }
         }
 
+        // ---- The shortcuts: in the dial's place, any key puts them away -------
+        Item {
+            id: helpSheet
+
+            x: stage.cx - width / 2
+            y: 22
+            width: Math.min(680, stage.width - 48)
+            height: panel.rowY - 40
+            visible: panel.helpMix > 0.01
+            opacity: panel.helpMix * panel.stage_(0.2, 0.7)
+
+            Grid {
+                anchors.centerIn: parent
+                flow: Grid.TopToBottom
+                rows: 7
+                columnSpacing: 36
+                rowSpacing: 2
+
+                Repeater {
+                    model: panel.keyHelp
+
+                    delegate: Row {
+                        required property var modelData
+
+                        height: 20
+                        spacing: 8
+
+                        Row {
+                            width: 112
+                            height: parent.height
+                            spacing: 4
+
+                            Repeater {
+                                model: modelData.k
+
+                                delegate: KeyCap {
+                                    required property string modelData
+
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    label: modelData
+                                }
+                            }
+                        }
+
+                        Txt {
+                            width: (helpSheet.width - 36) / 2 - 120
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.d
+                            elide: Text.ElideRight
+                            color: Qt.alpha(Colors.foreground, 0.85)
+                            font.pixelSize: Style.fontMd
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- Library or queue, and the search ------------------------------
         RowLayout {
             id: row
@@ -2643,7 +2830,14 @@ PanelWindow {
                     const plain = event.modifiers === Qt.NoModifier;
                     const left = k === Qt.Key_Left;
                     const right = k === Qt.Key_Right;
-                    if (k === Qt.Key_Escape) {
+                    if (panel.helpOn) {
+                        panel.helpOn = false;
+                        event.accepted = true;
+                    } else if (k === Qt.Key_F1 || (event.text === "?" && panel.query === "")) {
+                        panel.lyricsOn = false;
+                        panel.helpOn = true;
+                        event.accepted = true;
+                    } else if (k === Qt.Key_Escape) {
                         if (panel.pickFor.length > 0)
                             panel.cancelPick();
                         else if (panel.lyricsOn)
@@ -2731,7 +2925,7 @@ PanelWindow {
                         panel.setSel(0);
                     else if (plain && k === Qt.Key_End)
                         panel.setSel(panel.n - 1);
-                    else if (plain && k === Qt.Key_Delete && panel.query === "" && (panel.tab === 2 || panel.tab === 4))
+                    else if (plain && k === Qt.Key_Delete && panel.query === "" && (panel.tab === 2 || panel.tab === 4 || (panel.tab === 3 && panel.curItem !== null && panel.curItem.kind === "recent")))
                         panel.removeSel();
                     else
                         return;

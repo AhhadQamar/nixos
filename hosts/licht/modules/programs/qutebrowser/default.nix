@@ -9,9 +9,11 @@
   # (allowUnfree is already on in system/nix.nix.)
   enableDRM = false;
 
-  # Dark-theme pages that have no dark mode of their own (Qt's "force dark").
-  # Easy on the eyes at night, but it can mangle some images. Needs a restart.
-  forceDarkPages = false;
+  # Dark mode for every website (Qt's "force dark"): pages that are light get
+  # darkened, and pages that already have a dark theme are left alone.
+  # It can mangle some images; set to false to see sites as their authors made
+  # them. Changing it needs a full restart of qutebrowser.
+  forceDarkPages = true;
 
   # true:  reopen last session's tabs on start (the start page then only shows
   #        in NEW tabs). false: every launch begins with the start page.
@@ -198,7 +200,25 @@
       fi
     done
   '';
+
+  # Fills logins from `pass` (set up in ../pass). The script is pass-fill.sh next
+  # to this file; here it gets the tools it needs on its PATH.
+  passTools = [
+    config.programs.password-store.package
+    pkgs.gnupg
+    pkgs.fuzzel
+    pkgs.coreutils
+    pkgs.findutils
+    pkgs.gnused
+  ];
+  passFill = pkgs.writeShellScript "qute-pass-fill" ''
+    export PATH=${lib.makeBinPath passTools}:$PATH
+    ${builtins.readFile ./pass-fill.sh}
+  '';
 in {
+  # Makes `spawn --userscript qute-pass-fill ...` work by name.
+  xdg.dataFile."qutebrowser/userscripts/qute-pass-fill".source = passFill;
+
   programs.qutebrowser = {
     enable = true;
     package = pkgs.qutebrowser.override {enableWideVine = enableDRM;};
@@ -378,6 +398,12 @@ in {
         ",j" = "config-cycle -p -t content.javascript.enabled ;; reload";
         ",b" = "config-cycle -p -t content.blocking.enabled ;; reload";
         ",r" = "config-source";
+
+        # Logins from pass. Click (or gi) into the username box first.
+        ",p" = "spawn --userscript qute-pass-fill both"; # username, Tab, password
+        ",u" = "spawn --userscript qute-pass-fill user"; # username only
+        ",P" = "spawn --userscript qute-pass-fill pass"; # password only
+        ",o" = "spawn --userscript qute-pass-fill otp"; # 2FA code
       };
       command = {
         "<Ctrl-j>" = "completion-item-focus next";

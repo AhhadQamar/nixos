@@ -109,6 +109,39 @@ Singleton {
 
     property bool pendingMore: false
 
+    // Searches that found something, newest first, kept in
+    // ~/.local/state/quickshell/music-searches.json
+    property var history: []
+    readonly property int historyMax: 15
+
+    function remember(q) {
+        const t = q.trim();
+        if (t === "")
+            return;
+        const h = [t].concat(history.filter(x => x.toLowerCase() !== t.toLowerCase())).slice(0, historyMax);
+        history = h;
+        historyFile.setText(JSON.stringify(h));
+    }
+
+    function forget(q) {
+        history = history.filter(x => x !== q);
+        historyFile.setText(JSON.stringify(history));
+    }
+
+    FileView {
+        id: historyFile
+
+        path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/quickshell/music-searches.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const d = JSON.parse(text());
+                if (Array.isArray(d))
+                    root.history = d.filter(x => typeof x === "string").slice(0, root.historyMax);
+            } catch (e) {}
+        }
+    }
+
     // Ask for the next page of the same search: more results, same query. The list
     // is replaced by the longer one, so the panel keeps your place (lastMore).
     function loadMore() {
@@ -156,6 +189,8 @@ Singleton {
         ranKind = reqKind;
         if (results.length === 0)
             error = "";
+        else if (!reqMore)
+            remember(reqQuery);
     }
 
     // Songs of an album, playlist or artist. Returns an id; the answer comes

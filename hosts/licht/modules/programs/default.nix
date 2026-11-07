@@ -10,5 +10,6 @@
     ./yt-dlp
     ./obsidian
     ./qutebrowser
+    ./pass
   ];
 }
