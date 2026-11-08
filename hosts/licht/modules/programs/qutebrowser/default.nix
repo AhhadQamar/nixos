@@ -19,6 +19,14 @@
   #        in NEW tabs). false: every launch begins with the start page.
   restoreTabs = false;
 
+  # The bar at the bottom (page address, scroll position):
+  #   "hidden"       gone while you browse. It appears when you type : or o, in insert
+  #                  mode and while picking link hints, then disappears again.
+  #   "solid"        always there, the same shade as the tab strip.
+  #   "transparent"  always there, no background (shows what is behind the window).
+  # Needs a full restart of qutebrowser. xb hides or shows it for the current session.
+  statusBarStyle = "hidden";
+
   # --- New-tab page -----------------------------------------------------------
   homeDir = config.home.homeDirectory;
 
@@ -344,9 +352,14 @@ in {
       };
       colors.webpage.preferred_color_scheme = "dark";
       colors.webpage.darkmode.enabled = forceDarkPages;
+      window.transparent = statusBarStyle == "transparent"; # see-through window, only for that style
 
       # Status bar: the tab count and history arrows are redundant with the sidebar.
       statusbar.widgets = ["keypress" "search_match" "url" "scroll" "progress"];
+      statusbar.show =
+        if statusBarStyle == "hidden"
+        then "in-mode"
+        else "always";
 
       # The command/completion popup: fits its entries, no scrollbar, quick on big histories.
       completion = {
@@ -477,6 +490,12 @@ in {
                   return cand
           return target
 
+      TRANSPARENT_BAR = ${
+        if statusBarStyle == "transparent"
+        then "True"
+        else "False"
+      }
+
       w = load_wal() or FALLBACK
       cols = w["colors"]
       bg = w["special"]["background"]
@@ -510,7 +529,7 @@ in {
       sel = mix(strip, accent, 0.25)  # selected tab
 
       # Status bar and command line
-      c.colors.statusbar.normal.bg = strip
+      c.colors.statusbar.normal.bg = "transparent" if TRANSPARENT_BAR else strip
       c.colors.statusbar.normal.fg = fg
       c.colors.statusbar.insert.bg = accent
       c.colors.statusbar.insert.fg = on_accent
