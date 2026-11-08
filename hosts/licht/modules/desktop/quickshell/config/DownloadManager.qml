@@ -68,7 +68,8 @@
 //   qs ipc call downloads grab <link>
 //
 // Drop links, text or .torrent files onto the open panel to add them, or onto the
-// download chip in the bar (DownloadChip.qml), which needs no panel at all.
+// network disc in the bar (SystemStats.qml), which needs no panel at all. A right
+// click on that disc opens this panel.
 //
 // Torrents: a torrent or magnet link is added paused, and when its files are known
 // a list opens: Space ticks, A all, N none, I invert, Enter downloads the ticked
@@ -1975,8 +1976,8 @@ PanelWindow {
             addText(text, saveDir());
     }
 
-    // Something was dropped on the bar's chip while the panel may be closed. The
-    // chip is told how many downloads that made; a no is also said out loud,
+    // Something was dropped on the bar's network disc while the panel may be
+    // closed. The disc is told how many downloads that made; a no is also said out loud,
     // since the panel's own note is not on screen.
     function addFromBar(text) {
         const n = addText(text, saveDir());
@@ -1985,8 +1986,8 @@ PanelWindow {
             Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Not added", note]);
     }
 
-    // What the bar's chip shows: how many are running (video grabs too), how many
-    // wait, and how fast
+    // What the bar's network disc shows: how many are running (video grabs too),
+    // how many wait, and how fast
     function pushStatus(st) {
         let active = Number(st.numActive || 0);
         let waiting = Number(st.numWaiting || 0);
@@ -2752,7 +2753,7 @@ PanelWindow {
         }
     }
 
-    // The bar's chip: things dropped on it, and a click to open the panel
+    // The bar's network disc: things dropped on it, and a right click to open the panel
     Connections {
         target: DownloadStatus
 

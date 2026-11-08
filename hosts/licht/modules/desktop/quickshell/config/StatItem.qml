@@ -22,6 +22,9 @@
 //             sizes itself
 //   doubleClicked  two quick taps; an item can use it to lock its label open
 //             (alwaysShowLabel) until the next double tap
+//   highlight   the disc takes the selected look (accent outline and tint, the
+//             breathing ring, the underline, an open label) without the pointer
+//             being on it: a drag held over it, for instance
 //
 // Hovered, the disc is the "selected" one, as in the launcher: accent outline
 // and soft tint, a breathing ring round it and a 2px underline. The breath
@@ -47,6 +50,7 @@ Item {
     property color iconColor: Colors.foreground
     property color labelColor: Colors.foreground
     property bool alwaysShowLabel: false
+    property bool highlight: false
 
     property bool present: true
     property real ring: -1
@@ -61,7 +65,9 @@ Item {
     signal scrolled(real delta)
 
     readonly property bool hovered: hover.hovered
-    readonly property bool open: alwaysShowLabel || hover.hovered
+    // Hovered, or held selected from outside
+    readonly property bool selected: hover.hovered || highlight
+    readonly property bool open: alwaysShowLabel || selected
     readonly property bool hasRing: ring >= 0
     readonly property bool drawn: glyph !== null
     readonly property Item disc: glass
@@ -106,7 +112,7 @@ Item {
 
     // Breath, only while the pointer is on the disc
     SequentialAnimation {
-        running: root.hovered
+        running: root.selected
         loops: Animation.Infinite
 
         NumberAnimation {
@@ -169,7 +175,7 @@ Item {
         radius: height / 2
         color: "transparent"
         antialiasing: true
-        visible: root.hovered
+        visible: root.selected
         border.width: 1
         border.color: Qt.alpha(Colors.accent, 0.2 + 0.2 * root.breath)
     }
@@ -185,9 +191,9 @@ Item {
         radius: height / 2
         antialiasing: true
         scale: tap.pressed ? 0.94 : 1
-        color: root.hovered ? Qt.alpha(Colors.accent, Style.tintAlpha) : Style.well
+        color: root.selected ? Qt.alpha(Colors.accent, Style.tintAlpha) : Style.well
         border.width: 1
-        border.color: root.hovered ? Qt.alpha(Colors.accent, 0.6) : Style.outline
+        border.color: root.selected ? Qt.alpha(Colors.accent, 0.6) : Style.outline
 
         Behavior on color {
             ColorAnimation {
@@ -366,7 +372,7 @@ Item {
         anchors.topMargin: Style.spaceXs
         width: 20
         height: 2
-        opacity: root.hovered ? 1 : 0
+        opacity: root.selected ? 1 : 0
         visible: opacity > 0.01
 
         Behavior on opacity {

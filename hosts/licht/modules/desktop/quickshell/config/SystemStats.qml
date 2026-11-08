@@ -15,6 +15,14 @@
 // double tap locks it open (another double tap lets go). A click opens the
 // network manager (NetworkPopup.qml): join, disconnect, scan.
 //
+// It is also the downloads' place in the bar. While downloads run, the label adds
+// how many, and the picture shows it: accent ripples flow in along the arcs,
+// faster the busier it is. Drag a link, text with links in it or a .torrent file
+// over it and it takes the accent and opens into "Drop to download", the arcs
+// giving way to a tray that an arrow drops into; let go and it is added (a check
+// draws itself; a cross shakes if there was nothing to add). A right click opens
+// the downloads panel. The panel and the disc talk over DownloadStatus.
+//
 // The Bluetooth disc is muted while the adapter is off, plain while it is on
 // and in the accent while a device is connected; hover for the device's name.
 // A click opens the Bluetooth manager (BluetoothPopup.qml): connect, pair,
@@ -48,7 +56,7 @@ Item {
     readonly property var stops: [updateItem, cpuItem, bellItem, volumeItem, btItem, netItem, batteryItem]
     readonly property Item lit: {
         for (let i = 0; i < stops.length; i++) {
-            if (stops[i].hovered)
+            if (stops[i].selected)
                 return stops[i];
         }
         return null;
@@ -226,6 +234,19 @@ Item {
 
         barWindow: root.QsWindow.window
         target: btItem.disc
+    }
+
+    // ---- downloads, on the network disc ------------------------------------
+    // The words after the speeds while downloads run
+    function dlSuffix() {
+        const n = DownloadStatus.active;
+        return n > 0 ? "  ·  " + n + (n === 1 ? " download" : " downloads") : "";
+    }
+
+    // How busy the connection is, 0..1 (full at 20 MB/s): the downloads' own
+    // speed, or the whole connection's while its speed is being read
+    function busyness(netDown) {
+        return Math.min(1, Math.max(DownloadStatus.speed, netDown) / (20 * 1048576));
     }
 
     // ---- battery ---------------------------------------------------------
@@ -564,14 +585,26 @@ Item {
             // Locked open by a double tap
             property bool locked: false
             readonly property bool online: root.netKind !== "none"
+            // Downloads: a drag held over the disc, and what the last drop did
+            // ("" | ok | none)
+            readonly property bool dragging: netDrop.containsDrag
+            property string flash: ""
 
-            // Offline there is nothing to measure, so it still says "Offline"
-            label: online ? netSpeed.text : root.netName
-            labelSizer: online ? netSpeed.sizer : ""
-            alwaysShowLabel: locked
+            function showFlash(kind) {
+                flash = kind;
+                flashTimer.restart();
+            }
+
+            // Offline there is nothing to measure, so it still says "Offline". A
+            // drag or a drop says what is happening instead of the speeds.
+            label: dragging ? "Drop to download" : (flash === "ok" ? "Added" : (flash === "none" ? "Nothing to add" : (online ? netSpeed.text + root.dlSuffix() : root.netName)))
+            labelSizer: dragging || flash !== "" ? "" : (online ? netSpeed.sizer + (DownloadStatus.active > 0 ? "  ·  88 downloads" : "") : "")
+            alwaysShowLabel: locked || dragging || flash !== ""
+            highlight: dragging || flash !== ""
             iconColor: root.netKind === "none" ? Colors.muted : Colors.foreground
-            // Signal strength glides by itself; only a change of kind swells the picture
-            glyphKey: root.netKind
+            // Signal strength glides by itself; a change of kind, a drag or a
+            // drop's answer swells the picture
+            glyphKey: root.netKind + ":" + flash + ":" + dragging
 
             // Arcs lit by signal, a port, or a slashed dot (NetGlyph.qml)
             glyph: Component {
@@ -580,6 +613,44 @@ Item {
                     kind: root.netKind
                     strength: root.netSignal
                     vpn: root.vpnOn
+                    downloading: DownloadStatus.active > 0
+                    activity: root.busyness(netSpeed.ready ? netSpeed.down : 0)
+                    dropping: netItem.dragging
+                    flash: netItem.flash
+                }
+            }
+
+            // Links, text or .torrent files dropped on the disc go to the downloads
+            DropArea {
+                id: netDrop
+
+                anchors.fill: parent
+                onEntered: drag => {
+                    drag.accepted = drag.hasUrls || drag.hasText;
+                }
+                onDropped: drop => {
+                    const text = Aria2.dropText(drop);
+                    drop.acceptProposedAction();
+                    if (text === "")
+                        netItem.showFlash("none");
+                    else
+                        DownloadStatus.addRequested(text);
+                }
+            }
+
+            Timer {
+                id: flashTimer
+
+                interval: 1600
+                onTriggered: netItem.flash = ""
+            }
+
+            // The panel's answer to a drop: how many it made
+            Connections {
+                target: DownloadStatus
+
+                function onAdded(count) {
+                    netItem.showFlash(count > 0 ? "ok" : "none");
                 }
             }
 
@@ -587,6 +658,7 @@ Item {
             // too, but the second tap's click closes it again (the focus grab
             // clears it), as the lock flips.
             onClicked: netMenu.toggle()
+            onRightClicked: DownloadStatus.toggleRequested()
             onDoubleClicked: {
                 locked = !locked;
                 netMenu.close();

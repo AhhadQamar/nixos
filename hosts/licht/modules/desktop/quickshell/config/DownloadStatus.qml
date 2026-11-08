@@ -1,6 +1,6 @@
-// What the bar's download chip (DownloadChip.qml) and the downloads panel
+// What the bar's network disc (SystemStats.qml) and the downloads panel
 // (DownloadManager.qml) tell each other. The panel writes what is going on; the
-// chip reads it, and asks the panel to add things or to open.
+// disc reads it, and asks the panel to add things or to open.
 
 pragma Singleton
 import QtQuick
@@ -12,7 +12,7 @@ Singleton {
     property int waiting: 0
     property real speed: 0
 
-    // The chip asks: add what was dropped on it, or open the panel
+    // The disc asks: add what was dropped on it, or open the panel
     signal addRequested(string text)
     signal toggleRequested
 
