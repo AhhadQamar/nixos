@@ -10,7 +10,6 @@
   home.packages = with pkgs; [
     nautilus
     python3
-    nh
     vesktop
     playerctl
     github-copilot-cli

@@ -240,7 +240,7 @@ def summary(days):
 
 # Window-class substrings (lowercase) -> category. First match wins; add your own.
 CATEGORIES = [
-    ("Browsing", ("firefox", "chromium", "zen", "librewolf", "qutebrowser")),
+    ("Browsing", ("firefox", "chromium", "zen", "librewolf")),
     ("Terminal", ("kitty", "alacritty", "foot", "wezterm", "ghostty")),
     ("Code", ("codium", "code", "jetbrains", "zed", "neovide")),
     ("Media", ("mpv", "vlc", "spotify", "celluloid", "imv")),

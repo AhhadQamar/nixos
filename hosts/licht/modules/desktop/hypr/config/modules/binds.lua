@@ -3,8 +3,7 @@
 -------------------------------
 local terminal = "kitty"
 local fileManager = "nautilus"
-local browser = "firefox"
-local altBrowser = "qutebrowser"
+local browser = "librewolf"
 
 -------------------------------
 ---- KEYBINDINGS ----
@@ -16,7 +15,6 @@ hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd(terminal))
 hl.bind(mainMod .. " + Q", hl.dsp.window.close())
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
-hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(altBrowser))
 
 hl.bind(mainMod .. " + SHIFT + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + J", hl.dsp.layout("togglesplit"))

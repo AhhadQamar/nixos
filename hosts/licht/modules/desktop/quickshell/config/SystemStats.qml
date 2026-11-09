@@ -16,8 +16,8 @@
 // network manager (NetworkPopup.qml): join, disconnect, scan.
 //
 // It is also the downloads' place in the bar. While downloads run, the label adds
-// how many, and the picture shows it: accent ripples flow in along the arcs,
-// faster the busier it is. Drag a link, text with links in it or a .torrent file
+// how many, and a hairline ring fills round the disc with how far they have got
+// (the same ring the volume disc draws). Drag a link, text with links in it or a .torrent file
 // over it and it takes the accent and opens into "Drop to download", the arcs
 // giving way to a tray that an arrow drops into; let go and it is added (a check
 // draws itself; a cross shakes if there was nothing to add). A right click opens
@@ -241,12 +241,6 @@ Item {
     function dlSuffix() {
         const n = DownloadStatus.active;
         return n > 0 ? "  ·  " + n + (n === 1 ? " download" : " downloads") : "";
-    }
-
-    // How busy the connection is, 0..1 (full at 20 MB/s): the downloads' own
-    // speed, or the whole connection's while its speed is being read
-    function busyness(netDown) {
-        return Math.min(1, Math.max(DownloadStatus.speed, netDown) / (20 * 1048576));
     }
 
     // ---- battery ---------------------------------------------------------
@@ -601,6 +595,9 @@ Item {
             labelSizer: dragging || flash !== "" ? "" : (online ? netSpeed.sizer + (DownloadStatus.active > 0 ? "  ·  88 downloads" : "") : "")
             alwaysShowLabel: locked || dragging || flash !== ""
             highlight: dragging || flash !== ""
+            // The ring: how far the running downloads have got (none when idle;
+            // empty while a torrent has not yet said how big it is)
+            ring: DownloadStatus.active > 0 ? Math.max(0, DownloadStatus.progress) : -1
             iconColor: root.netKind === "none" ? Colors.muted : Colors.foreground
             // Signal strength glides by itself; a change of kind, a drag or a
             // drop's answer swells the picture
@@ -613,8 +610,6 @@ Item {
                     kind: root.netKind
                     strength: root.netSignal
                     vpn: root.vpnOn
-                    downloading: DownloadStatus.active > 0
-                    activity: root.busyness(netSpeed.ready ? netSpeed.down : 0)
                     dropping: netItem.dragging
                     flash: netItem.flash
                 }

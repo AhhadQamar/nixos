@@ -71,6 +71,13 @@
 // network disc in the bar (SystemStats.qml), which needs no panel at all. A right
 // click on that disc opens this panel.
 //
+// Preview: a single link added with the panel open is looked at first: the sheet
+// shows its name, size, where it would go (and the room there) and whether it can
+// be resumed; Enter downloads it, Esc does not (Config.downloadPreview).
+// Clean up: X finds what failed downloads left behind (orphaned .aria2 files and
+// their half-written data, day-old yt-dlp partial files), lists it and asks before
+// deleting anything.
+//
 // Torrents: a torrent or magnet link is added paused, and when its files are known
 // a list opens: Space ticks, A all, N none, I invert, Enter downloads the ticked
 // ones, Esc leaves it paused. P opens the list again for any torrent.
@@ -203,6 +210,10 @@ PanelWindow {
         {
             "k": ["p"],
             "d": "choose the files of a torrent"
+        },
+        {
+            "k": ["x"],
+            "d": "sweep up what failed downloads left behind"
         },
         {
             "k": ["g"],
@@ -845,6 +856,7 @@ PanelWindow {
             usageSee(r[0][0] || [], false);
             usageSee(r[2][0] || [], true);
             usageReady = true;
+            progressSee(r[0][0] || [], r[2][0] || []);
             pickScan(r[1][0] || []);
         });
     }
@@ -1028,11 +1040,11 @@ PanelWindow {
         rpc("system.multicall", [[
                 {
                     "methodName": "aria2.tellActive",
-                    "params": [t, ["gid", "seeder", "completedLength", "uploadLength", "downloadSpeed", "followedBy"]]
+                    "params": [t, ["gid", "seeder", "completedLength", "totalLength", "uploadLength", "downloadSpeed", "followedBy"]]
                 },
                 {
                     "methodName": "aria2.tellStopped",
-                    "params": [t, -1, 15, ["gid", "status", "followedBy", "errorMessage", "completedLength", "uploadLength"]]
+                    "params": [t, -1, 15, ["gid", "status", "followedBy", "errorMessage", "completedLength", "totalLength", "uploadLength"]]
                 },
                 {
                     "methodName": "aria2.getGlobalStat",
@@ -1053,6 +1065,7 @@ PanelWindow {
             usageSee((r[0] && r[0][0]) || [], false);
             usageSee((r[1] && r[1][0]) || [], true);
             usageReady = true;
+            progressSee((r[0] && r[0][0]) || [], (r[1] && r[1][0]) || []);
             pickScan((r[3] && r[3][0]) || []);
             const k = known;
             const events = [];
@@ -1218,6 +1231,9 @@ PanelWindow {
     }
 
     function addTextTo(text, dir, mode) {
+        // One plain link, with the panel open: look at it before it starts
+        if (mode !== "direct" && maybePreview(text, dir))
+            return 0;
         if (/^\s*curl\s/.test(text)) {
             const c = Aria2.parseCurl(text);
             if (c.error) {
@@ -1669,6 +1685,299 @@ PanelWindow {
         retryTimer.restart();
     }
 
+    // ---- Look at a link before it starts ---------------------------------------
+    // A single plain link, added with the panel open, is asked about first
+    // (downloads/preview.py): what is it called, how big, where would it go, is
+    // there room, can it be resumed. Config.downloadPreview decides what happens
+    // next: a sheet that waits for Enter, or a note and an immediate start.
+    property bool previewBusy: false
+    property string previewBuf: ""
+    property var previewReq: null
+
+    // The one plain link in a text, or "": several links, mirrors, a checksum and
+    // video pages are not looked at
+    function previewUrl(text) {
+        const t = text.trim();
+        if (/\s/.test(t) || !/^https?:\/\//i.test(t) || t.indexOf("|") >= 0 || /#(sha|md5)/i.test(t))
+            return "";
+        return Aria2.routeOf(t, Config.downloadVideoSites) === "video" ? "" : t;
+    }
+
+    function previewDir(url, dir) {
+        const o = baseOpts(url, dir);
+        return o["dir"] || globalOpt["dir"] || (home !== "" ? home + "/Downloads" : "");
+    }
+
+    function tidy(path) {
+        return home !== "" && path.indexOf(home) === 0 ? "~" + path.slice(home.length) : path;
+    }
+
+    // Takes over an add that is a single plain link (true), or leaves it be (false)
+    function maybePreview(text, dir) {
+        if (Config.downloadPreview === "off" || !isOpen || confirmOpen || pickOpen)
+            return false;
+        const url = previewUrl(text);
+        if (url === "" || isDuplicate(url))
+            return false;
+        if (previewBusy) {
+            say("Still looking at the last link", true);
+            return true;
+        }
+        previewBusy = true;
+        previewBuf = "";
+        previewReq = {
+            "url": url,
+            "dir": dir,
+            "target": previewDir(url, dir)
+        };
+        say("Looking at the link\u2026", false);
+        previewProc.command = ["qs-music-py", Quickshell.shellPath("downloads/preview.py"), url, previewReq.target];
+        previewProc.running = true;
+        return true;
+    }
+
+    function onPreviewDone() {
+        const req = previewReq;
+        previewBusy = false;
+        previewReq = null;
+        if (req === null)
+            return;
+        let d = null;
+        try {
+            d = JSON.parse(previewBuf);
+        } catch (e) {
+            d = null;
+        }
+        // The panel was put away while it looked: add it as it was asked
+        if (!isOpen) {
+            addTextTo(req.url, req.dir, "direct");
+            return;
+        }
+        // A web page behind a link that did not say so: a video's job
+        if (d && d.ok && d.page && d.status < 400 && Aria2.routeOf(req.url, Config.downloadVideoSites) === "probe") {
+            if (addGrab(req.url))
+                say("It is a web page  \u00b7  looking for a video", false);
+            return;
+        }
+        if (Config.downloadPreview === "note" && d && d.ok && d.status < 400) {
+            addTextTo(req.url, req.dir, "direct");
+            say(d.name + "  \u00b7  " + (d.size !== null ? Aria2.bytes(d.size) : "size not given"), false);
+            return;
+        }
+        openPreview(req, d);
+    }
+
+    function openPreview(req, d) {
+        const lines = [];
+        let yes = "Download";
+        if (d === null || !d.ok) {
+            confirmTitle = req.url.length > 70 ? req.url.slice(0, 70) + "\u2026" : req.url;
+            confirmSub = "No answer from the server";
+            lines.push({
+                "label": "Error",
+                "value": d && d.error ? d.error : "it did not reply",
+                "tone": "bad"
+            });
+            yes = "Try anyway";
+        } else {
+            const short = d.size !== null && d.free !== null && d.size > d.free;
+            confirmTitle = d.name;
+            confirmSub = (d.size !== null ? Aria2.bytes(d.size) : "Size not given") + (d.type !== "" ? "  \u00b7  " + d.type : "");
+            if (d.status >= 400) {
+                lines.push({
+                    "label": "Server",
+                    "value": "answered " + d.status,
+                    "tone": "bad"
+                });
+                yes = "Try anyway";
+            }
+            lines.push({
+                "label": "From",
+                "value": d.host,
+                "tone": ""
+            });
+            lines.push({
+                "label": "Save to",
+                "value": tidy(req.target) + (d.free !== null ? "  \u00b7  " + Aria2.bytes(d.free) + " free" : ""),
+                "tone": short ? "bad" : ""
+            });
+            if (short)
+                lines.push({
+                    "label": "",
+                    "value": "There is not enough room for it",
+                    "tone": "bad"
+                });
+            lines.push({
+                "label": "Resume",
+                "value": d.resume === true ? "can be resumed" : (d.resume === false ? "must finish in one go" : "not said"),
+                "tone": d.resume === false ? "warn" : ""
+            });
+        }
+        confirmKind = "preview";
+        confirmLines = lines;
+        confirmYes = yes;
+        confirmData = {
+            "url": req.url,
+            "dir": req.dir
+        };
+        showConfirm();
+    }
+
+    // ---- A question with two answers, in the sheet's place ----------------------
+    // Enter (or the button) says yes, Esc (or the other button) says no.
+    property bool confirmOpen: false
+    property string confirmKind: ""
+    property string confirmTitle: ""
+    property string confirmSub: ""
+    property var confirmLines: []
+    property string confirmYes: ""
+    property var confirmData: null
+
+    function showConfirm() {
+        confirmOpen = true;
+        showHelp = true;
+        keys.forceActiveFocus();
+    }
+
+    function closeConfirm() {
+        confirmOpen = false;
+        showHelp = false;
+        confirmLines = [];
+        confirmData = null;
+    }
+
+    function confirmAccept() {
+        if (!confirmOpen)
+            return;
+        const kind = confirmKind;
+        const data = confirmData;
+        closeConfirm();
+        if (kind === "preview")
+            addTextTo(data.url, data.dir, "direct");
+        else if (kind === "cleanup")
+            deleteLeftovers(data);
+    }
+
+    function confirmKey(event) {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+            confirmAccept();
+        else if (event.key === Qt.Key_Escape)
+            closeConfirm();
+    }
+
+    // ---- Sweeping up what failed downloads left behind -------------------------
+    // downloads/leftovers.py finds them (and later removes exactly the ones you
+    // agreed to). What aria2 and the video grabs are using right now is left alone.
+    property bool cleanBusy: false
+    property string cleanBuf: ""
+    property var cleanReq: null
+    property string cleanMode: ""
+
+    function cleanupRequest(active) {
+        const dirs = [];
+        const add = function (d) {
+            if (d !== "" && dirs.indexOf(d) < 0)
+                dirs.push(d);
+        };
+        add(globalOpt["dir"] || (home !== "" ? home + "/Downloads" : ""));
+        Config.downloadCategories.forEach(c => add(home + "/" + c.dir));
+        grabs.forEach(j => (j.parts || []).forEach(p => active.push(p)));
+        return {
+            "aria_dirs": dirs,
+            "video_dirs": Config.downloadCleanupVideoDirs.map(d => home + "/" + d),
+            "active": active,
+            "min_age_min": 10,
+            "video_age_h": 24
+        };
+    }
+
+    function runCleanup(mode, req) {
+        cleanMode = mode;
+        cleanBuf = "";
+        cleanProc.command = ["qs-music-py", Quickshell.shellPath("downloads/leftovers.py"), mode, JSON.stringify(req)];
+        cleanProc.running = true;
+    }
+
+    function startCleanup() {
+        if (cleanBusy || confirmOpen || pickOpen)
+            return;
+        cleanBusy = true;
+        say("Looking for leftovers\u2026", false);
+        batch([["aria2.tellActive", [["files"]]], ["aria2.tellWaiting", [0, 1000, ["files"]]]], function (res) {
+            const parts = res.result || [];
+            // If aria2 did not answer, everything would look abandoned: stop here
+            if (parts.length !== 2 || !Array.isArray(parts[0]) || !Array.isArray(parts[1])) {
+                cleanBusy = false;
+                say("aria2 did not answer, so nothing was touched", true);
+                return;
+            }
+            const active = [];
+            parts.forEach(function (part) {
+                (part[0] || []).forEach(function (d) {
+                    (d.files || []).forEach(function (f) {
+                        if (f.path) {
+                            active.push(f.path);
+                            active.push(f.path + ".aria2");
+                        }
+                    });
+                });
+            });
+            cleanReq = cleanupRequest(active);
+            runCleanup("scan", cleanReq);
+        });
+    }
+
+    function onCleanDone() {
+        cleanBusy = false;
+        let d = null;
+        try {
+            d = JSON.parse(cleanBuf);
+        } catch (e) {
+            d = null;
+        }
+        if (d === null || d.ok !== true) {
+            say("The clean-up did not answer", true);
+            return;
+        }
+        if (cleanMode === "delete") {
+            say(d.removed === 0 ? "Nothing was removed" : "Removed " + d.removed + (d.removed === 1 ? " file" : " files") + "  \u00b7  freed " + Aria2.bytes(d.freed) + (d.failed > 0 ? "  \u00b7  " + d.failed + " could not be removed" : ""), d.failed > 0);
+            return;
+        }
+        if (d.count === 0) {
+            say("Nothing to clean up", false);
+            return;
+        }
+        const lines = d.items.slice(0, 6).map(function (i) {
+            return {
+                "label": i.kind === "aria2" ? "download" : "video",
+                "value": i.name + "  \u00b7  " + Aria2.bytes(i.size),
+                "tone": ""
+            };
+        });
+        if (d.items.length > 6)
+            lines.push({
+                "label": "",
+                "value": "and " + (d.items.length - 6) + " more",
+                "tone": ""
+            });
+        confirmKind = "cleanup";
+        confirmTitle = "Clean up leftovers";
+        confirmSub = d.count + (d.count === 1 ? " leftover" : " leftovers") + "  \u00b7  " + Aria2.bytes(d.total);
+        confirmLines = lines;
+        confirmYes = "Delete";
+        confirmData = {
+            "paths": d.items.reduce((a, i) => a.concat(i.paths), [])
+        };
+        showConfirm();
+    }
+
+    function deleteLeftovers(data) {
+        cleanBusy = true;
+        runCleanup("delete", Object.assign({}, cleanReq, {
+            "paths": data.paths
+        }));
+    }
+
     // ---- Choosing the files inside a torrent ----------------------------------
     // With Config.downloadTorrentPick, a torrent file is added paused, and a magnet
     // link (or a link to a .torrent) pauses the torrent it turns into. pickScan
@@ -1980,7 +2289,7 @@ PanelWindow {
     // closed. The disc is told how many downloads that made; a no is also said out loud,
     // since the panel's own note is not on screen.
     function addFromBar(text) {
-        const n = addText(text, saveDir());
+        const n = addTextTo(text, saveDir(), "direct");
         DownloadStatus.added(n);
         if (n === 0 && note !== "")
             Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Not added", note]);
@@ -2004,6 +2313,57 @@ PanelWindow {
         DownloadStatus.active = active;
         DownloadStatus.waiting = waiting;
         DownloadStatus.speed = speed;
+        // Nothing running and nothing waiting: the burst is over
+        if (active === 0 && waiting === 0) {
+            burst = {};
+            DownloadStatus.progress = -1;
+        }
+    }
+
+    // ---- How far the running downloads have got, for the bar's ring ----------------
+    // Every download seen running since things were last idle counts, byte for byte,
+    // and the ones that finished count whole, so the ring does not fall back when
+    // one of several completes. A video grab counts as 200 MB, filled by its own
+    // progress. New downloads join the total as they start.
+    property var burst: ({})
+
+    function progressSee(active, stopped) {
+        const b = burst;
+        const grabSize = 209715200;
+        const running = {};
+        active.forEach(function (d) {
+            running[d.gid] = true;
+            const total = Number(d.totalLength || 0);
+            if (total > 0)
+                b[d.gid] = [Number(d.completedLength || 0), total];
+        });
+        // Those that left the running list: whole if they completed, forgotten if
+        // they failed or were removed (paused ones keep their place)
+        (stopped || []).forEach(function (d) {
+            if (running[d.gid] || b[d.gid] === undefined)
+                return;
+            if (d.status === "complete")
+                b[d.gid] = [b[d.gid][1], b[d.gid][1]];
+            else if (d.status === "error" || d.status === "removed")
+                delete b[d.gid];
+        });
+        grabs.forEach(function (j) {
+            if (j.state === "done")
+                b[j.id] = b[j.id] !== undefined ? [grabSize, grabSize] : undefined;
+            else if (j.state === "failed")
+                delete b[j.id];
+            else
+                b[j.id] = [Math.min(1, j.pct) * grabSize, grabSize];
+            if (b[j.id] === undefined)
+                delete b[j.id];
+        });
+        let done = 0;
+        let total = 0;
+        Object.keys(b).forEach(function (g) {
+            done += b[g][0];
+            total += b[g][1];
+        });
+        DownloadStatus.progress = total > 0 ? Math.min(1, done / total) : 0;
     }
 
     // ---- Page or file? ------------------------------------------------------------
@@ -2540,7 +2900,7 @@ PanelWindow {
         const t = line.trim();
         if (t === "" || t === lastAdded || !Aria2.isFileLink(t, Config.downloadCategories))
             return;
-        if (addText(t, "") > 0)
+        if (addTextTo(t, "", "direct") > 0)
             Quickshell.execDetached(["notify-send", "-a", "Downloads", "-i", "folder-download", "Download started", defang(t.length > 90 ? t.slice(0, 90) + "\u2026" : t)]);
     }
 
@@ -2595,6 +2955,8 @@ PanelWindow {
         isOpen = false;
         if (choosing)
             cancelPicker();
+        if (confirmOpen)
+            closeConfirm();
         openAnim.stop();
         closeAnim.restart();
     }
@@ -2657,7 +3019,7 @@ PanelWindow {
         }
 
         function add(link: string): void {
-            dl.addText(link, "");
+            dl.addTextTo(link, "", "direct");
         }
 
         // A download with its own headers (JSON, see the top of this file)
@@ -2837,6 +3199,25 @@ PanelWindow {
             onRead: line => dl.onGrabLine(gp.jobId, line)
         }
         onExited: code => dl.onGrabExit(gp.jobId, code)
+    }
+
+    // What is behind a link, and what failed downloads left behind
+    Process {
+        id: previewProc
+
+        stdout: SplitParser {
+            onRead: line => dl.previewBuf += line
+        }
+        onExited: dl.onPreviewDone()
+    }
+
+    Process {
+        id: cleanProc
+
+        stdout: SplitParser {
+            onRead: line => dl.cleanBuf += line
+        }
+        onExited: dl.onCleanDone()
     }
 
     // Four slots for "page or file?" questions
@@ -3097,6 +3478,8 @@ PanelWindow {
             event.accepted = true;
             if (dl.pickOpen) {
                 dl.pickKey(event);
+            } else if (dl.confirmOpen) {
+                dl.confirmKey(event);
             } else if (dl.showHelp) {
                 dl.showHelp = false;
             } else if (k === Qt.Key_Escape) {
@@ -3163,6 +3546,8 @@ PanelWindow {
                 dl.pauseAllToggle();
             } else if (k === Qt.Key_P) {
                 dl.openPicker(dl.cursorGid);
+            } else if (k === Qt.Key_X) {
+                dl.startCleanup();
             } else if (k === Qt.Key_L && shift) {
                 dl.cycleLimit("max-overall-download-limit");
             } else if (k === Qt.Key_Plus || k === Qt.Key_Equal) {
@@ -4287,7 +4672,7 @@ PanelWindow {
             x: stage.cx - width / 2
             y: dl.readoutTop
             width: Math.min(640, dl.contentW)
-            height: dl.pickOpen ? pickCol.implicitHeight : sheetCol.implicitHeight
+            height: dl.pickOpen ? pickCol.implicitHeight : (dl.confirmOpen ? confirmCol.implicitHeight : sheetCol.implicitHeight)
             opacity: dl.showHelp ? dl.helpSwap : 0
             visible: opacity > 0.01
 
@@ -4303,8 +4688,93 @@ PanelWindow {
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    if (!dl.pickOpen)
+                    if (!dl.pickOpen && !dl.confirmOpen)
                         dl.showHelp = false;
+                }
+            }
+
+            // A question: a link to look at, or leftovers to delete
+            Column {
+                id: confirmCol
+
+                width: parent.width
+                spacing: 6
+                visible: dl.confirmOpen
+
+                OutText {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideMiddle
+                    text: dl.confirmTitle
+                    color: Colors.foreground
+                    font.pixelSize: Style.fontLg
+                }
+
+                OutText {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                    text: dl.confirmSub
+                    color: Qt.alpha(Colors.foreground, 0.7)
+                    font.pixelSize: Style.fontMd
+                }
+
+                Item {
+                    width: 1
+                    height: 2
+                }
+
+                Repeater {
+                    model: dl.confirmLines
+
+                    delegate: Row {
+                        required property var modelData
+
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 12
+
+                        OutText {
+                            width: 74
+                            horizontalAlignment: Text.AlignRight
+                            text: modelData.label
+                            color: Qt.alpha(Colors.foreground, 0.5)
+                            font.pixelSize: Style.fontSm
+                        }
+
+                        OutText {
+                            width: Math.min(440, confirmCol.width - 100)
+                            elide: Text.ElideMiddle
+                            text: modelData.value
+                            color: modelData.tone === "bad" ? Colors.critical : (modelData.tone === "warn" ? Colors.accent : Colors.foreground)
+                            font.pixelSize: Style.fontMd
+                        }
+                    }
+                }
+
+                Item {
+                    width: 1
+                    height: 4
+                }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 10
+
+                    TextButton {
+                        compact: true
+                        primary: true
+                        danger: dl.confirmKind === "cleanup"
+                        minWidth: 96
+                        text: dl.confirmYes
+                        onClicked: dl.confirmAccept()
+                    }
+
+                    TextButton {
+                        compact: true
+                        minWidth: 96
+                        text: "Cancel"
+                        onClicked: dl.closeConfirm()
+                    }
                 }
             }
 
@@ -4409,7 +4879,7 @@ PanelWindow {
 
                 width: parent.width
                 spacing: 14
-                visible: !dl.pickOpen
+                visible: !dl.pickOpen && !dl.confirmOpen
 
                 OutText {
                     width: parent.width

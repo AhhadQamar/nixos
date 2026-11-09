@@ -146,7 +146,7 @@ This repo is tailored to one laptop. Before the first build on something else, r
 
 ## Daily use
 
-All of these need `NH_FLAKE=/home/licht/nixos` (set in `configuration.nix`).
+All of these need `NH_FLAKE=/home/licht/nixos` (set by `programs.nh.flake` in `system/nix.nix`).
 
 | Command | What it does |
 | --- | --- |
@@ -181,7 +181,7 @@ All of these need `NH_FLAKE=/home/licht/nixos` (set in `configuration.nix`).
 | Keys | Action |
 | --- | --- |
 | `Super+Return` | kitty |
-| `Super+E` / `B` / `Shift+B` | nautilus / firefox / qutebrowser |
+| `Super+E` / `B` | nautilus / librewolf |
 | `Super+Q` | close window |
 | `Super+h j k l` or arrows | move focus |
 | `Super+Shift+arrows` | swap window |
@@ -230,15 +230,17 @@ Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the secon
 | Change the bar or panels | `modules/desktop/quickshell/config/*.qml` |
 | Edit QML without rebuilding | set `liveReload = true` in `quickshell/default.nix`, rebuild once; saves then reload instantly |
 | Change aliases | `modules/shell/zsh/config/.zshrc` (`zshrc`) |
-| Change qutebrowser settings, keys, search engines or colours | `modules/programs/qutebrowser/default.nix` |
-| Change Firefox settings, policies or Tridactyl keys | `modules/programs/firefox/default.nix`, `firefox/config/` (`userChrome.css`, `tridactylrc`) |
+| Change browser policies, extensions or prefs | `modules/programs/librewolf/default.nix` |
+| Change Tridactyl keys or the browser look | `modules/programs/librewolf/config/` (`tridactylrc`, `userChrome.css`) |
 | Change the login screen | `system/greeter/` (`Greeter.qml`, `default.nix`) |
 
 After any edit: `ut` to test, `u` to keep it.
 
-**Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, Hyprland, GTK 3/4, kitty, tmux, Obsidian and Firefox (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
+**Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, Hyprland, GTK 3/4, kitty, tmux, Obsidian and the browsers (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
 
-**Firefox new tab and new window:** both show the "Licht new tab" extension (id `newtab@licht.local`). It is installed by hand from a signed `.xpi`, so it is not in this repo or in the `ExtensionSettings` policy. Nothing in the Nix config may set a home page, or it would fight the extension.
+**New tab and new window (LibreWolf):** it shows the "very minimal new tab" extension (id `newtab@licht.local`, [AMO page](https://addons.mozilla.org/en-US/firefox/addon/very-minimal-new-tab/)). It is installed declaratively through the `ExtensionSettings` policy in `librewolf/default.nix`. Nothing in the Nix config may set a home page, or it would fight the extension.
+
+**Many Google accounts (Multi-Account Containers):** Google keeps only about 10 accounts signed in per browser session. The Multi-Account Containers extension (id `@testpilot-containers`, installed by `librewolf/default.nix`) gives each container its own cookies, so every container is its own browser session. Click its toolbar icon, create one container per account (for example "gmail-1", "gmail-2"), then open a tab in a container and sign in to one account there. The tab shows a coloured underline. In the extension's "Manage containers" page, tick "Always open in" for `google.com` / `accounts.google.com` only if you want one account pinned to a container; otherwise open the container yourself each time. Containers are local to this computer and are not carried by Firefox Sync. Nothing in `librewolf/default.nix` blocks or clears cookies, so the sign-ins survive restarts.
 
 ---
 
@@ -310,14 +312,14 @@ flake.lock
 rebuild              the script behind `u`
 secrets/             agenix files and secrets.nix
 hosts/licht/
-  configuration.nix  user, secrets, NH_FLAKE
+  configuration.nix  user, secrets
   hardware-configuration.nix
   home.nix           Home Manager entry and user packages
   system/            boot, nix, networking, hardware, desktop, greeter, updater, wireguard
   modules/
     desktop/         hypr, quickshell, pywal, theme, cava, pyprland
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime
-    programs/        aerc, aria2, firefox, kitty, mpv, nvim, qutebrowser, vscodium, yt-dlp
+    programs/        aerc, aria2, librewolf, kitty, mpv, nvim, vscodium, yt-dlp
 ```
 
 **Notes**

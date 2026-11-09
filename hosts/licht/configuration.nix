@@ -20,67 +20,17 @@
 
   age.identityPaths = ["/var/lib/agenix/key.txt"];
 
-  age.secrets = {
-    aria2-rpc-secret = {
-      file = ../../secrets/aria2-rpc-secret.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahhadqamar1-gmail = {
-      file = ../../secrets/ahhadqamar1-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahadqam1-gmail = {
-      file = ../../secrets/ahadqam1-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahhad067-gmail = {
-      file = ../../secrets/ahhad067-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahhadqamar3154-gmail = {
-      file = ../../secrets/ahhadqamar3154-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahhad3309-gmail = {
-      file = ../../secrets/ahhad3309-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    gamerking3154-gmail = {
-      file = ../../secrets/gamerking3154-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    msahhad78-gmail = {
-      file = ../../secrets/msahhad78-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-    ahhadqamara-gmail = {
-      file = ../../secrets/ahhadqamara-gmail.age;
-      owner = "licht";
-      group = "users";
-      mode = "0400";
-    };
-  };
+  # One entry per name in secrets/names.nix, each readable only by licht.
+  age.secrets = lib.genAttrs (import ../../secrets/names.nix) (name: {
+    file = ../../secrets/${name}.age;
+    owner = "licht";
+    group = "users";
+    mode = "0400";
+  });
 
   environment.variables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    NH_FLAKE = "/home/licht/nixos";
   };
 
   users.users.licht = {

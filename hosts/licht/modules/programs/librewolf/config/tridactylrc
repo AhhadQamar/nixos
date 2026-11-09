@@ -1,0 +1,75 @@
+" Tridactyl config for LibreWolf.
+"
+" How it gets here: Home Manager links this file to ~/.config/tridactyl/tridactylrc
+" and Tridactyl's native messenger reads it when the browser starts.
+" After you edit it: rebuild (ut), then `:source` in the browser. If keys do not
+" change, run `:native`; it says whether the native messenger is found.
+"
+" Keys not mentioned here keep Tridactyl's defaults. The ones you need most:
+"   j / k             scroll down / up              gg / G      top / bottom
+"   <C-d> / <C-u>     half page down / up           (rebound below to d / u)
+"   f / F             hint: follow a link here / in a new tab
+"   o / t             open a URL here / in a new tab (O / T: start from this URL)
+"   H / L             back / forward                J / K       previous / next tab
+"   d / u             close tab / undo close        (rebound below: x / X)
+"   b                 pick a tab by name            /  n  N     find in page
+"   yy                copy the page URL             p / P       open the clipboard URL
+"   :                 command line                  <Esc>       back to normal mode
+"   <S-Esc>           ignore mode (all keys go to the page; <S-Esc> again to leave)
+" The full walkthrough is in the Tridactyl guide.
+
+" ---- Look -------------------------------------------------------------
+colourscheme dark
+set smoothscroll true
+set modeindicator true
+
+" ---- Stay out of the way ---------------------------------------------
+" Tridactyl takes over <C-f> (page down) and <C-b> (page up), so Ctrl+F stops
+" opening the browser's find bar and Ctrl+B stops opening the bookmarks
+" sidebar. Give both back; / does the find, and <C-d> / <C-u> scroll.
+unbind <C-f>
+unbind <C-b>
+
+" Sites that focus their search box on load (Google, YouTube, GitHub) swallow
+" j, k and f. This stops pages from taking the focus.
+set allowautofocus false
+
+" ---- Tabs -------------------------------------------------------------
+" By default d closes the tab and u undoes the close, so reaching for "d" as a
+" half-page scroll (as in less, vim and nvim) kills the page. Swap them:
+" d / u scroll, x closes, X brings the tab back.
+bind d scrollpage 0.5
+bind u scrollpage -0.5
+bind x tabclose
+bind X undo
+
+" ---- Search shortcuts -------------------------------------------------
+" Use as: o <name> <words>   e.g.  o np ripgrep   (Tridactyl adds the words
+" to the end of the URL, so each URL ends where the query starts.)
+set searchurls.np https://search.nixos.org/packages?query=
+set searchurls.no https://search.nixos.org/options?query=
+set searchurls.hm https://home-manager-options.extranix.com/?query=
+set searchurls.gh https://github.com/search?q=
+set searchurls.yt https://www.youtube.com/results?search_query=
+
+" ---- Quickmarks -------------------------------------------------------
+" go<key> opens one here, gn<key> in a new tab. M<key> saves the current page
+" to a key for this session; add lasting ones here.
+quickmark g https://github.com/AhhadQamar
+quickmark n https://search.nixos.org/packages
+quickmark h https://home-manager-options.extranix.com/
+
+" ---- Hand things to other programs -----------------------------------
+" Both need the native messenger (:native) and mpv + yt-dlp on PATH.
+" ,m  play the current page in mpv        ,M  pick a link on the page, play that
+bind ,m composite get_current_url | shellescape | exclaim_quiet mpv
+bind ,M composite hint -pipe a href | shellescape | exclaim_quiet mpv
+
+" In a text box, <C-i> opens the text in nvim (in kitty); save and quit to put
+" it back in the box.
+set editorcmd kitty nvim
+
+" ---- Command line -----------------------------------------------------
+" Move through completions with Ctrl+j / Ctrl+k as well as Tab.
+bind --mode=ex <C-j> ex.next_completion
+bind --mode=ex <C-k> ex.prev_completion

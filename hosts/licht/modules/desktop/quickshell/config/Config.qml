@@ -107,6 +107,16 @@ Singleton {
     // for you to tick the ones you want (P opens it again on any torrent). A
     // torrent with a single file just starts.
     readonly property bool downloadTorrentPick: true
+    // A link added with the panel open is looked at first (downloads/preview.py): its
+    // name, size, where it would go and the room there, and whether it can be
+    // resumed. "ask" shows that and waits for Enter; "note" shows it as a note and
+    // starts at once; "off" adds without looking. (Adds from the bar, `dl` and
+    // scripts are never held up.)
+    readonly property string downloadPreview: "ask"
+    // X sweeps up what failed downloads left behind: orphaned .aria2 files and their
+    // half-written data (in the downloads folder and the type folders above), and
+    // yt-dlp's day-old partial files in these folders (relative to $HOME)
+    readonly property var downloadCleanupVideoDirs: ["Videos"]
     // The monthly data counter always runs: it is the "this month" figure by the
     // speed. Give it a limit in GB (0 = none) and you are told at 80% and at 100%.
     // With downloadPauseAtCap on, everything also pauses at 100%, and carries on

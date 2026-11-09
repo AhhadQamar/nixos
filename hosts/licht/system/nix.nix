@@ -1,4 +1,8 @@
-{pkgs, ...}: {
+{
+  config,
+  pkgs,
+  ...
+}: {
   nix.settings = {
     experimental-features = [
       "nix-command"
@@ -13,11 +17,17 @@
     dates = ["weekly"];
   };
 
-  nix.gc = {
-    automatic = true;
-    dates = "weekly";
-    options = "--delete-older-than 14d";
-    randomizedDelaySec = "45min";
+  # nh: the CLI behind `u`, `ut`, `ub`. `flake` sets NH_FLAKE for every shell, and
+  # `clean` replaces nix.gc: weekly, it keeps the last 5 generations plus anything
+  # from the last 14 days and deletes the rest. Do not enable nix.gc as well.
+  programs.nh = {
+    enable = true;
+    flake = "${config.users.users.licht.home}/nixos";
+    clean = {
+      enable = true;
+      dates = "weekly";
+      extraArgs = "--keep 5 --keep-since 14d";
+    };
   };
 
   nixpkgs.config.allowUnfree = true;

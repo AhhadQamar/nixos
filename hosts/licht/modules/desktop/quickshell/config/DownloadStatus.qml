@@ -11,6 +11,8 @@ Singleton {
     property int active: 0
     property int waiting: 0
     property real speed: 0
+    // How far the current burst of downloads has got, 0..1 (-1: nothing running)
+    property real progress: -1
 
     // The disc asks: add what was dropped on it, or open the panel
     signal addRequested(string text)

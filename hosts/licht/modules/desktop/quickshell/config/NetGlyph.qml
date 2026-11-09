@@ -5,9 +5,6 @@
 //
 // It also moves, when there is something to show (all of it hairlines on the same
 // grid, and none of it runs while the glyph is at rest):
-//   downloading  downloads are running: accent ripples flow in along the arcs
-//                (over the pins of the port), and the dot flashes as each one
-//                arrives. `activity` (0..1) is how busy it is: busier, faster.
 //   dropping     something is held over the disc: the arcs give way to a tray,
 //                and an arrow drops into it, again and again
 //   flash        what the drop did: "ok" draws a check, "none" shakes a cross
@@ -27,29 +24,18 @@ Glyph {
     property int strength: 0
     property bool vpn: false
 
-    property bool downloading: false
     property bool dropping: false
     property string flash: ""
-    property real activity: 0
 
-    // What it shows, strongest first. Everything but a plain network picture
-    // gives way to the one that is on.
-    readonly property string mode: flash === "ok" ? "ok" : flash === "none" ? "none" : dropping ? "drop" : downloading ? "load" : "idle"
-    readonly property bool plain: mode === "idle" || mode === "load"
+    // What it shows, strongest first. The network picture gives way to whichever
+    // of the others is on.
+    readonly property string mode: flash === "ok" ? "ok" : flash === "none" ? "none" : dropping ? "drop" : "idle"
+    readonly property bool plain: mode === "idle"
 
     // The loops and the one-shots, each driven by an animation below
-    property real phase: 0
     property real bob: 0
     property real checkP: 0
     property real shake: 0
-
-    // How lit a ripple is at this moment: a triangle that crosses `centre` (in
-    // fifths of a loop, which leaves everything dark at both ends so the loop has
-    // no seam) as the phase passes. Outer arc first, then the inner, then the
-    // dot: the wave runs in towards the connection.
-    function ripple(centre) {
-        return Math.max(0, 1 - Math.abs(phase * 5 - 0.5 - centre));
-    }
 
     // Where the check's two strokes reach at progress p (0..1): the short stroke
     // takes the first 40%, the long one the rest. Corners at (3.2, 8.6),
@@ -247,126 +233,6 @@ Glyph {
         u: root.u
     }
 
-    // ---- Downloading: accent ripples flow in along the arcs ---------------------
-    Item {
-        anchors.fill: parent
-        opacity: root.mode === "load" ? 1 : 0
-        visible: opacity > 0.01
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Style.baseMs
-            }
-        }
-
-        // The wifi arcs and the dot, lit one after the other, outermost first
-        Shape {
-            anchors.fill: parent
-            visible: !root.wired
-            layer.enabled: visible
-            layer.samples: 4
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(2.5))
-
-                PathAngleArc {
-                    centerX: 8 * root.u
-                    centerY: 12 * root.u
-                    radiusX: 3.2 * root.u
-                    radiusY: 3.2 * root.u
-                    startAngle: -135
-                    sweepAngle: 90
-                }
-            }
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(1.5))
-
-                PathAngleArc {
-                    centerX: 8 * root.u
-                    centerY: 12 * root.u
-                    radiusX: 5.8 * root.u
-                    radiusY: 5.8 * root.u
-                    startAngle: -135
-                    sweepAngle: 90
-                }
-            }
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(0.5))
-
-                PathAngleArc {
-                    centerX: 8 * root.u
-                    centerY: 12 * root.u
-                    radiusX: 8.4 * root.u
-                    radiusY: 8.4 * root.u
-                    startAngle: -135
-                    sweepAngle: 90
-                }
-            }
-        }
-
-        Rectangle {
-            x: 6.8 * root.u
-            y: 10.8 * root.u
-            width: 2.4 * root.u
-            height: width
-            radius: width / 2
-            antialiasing: true
-            visible: !root.wired
-            color: Colors.accent
-            opacity: root.ripple(3.3)
-            scale: 1 + 0.5 * root.ripple(3.3)
-        }
-
-        // The port: its three pins light in turn, the same wave
-        Shape {
-            anchors.fill: parent
-            visible: root.wired
-            layer.enabled: visible
-            layer.samples: 4
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(0.5))
-
-                PathMove {
-                    x: 10.5 * root.u
-                    y: 6 * root.u
-                }
-                PathLine {
-                    x: 10.5 * root.u
-                    y: 8.3 * root.u
-                }
-            }
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(1.5))
-
-                PathMove {
-                    x: 8 * root.u
-                    y: 6 * root.u
-                }
-                PathLine {
-                    x: 8 * root.u
-                    y: 8.3 * root.u
-                }
-            }
-
-            Stroke {
-                strokeColor: Qt.alpha(Colors.accent, 0.95 * root.ripple(2.5))
-
-                PathMove {
-                    x: 5.5 * root.u
-                    y: 6 * root.u
-                }
-                PathLine {
-                    x: 5.5 * root.u
-                    y: 8.3 * root.u
-                }
-            }
-        }
-    }
-
     // ---- Dropping: a tray, and an arrow that drops into it -----------------------
     Item {
         anchors.fill: parent
@@ -515,16 +381,6 @@ Glyph {
     }
 
     // ---- The motion ------------------------------------------------------------------
-    // The ripple loop: busier, faster (1.7 s down to 0.8 s a pass). It only runs
-    // while it is shown.
-    NumberAnimation on phase {
-        running: root.mode === "load" && root.visible
-        from: 0
-        to: 1
-        duration: 1700 - 900 * Math.max(0, Math.min(1, root.activity))
-        loops: Animation.Infinite
-    }
-
     // The arrow drops in and rises again
     SequentialAnimation on bob {
         running: root.mode === "drop" && root.visible

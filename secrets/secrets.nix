@@ -5,15 +5,11 @@ let
     licht
     recovery
   ];
-in {
-  "aria2-rpc-secret.age".publicKeys = allKeys;
-  "ahhadqamar1-gmail.age".publicKeys = allKeys;
-  "ahadqam1-gmail.age".publicKeys = allKeys;
-  "ahhad067-gmail.age".publicKeys = allKeys;
-  "ahhadqamar3154-gmail.age".publicKeys = allKeys;
-  "ahhad3309-gmail.age".publicKeys = allKeys;
-  "gamerking3154-gmail.age".publicKeys = allKeys;
-  "msahhad78-gmail.age".publicKeys = allKeys;
-  "ahhadqamara-gmail.age".publicKeys = allKeys;
-  "wg-licht.age".publicKeys = allKeys;
-}
+  # wg-licht is read by root (wireguard.nix), so it is not in names.nix.
+  names = (import ./names.nix) ++ ["wg-licht"];
+in
+  builtins.listToAttrs (map (name: {
+      name = "${name}.age";
+      value.publicKeys = allKeys;
+    })
+    names)

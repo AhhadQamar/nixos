@@ -75,6 +75,9 @@ Item {
     property real presence: present ? 1 : 0
     // Where the ring is drawn up to, eased
     property real shownRing: Math.max(0, Math.min(1, ring))
+    // 0..1: how much of a ring there is, eased, so it fades in and the picture
+    // makes room for it by shrinking smoothly instead of jumping
+    property real ringPresence: hasRing ? 1 : 0
     // 0..1..0 while hovered: the ring and underline breathe with it
     property real breath: 0
     // The first values arrive while the bar is being built; do not animate those
@@ -104,6 +107,12 @@ Item {
         }
     }
     Behavior on shownRing {
+        NumberAnimation {
+            duration: Style.moveMs
+            easing.type: Style.easeMove
+        }
+    }
+    Behavior on ringPresence {
         NumberAnimation {
             duration: Style.moveMs
             easing.type: Style.easeMove
@@ -230,8 +239,9 @@ Item {
                 // The ring: an empty track and the filled part from the top
                 Shape {
                     anchors.fill: parent
-                    visible: root.hasRing
-                    layer.enabled: root.hasRing
+                    opacity: root.ringPresence
+                    visible: opacity > 0.01
+                    layer.enabled: visible
                     layer.samples: 4
 
                     ShapePath {
@@ -283,7 +293,7 @@ Item {
                     // the loaded item is resized to match it.
                     Loader {
                         anchors.centerIn: parent
-                        width: root.hasRing ? 14 : 16
+                        width: 16 - 2 * root.ringPresence
                         height: width
                         sourceComponent: root.glyph
                     }

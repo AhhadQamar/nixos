@@ -78,11 +78,10 @@
         nerdFontsVersion = "3";
         showFileTree = true;
       };
-      # A list since lazygit 0.54 (it used to be a single `git.paging`)
-      git.pagers = [
+      git.diffRenderers = [
         {
           colorArg = "always";
-          pager = "delta --dark --paging=never";
+          command = "delta --dark --paging=never";
         }
       ];
     };
