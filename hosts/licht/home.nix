@@ -14,7 +14,8 @@
     playerctl
     github-copilot-cli
     bluetui
-    bombsquad
+    unstable.bombsquad
+    firefox
   ];
 
   services.udiskie = {
