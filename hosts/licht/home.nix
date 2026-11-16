@@ -15,7 +15,6 @@
     github-copilot-cli
     bluetui
     unstable.bombsquad
-    firefox
   ];
 
   services.udiskie = {
