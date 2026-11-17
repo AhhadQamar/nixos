@@ -1,10 +1,14 @@
 import QtQuick
-import QtQuick.Shapes
 
-// One download in the list: a round disc (a ring that fills as it goes, a glyph
-// for what it is doing), the name and what it is up to, a thin bar, and on the
-// right either its speed or, under the pointer or the cursor, its actions.
-// Enter or a second click opens the details under it.
+// One download in the list. The list hangs off a spine: a thin vertical line
+// with a node per download (a pulsing dot while it downloads, a ring while it
+// waits or is paused, red when it failed, a small grey dot when it is done).
+// Beside the node: the name and what it is up to, a hairline of progress along
+// the bottom, and on the right either its speed or, under the pointer or the
+// cursor, its actions. The row under the cursor lifts into a glass card and
+// swaps the hairline for a Ruler, with its lens and reading. Enter or a second
+// click opens the details under it. The first row of a group also carries the
+// group's caption (set by the panel).
 Item {
     id: row
 
@@ -17,10 +21,17 @@ Item {
     property bool armed: false
     property bool expanded: false
     property real breath: 0
+    // Set by the panel: the group caption this row opens (or ""), the row's place
+    // on the spine
+    property string caption: ""
+    property int captionN: 0
+    property bool first: false
+    property bool last: false
 
     signal clicked(bool ctrl)
     signal pauseClicked
     signal retryClicked
+    signal relinkClicked
     signal openClicked
     signal folderClicked
     signal copyClicked
@@ -32,13 +43,31 @@ Item {
     readonly property color tone: Downloads.toneOf(st)
     readonly property bool hovered: hover.hovered
     readonly property bool showActions: hovered || current
-    readonly property int baseH: 56
+    // The row's top part is always topH; the row under the cursor grows below
+    // it to make room for the ruler
+    readonly property int topH: 54
+    readonly property bool ruled: current && barOn
+    readonly property int baseH: ruled ? 82 : topH
+    readonly property int textX: 56
+    readonly property int capH: caption !== "" ? 30 : 0
+    readonly property real nodeY: capH + topH / 2
+    readonly property string kind: st === "downloading" || st === "merging" || st === "checking" ? "live" : (st === "seeding" ? "seed" : (st === "paused" ? "paused" : (st === "failed" ? "failed" : (st === "done" || st === "cancelled" ? "done" : "wait"))))
+    property real pulse: 0
+    property Gradient liftGrad: Gradient {
+        GradientStop {
+            position: 0
+            color: Qt.alpha(Colors.foreground, 0.075)
+        }
+        GradientStop {
+            position: 1
+            color: Qt.alpha(Colors.foreground, 0.025)
+        }
+    }
     readonly property bool pausable: st === "downloading" || st === "seeding" || st === "checking" || st === "queued" || st === "merging"
     readonly property bool multi: r.files.length > 1
     readonly property int fileN: multi ? Math.min(8, r.files.length) : 0
     readonly property int detailsH: 10 + r.info.length * 18 + (multi ? 8 + fileN * 16 + (r.files.length > fileN ? 16 : 0) : 0)
     readonly property bool barOn: st === "downloading" || st === "paused" || st === "queued" || st === "checking" || st === "merging"
-    property real sweep: Downloads.ringOf(r)
     property real flash: 0
 
     // The two lines on the right while the actions are away
@@ -62,18 +91,11 @@ Item {
     }
     readonly property string rightBottom: st === "downloading" && !r.metadata ? Math.floor(r.fraction * 100) + "%" : ""
 
-    height: baseH + (expanded ? detailsH : 0)
+    height: capH + baseH + (expanded ? detailsH : 0)
 
     Behavior on height {
         NumberAnimation {
             duration: Style.moveMs
-            easing.type: Style.easeMove
-        }
-    }
-
-    Behavior on sweep {
-        NumberAnimation {
-            duration: Style.sweepMs
             easing.type: Style.easeMove
         }
     }
@@ -95,6 +117,92 @@ Item {
         easing.type: Style.easeExit
     }
 
+    // ---- The spine: its segment, the group caption, the node --------------
+    Rectangle {
+        x: 24
+        y: row.first ? row.nodeY : 0
+        width: 1
+        height: (row.last ? row.nodeY : row.height) - y
+        color: Qt.alpha(Colors.foreground, 0.12)
+    }
+
+    Row {
+        visible: row.caption !== ""
+        x: row.textX
+        y: row.capH - height - 6
+        spacing: 8
+
+        Txt {
+            text: row.caption
+            color: row.r.group === "failed" ? Colors.critical : (row.r.group === "active" ? Colors.foreground : Colors.muted)
+            font.pixelSize: Style.fontSm
+        }
+
+        Txt {
+            text: String(row.captionN)
+            color: Colors.muted
+            opacity: 0.7
+            font.pixelSize: Style.fontSm
+        }
+    }
+
+    // A ripple that leaves the node of whatever is downloading
+    Rectangle {
+        visible: row.kind === "live"
+        x: 24.5 - width / 2
+        y: row.nodeY - height / 2
+        width: dot.width + 12 * row.pulse
+        height: width
+        radius: width / 2
+        color: "transparent"
+        border.width: 1
+        border.color: Qt.alpha(Colors.accent, 0.55 * (1 - row.pulse))
+    }
+
+    SequentialAnimation on pulse {
+        running: row.kind === "live" && row.visible
+        loops: Animation.Infinite
+
+        NumberAnimation {
+            from: 0
+            to: 1
+            duration: Style.ambientMs * 2.2
+            easing.type: Style.easeMove
+        }
+        PauseAnimation {
+            duration: Style.ambientMs
+        }
+    }
+
+    Rectangle {
+        id: dot
+
+        x: 24.5 - width / 2
+        y: row.nodeY - height / 2
+        width: row.kind === "done" ? 5 : (row.kind === "live" && row.current ? 11 : 9)
+        height: width
+        radius: width / 2
+        color: row.kind === "live" ? Colors.accent : (row.kind === "failed" ? Colors.critical : (row.kind === "seed" ? Qt.alpha(Colors.foreground, 0.7) : (row.kind === "done" ? Qt.alpha(Colors.foreground, 0.35) : Style.card)))
+        border.width: row.kind === "paused" || row.kind === "wait" ? 1.5 : 0
+        border.color: row.kind === "paused" ? Qt.alpha(Colors.foreground, 0.6) : Qt.alpha(Colors.foreground, 0.28)
+        opacity: row.st === "checking" || row.st === "merging" || row.r.metadata ? 0.4 + 0.6 * row.breath : 1
+
+        Behavior on width {
+            NumberAnimation {
+                duration: Style.baseMs
+                easing.type: Style.easeMove
+            }
+        }
+    }
+
+    // ---- Everything else sits below the caption ----------------------------
+    Item {
+        id: inner
+
+        y: row.capH
+        width: row.width
+        height: row.baseH + (row.expanded ? row.detailsH : 0)
+
     HoverHandler {
         id: hover
     }
@@ -114,11 +222,19 @@ Item {
     Rectangle {
         id: bg
 
-        anchors.fill: parent
+        x: 42
+        width: parent.width - 42
+        height: parent.height
         radius: Style.radiusLg
-        color: row.picked ? Qt.alpha(Colors.accent, Style.selectedAlpha) : (row.current ? Qt.alpha(Colors.accent, Style.tintAlpha) : (row.hovered ? Style.well : "transparent"))
+        color: row.picked ? Qt.alpha(Colors.accent, Style.selectedAlpha) : (row.current ? "transparent" : (row.hovered ? Style.well : "transparent"))
+        gradient: row.current && !row.picked ? row.liftGrad : null
         border.width: 1
-        border.color: row.armed ? Colors.critical : (row.flash > 0.01 ? Qt.alpha(row.tone, 0.2 + 0.7 * row.flash) : (row.current ? Qt.alpha(Colors.accent, 0.45) : "transparent"))
+        border.color: row.armed ? Colors.critical : (row.flash > 0.01 ? Qt.alpha(row.tone, 0.2 + 0.7 * row.flash) : (row.current ? Qt.alpha(Colors.foreground, 0.1) : "transparent"))
+
+        EdgeLight {
+            visible: row.current
+            corner: Style.radiusLg
+        }
 
         Behavior on color {
             ColorAnimation {
@@ -127,74 +243,14 @@ Item {
         }
     }
 
-    // The cursor's accent mark
-    Rectangle {
-        visible: row.current
-        x: 0
-        y: (row.baseH - height) / 2
-        width: 2
-        height: 22
-        radius: 1
-        color: Colors.accent
-    }
-
-    // The disc: a ring that fills with progress, a glyph for the state
-    Item {
-        id: disc
-
-        x: 14
-        y: (row.baseH - height) / 2
-        width: 34
-        height: 34
-
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: Style.well
-            border.width: 1
-            border.color: Style.outline
-        }
-
-        Shape {
-            anchors.fill: parent
-            layer.enabled: true
-            layer.samples: 4
-            visible: row.sweep > 0.002
-
-            ShapePath {
-                strokeColor: Qt.alpha(row.tone, 0.9)
-                strokeWidth: 2
-                fillColor: "transparent"
-                capStyle: ShapePath.RoundCap
-
-                PathAngleArc {
-                    centerX: disc.width / 2
-                    centerY: disc.height / 2
-                    radiusX: disc.width / 2 - 2
-                    radiusY: disc.height / 2 - 2
-                    startAngle: -90
-                    sweepAngle: Math.min(359.9, 360 * row.sweep)
-                }
-            }
-        }
-
-        Txt {
-            anchors.centerIn: parent
-            text: Downloads.glyphOf(row.st)
-            color: row.tone
-            font.pixelSize: 14
-            opacity: row.st === "checking" || row.st === "merging" || row.r.metadata ? 0.5 + 0.5 * row.breath : 1
-        }
-    }
-
     // Name, what it is up to, the bar
     Item {
         id: texts
 
-        x: 62
+        x: row.textX
         y: 0
-        width: row.width - 62 - 176 - 6
-        height: row.baseH
+        width: row.width - row.textX - 176 - 6
+        height: row.topH
 
         Txt {
             id: nameText
@@ -218,29 +274,49 @@ Item {
             font.pixelSize: Style.fontSm
             elide: Text.ElideRight
         }
+    }
+
+    // Progress for every row but the one under the cursor: a hairline
+    Item {
+        visible: row.barOn && !row.ruled
+        x: row.textX
+        y: row.topH - 1
+        width: row.width - row.textX - 16
+        height: 1
 
         Rectangle {
-            visible: row.barOn
-            anchors.left: parent.left
-            anchors.right: parent.right
-            y: 46
-            height: 2
-            radius: 1
-            color: Style.well
+            anchors.fill: parent
+            color: Style.outline
+        }
 
-            Rectangle {
-                width: parent.width * Math.min(1, row.r.fraction)
-                height: parent.height
-                radius: 1
-                color: Qt.alpha(row.tone, row.st === "paused" || row.st === "queued" ? 0.5 : 0.9)
+        Rectangle {
+            width: parent.width * Math.min(1, row.r.fraction)
+            height: parent.height
+            color: Qt.alpha(Colors.foreground, row.st === "paused" || row.st === "queued" ? 0.28 : 0.6)
 
-                Behavior on width {
-                    NumberAnimation {
-                        duration: Style.baseMs
-                        easing.type: Style.easeMove
-                    }
+            Behavior on width {
+                NumberAnimation {
+                    duration: Style.baseMs
+                    easing.type: Style.easeMove
                 }
             }
+        }
+    }
+
+    // The one under the cursor: the ruler
+    Loader {
+        active: row.ruled
+        x: row.textX
+        y: row.baseH - 6 - 20
+        width: row.width - row.textX - 16
+        height: 20
+
+        sourceComponent: Ruler {
+            value: row.r.fraction
+            lens: 11
+            reading: row.r.metadata ? "" : Math.floor(row.r.fraction * 100) + "%"
+            lit: row.st === "paused" || row.st === "queued" ? Qt.alpha(Colors.foreground, 0.35) : Qt.alpha(Colors.accent, 0.85)
+            markColor: row.st === "paused" || row.st === "queued" ? Qt.alpha(Colors.foreground, 0.5) : Colors.accent
         }
     }
 
@@ -249,7 +325,7 @@ Item {
         visible: !row.showActions
         anchors.right: parent.right
         anchors.rightMargin: 14
-        y: (row.baseH - height) / 2
+        y: (row.topH - height) / 2
         spacing: 2
 
         Txt {
@@ -275,7 +351,7 @@ Item {
         visible: row.showActions
         anchors.right: parent.right
         anchors.rightMargin: 10
-        y: (row.baseH - height) / 2
+        y: (row.topH - height) / 2
         spacing: 2
 
         HoverHandler {
@@ -297,6 +373,15 @@ Item {
             glyph: Icons.refresh
             tip: "Retry"
             onClicked: row.retryClicked()
+            onHoveredChanged: row.tipped(hovered ? tip : "")
+        }
+
+        IconButton {
+            visible: row.st === "failed" && !row.r.isBt && row.r.uris.length > 0 && String(row.r.gid).indexOf("yt:") !== 0
+            size: 26
+            glyph: Icons.link
+            tip: "New link: keeps the partial file"
+            onClicked: row.relinkClicked()
             onHoveredChanged: row.tipped(hovered ? tip : "")
         }
 
@@ -342,9 +427,9 @@ Item {
         id: details
 
         active: row.expanded
-        x: 62
+        x: row.textX
         y: row.baseH
-        width: row.width - 62 - 14
+        width: row.width - row.textX - 14
         height: row.detailsH
         opacity: row.expanded ? 1 : 0
 
@@ -437,5 +522,6 @@ Item {
                 }
             }
         }
+    }
     }
 }

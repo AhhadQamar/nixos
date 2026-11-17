@@ -46,6 +46,8 @@ Singleton {
     readonly property string rpcUrl: "http://localhost:6800/jsonrpc"
     readonly property int pollMs: 1000
     readonly property int watchMs: 5000
+    // How often an open panel looks when nothing is moving (see pollInterval)
+    readonly property int idlePollMs: 3000
     readonly property int historyLength: 60
     // Speed limits to cycle through, in bytes per second (0 = unlimited)
     readonly property var limitPresets: [0, 524288, 1048576, 2097152, 5242880, 10485760]
@@ -53,6 +55,10 @@ Singleton {
     readonly property string home: Config.home
     readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/quickshell"
     readonly property string rpcKeys: "gid,status,totalLength,completedLength,uploadLength,downloadSpeed,uploadSpeed,connections,numSeeders,seeder,infoHash,dir,errorCode,errorMessage,followedBy,verifiedLength,verifyIntegrityPending,files,bittorrent"
+    // What the live poll asks for: the same without `files` and `bittorrent`. Those
+    // two are big (a torrent can have hundreds of files) and almost never change, so
+    // they are fetched once per download and kept (see fillMeta).
+    readonly property string rpcKeysLive: "gid,status,totalLength,completedLength,uploadLength,downloadSpeed,uploadSpeed,connections,numSeeders,seeder,infoHash,dir,errorCode,errorMessage,followedBy,verifiedLength,verifyIntegrityPending"
     // The options a retry carries over from the failed download
     readonly property var retryKeep: ["dir", "header", "referer", "user-agent", "http-user", "http-passwd", "ftp-user", "ftp-passwd", "out", "checksum", "max-download-limit"]
     // Runs a bundled python script with whatever python there is (the music
@@ -93,6 +99,19 @@ Singleton {
             "numWaiting": 0
         })
     property var speedHistory: []
+    property double lastSampleAt: 0
+    // The newest finished downloads, kept between polls: they only change when
+    // aria2's stopped counters do (see stopKey)
+    property var stoppedCache: []
+    property string stoppedKey: ""
+    // Per download: its file list and torrent info, and when they were fetched
+    property var metaCache: ({})
+    property int metaTick: 0
+    // Is something changing every second? If not, an open panel polls slowly.
+    // Whatever the panel does asks for a refresh itself, so it never waits for
+    // the slow tick.
+    readonly property bool busyNow: stat.numActive > 0 || rows.some(r => r.state === "queued") || grabs.some(j => j.state === "downloading" || j.state === "merging" || j.state === "queued")
+    readonly property int pollInterval: busyNow ? pollMs : idlePollMs
     property var globalOpt: ({})
     property var lastStat: ({})
     property string clip: ""
@@ -146,6 +165,8 @@ Singleton {
     property string confirmSub: ""
     property var confirmLines: []
     property string confirmYes: ""
+    // A second way to say yes (Replace, Start over); "" = none. Its key is R.
+    property string confirmAlt: ""
     property var confirmData: null
     property bool pickOpen: false
     property string pickGid: ""
@@ -267,7 +288,7 @@ Singleton {
             return m.statusText;
         switch (m.state) {
         case "failed":
-            return m.error !== "" ? m.error : "Failed";
+            return (m.error !== "" ? m.error : "Failed") + (!m.isBt && !isGrab(m.gid) ? "    \u00b7  E new link" : "");
         case "done":
             return "Done    " + Aria2.bytes(m.total);
         case "cancelled":
@@ -350,6 +371,8 @@ Singleton {
             } else if (connected) {
                 connected = false;
                 message = "";
+                stoppedKey = "";
+                metaCache = {};
                 stat = {
                     "downloadSpeed": 0,
                     "uploadSpeed": 0,
@@ -436,30 +459,115 @@ Singleton {
     }
 
     // ---- Reading aria2 ------------------------------------------------------
+    // The key of aria2's stopped list: it changes whenever a download stops or a
+    // result is removed, and not otherwise. "" = the counters are missing, so the
+    // list is read every time.
+    function stopKey(st) {
+        return st.numStopped === undefined || st.numStoppedTotal === undefined ? "" : st.numStopped + ":" + st.numStoppedTotal;
+    }
+
+    function fetchStopped(key, cb) {
+        rpc("system.multicall", [[
+                {
+                    "methodName": "aria2.tellStopped",
+                    "params": ["token:" + secret, -1, 30, rpcKeys.split(",")]
+                }
+            ]], function (res) {
+            const r = res.result;
+            const list = r && r[0] && r[0][0] ? r[0][0] : null;
+            // A failed read keeps the old list rather than blink the finished ones away
+            if (list === null) {
+                cb(stoppedCache);
+                return;
+            }
+            stoppedCache = list;
+            stoppedKey = key;
+            cb(list);
+        });
+    }
+
+    // Gives each running or waiting download its file list and torrent info from
+    // the cache, fetching them when a download is new, changed state, learned its
+    // size (its file name settles then) or is a many-file torrent (its per-file
+    // progress, every few polls)
+    function fillMeta(list, cb) {
+        metaTick++;
+        const need = [];
+        const live = {};
+        const byGid = {};
+        list.forEach(function (d) {
+            live[d.gid] = true;
+            byGid[d.gid] = d;
+            const m = metaCache[d.gid];
+            const total = Number(d.totalLength || 0);
+            if (!m || m.status !== d.status || (m.total === 0 && total > 0) || (m.multi && d.status === "active" && metaTick - m.tick >= 5))
+                need.push(d.gid);
+        });
+        Object.keys(metaCache).forEach(function (g) {
+            if (!live[g])
+                delete metaCache[g];
+        });
+        const apply = function () {
+            list.forEach(function (d) {
+                const m = metaCache[d.gid];
+                if (m) {
+                    d.files = m.files;
+                    d.bittorrent = m.bittorrent;
+                }
+            });
+            cb();
+        };
+        if (need.length === 0) {
+            apply();
+            return;
+        }
+        batch(need.map(g => ["aria2.tellStatus", [g, ["files", "bittorrent"]]]), function (res) {
+            const out = res.result || [];
+            need.forEach(function (g, i) {
+                const x = Array.isArray(out[i]) ? out[i][0] : null;
+                if (!x)
+                    return;
+                const d = byGid[g];
+                metaCache[g] = {
+                    "files": x.files || [],
+                    "bittorrent": x.bittorrent,
+                    "status": d.status,
+                    "total": Number(d.totalLength || 0),
+                    "multi": (x.files || []).length > 1 || !!x.bittorrent,
+                    "tick": metaTick
+                };
+            });
+            apply();
+        });
+    }
+
     function refresh() {
         if (secret === "")
             return;
         const t = "token:" + secret;
-        const keys = rpcKeys.split(",");
-        rpc("system.multicall", [[
-                {
-                    "methodName": "aria2.tellActive",
-                    "params": [t, keys]
-                },
-                {
-                    "methodName": "aria2.tellWaiting",
-                    "params": [t, 0, 100, keys]
-                },
-                // A negative offset is newest first (offset 0 would be the oldest)
-                {
-                    "methodName": "aria2.tellStopped",
-                    "params": [t, -1, 30, keys]
-                },
-                {
-                    "methodName": "aria2.getGlobalStat",
-                    "params": [t]
-                }
-            ]], function (res) {
+        const keys = rpcKeysLive.split(",");
+        const calls = [
+            {
+                "methodName": "aria2.tellActive",
+                "params": [t, keys]
+            },
+            {
+                "methodName": "aria2.tellWaiting",
+                "params": [t, 0, 100, keys]
+            },
+            {
+                "methodName": "aria2.getGlobalStat",
+                "params": [t]
+            }
+        ];
+        // The stopped list is only asked for when it has changed since last time.
+        // A negative offset is newest first (offset 0 would be the oldest).
+        if (stoppedKey === "")
+            calls.push({
+                "methodName": "aria2.tellStopped",
+                "params": [t, -1, 30, rpcKeys.split(",")]
+            });
+        rpc("system.multicall", [calls], function (res) {
             const r = res.result;
             if (!r) {
                 message = res.error ? res.error.message : "unexpected reply from aria2";
@@ -475,15 +583,28 @@ Singleton {
             message = "";
             const active = r[0][0] || [];
             const waiting = r[1][0] || [];
-            const stopped = r[2][0] || [];
-            const st = r[3][0] || {};
-            ingest(active, waiting, stopped, st);
-            checkIdle(st, active, waiting);
-            usageSee(active, false);
-            usageSee(stopped, true);
-            usageReady = true;
-            progressSee(active, stopped);
-            pickScan(waiting);
+            const st = r[2][0] || {};
+            const key = stopKey(st);
+            const finish = function (stopped) {
+                fillMeta(active.concat(waiting), function () {
+                    ingest(active, waiting, stopped, st);
+                    checkIdle(st, active, waiting);
+                    usageSee(active, false);
+                    usageSee(stopped, true);
+                    usageReady = true;
+                    progressSee(active, stopped);
+                    pickScan(waiting);
+                });
+            };
+            if (r[3] && r[3][0]) {
+                stoppedCache = r[3][0];
+                stoppedKey = key;
+                finish(stoppedCache);
+            } else if (stoppedKey !== "" && key === stoppedKey) {
+                finish(stoppedCache);
+            } else {
+                fetchStopped(key, finish);
+            }
         });
     }
 
@@ -520,15 +641,16 @@ Singleton {
             rows = arr;
             counts = c;
         }
-        stat = {
+        // Only a changed reading wakes the bindings that show it
+        const ns = {
             "downloadSpeed": Number(st.downloadSpeed || 0),
             "uploadSpeed": Number(st.uploadSpeed || 0),
             "numActive": Number(st.numActive || 0),
             "numWaiting": Number(st.numWaiting || 0)
         };
-        const h = speedHistory.slice(-(historyLength - 1));
-        h.push(stat.downloadSpeed);
-        speedHistory = h;
+        if (ns.downloadSpeed !== stat.downloadSpeed || ns.uploadSpeed !== stat.uploadSpeed || ns.numActive !== stat.numActive || ns.numWaiting !== stat.numWaiting)
+            stat = ns;
+        pushSpeed(ns.downloadSpeed);
 
         // Whatever finishes while the panel is open needs no toast later
         const k = known;
@@ -552,6 +674,24 @@ Singleton {
             if (!map[g])
                 delete awaiting[g];
         });
+    }
+
+    // One sample a second in the speed history, however slowly we poll: the
+    // seconds skipped while idle are filled with zeros, so the graph keeps its
+    // time scale. A flat, all-zero history is left alone (nothing to redraw).
+    function pushSpeed(v) {
+        const now = Date.now();
+        const gap = lastSampleAt > 0 ? Math.min(historyLength, Math.max(1, Math.round((now - lastSampleAt) / pollMs))) : 1;
+        lastSampleAt = now;
+        if (v === 0 && speedHistory.length >= historyLength && speedHistory.every(x => x === 0))
+            return;
+        let h = speedHistory.slice();
+        for (let i = 1; i < gap; i++)
+            h.push(0);
+        h.push(v);
+        if (h.length > historyLength)
+            h = h.slice(h.length - historyLength);
+        speedHistory = h;
     }
 
     // ---- Closed-panel watcher: toast when something finishes ----------------
@@ -674,6 +814,17 @@ Singleton {
         return false;
     }
 
+    // A failed (not live) row that has this link
+    function failedRowFor(url) {
+        const gids = Object.keys(rowMap);
+        for (let i = 0; i < gids.length; i++) {
+            const r = rowMap[gids[i]];
+            if (r.state === "failed" && !r.isBt && !isGrab(r.gid) && r.uris.indexOf(url) >= 0)
+                return r;
+        }
+        return null;
+    }
+
     // One download with its own headers: what a "Copy as cURL" holds, or addx
     function addRich(o, dir) {
         if (isDuplicate(o.url)) {
@@ -737,8 +888,10 @@ Singleton {
     }
 
     // Add whatever text holds. `preview`: with the panel open, a single plain link
-    // is looked at first (the add pill). Returns how many downloads it made.
-    function addText(text, dir, preview) {
+    // is looked at first (the add pill). `extra`: aria2 options to add to every
+    // download made (the preview sheet's Replace and Keep both). Returns how many
+    // downloads it made.
+    function addText(text, dir, preview, extra) {
         if (preview && maybePreview(text, dir))
             return 0;
         if (/^\s*curl\s/.test(text)) {
@@ -757,6 +910,7 @@ Singleton {
         const seen = {};
         let added = 0;
         let dups = 0;
+        let retried = 0;
         let probing = 0;
         let cut = false;
         let bad = "";
@@ -801,12 +955,22 @@ Singleton {
                 const p = Aria2.parseToken(t, 1000);
                 cut = cut || p.cut;
                 p.groups.forEach(function (uris) {
+                    // The same link as one that failed: that one is tried again, not a second row
+                    const failed = failedRowFor(uris[0]);
+                    if (failed && !seen[uris[0]]) {
+                        seen[uris[0]] = true;
+                        retryRows([failed.gid]);
+                        retried++;
+                        return;
+                    }
                     if (seen[uris[0]] || isDuplicate(uris[0])) {
                         dups++;
                         return;
                     }
                     seen[uris[0]] = true;
                     const opts = metaOpts(uris[0], baseOpts(uris[0], dir));
+                    if (extra)
+                        Object.keys(extra).forEach(k => opts[k] = extra[k]);
                     if (p.checksum !== "")
                         opts["checksum"] = p.checksum;
                     calls.push(["aria2.addUri", [uris, opts]]);
@@ -844,6 +1008,8 @@ Singleton {
             if (cut)
                 msg += "  \u00b7  batch cut at 1000";
             say(msg, false);
+        } else if (retried > 0) {
+            say(retried === 1 ? "It failed before  \u00b7  trying it again" : "Trying " + retried + " that failed before again", false);
         } else if (dups > 0) {
             say(dups === 1 ? "Already in the list" : dups + " already in the list", true);
         }
@@ -851,8 +1017,8 @@ Singleton {
     }
 
     // Forced to aria2, no questions asked (a link already known to be a file)
-    function addFile(url, dir) {
-        return addText("direct:" + url, dir, false);
+    function addFile(url, dir, extra) {
+        return addText("direct:" + url, dir, false, extra || null);
     }
 
     // Something was dropped on the bar's network disc while the panel may be
@@ -1153,6 +1319,102 @@ Singleton {
         retryRows(rows.filter(r => r.state === "failed").map(r => r.gid));
     }
 
+    // A failed download whose link died (a signed link that ran out, a session that
+    // ended) gets a new one on the same row. The folder, the file name (so the
+    // partial file is carried on) and the settings stay; a copied cURL command
+    // brings fresh cookies and headers that replace the old ones.
+    // Returns true when it was started.
+    function relink(gid, text) {
+        const r = rowMap[gid];
+        if (!r) {
+            say("That download is gone", true);
+            return false;
+        }
+        if (isGrab(gid)) {
+            say("A video grab keeps its page link: press R to try it again", true);
+            return false;
+        }
+        if (r.isBt) {
+            say("A torrent has no link to replace", true);
+            return false;
+        }
+        if (r.state !== "failed") {
+            say("Only a failed download can take a new link", true);
+            return false;
+        }
+        if (r.files.length > 1) {
+            say("It has several files, so one new link would not match", true);
+            return false;
+        }
+        const t = text.trim();
+        let url = "";
+        let c = null;
+        if (/^curl\s/.test(t)) {
+            c = Aria2.parseCurl(t);
+            if (c.error) {
+                say(c.error, true);
+                return false;
+            }
+            url = c.url;
+        } else {
+            url = t.split(/\s+/)[0] || "";
+            if (!/^(https?|ftp|sftp):\/\//i.test(url)) {
+                say("That is not a link", true);
+                return false;
+            }
+        }
+        if (r.uris.indexOf(url) < 0 && isDuplicate(url)) {
+            say("That link is already in the list", true);
+            return false;
+        }
+        call("aria2.getOption", [gid], function (res) {
+            const src = res.result || {};
+            const o = {};
+            retryKeep.forEach(function (k) {
+                if (src[k] !== undefined && src[k] !== "")
+                    o[k] = src[k];
+            });
+            if (o["dir"] === undefined && r.dir !== "")
+                o["dir"] = r.dir;
+            // The same file name as before, so the partial file is found and carried on
+            const have = r.files.length > 0 ? r.files[0].path : "";
+            const dir = o["dir"] || "";
+            if (o["out"] === undefined && have !== "")
+                o["out"] = dir !== "" && have.indexOf(dir + "/") === 0 ? have.slice(dir.length + 1) : Aria2.basename(have);
+            if (c !== null) {
+                if (c.headers.length > 0)
+                    o["header"] = c.headers;
+                if (c.referer !== "")
+                    o["referer"] = c.referer;
+                if (c.ua !== "")
+                    o["user-agent"] = c.ua;
+                if (c.user !== "") {
+                    o["http-user"] = c.user;
+                    o["http-passwd"] = c.pass || "";
+                    o["ftp-user"] = c.user;
+                    o["ftp-passwd"] = c.pass || "";
+                }
+            }
+            // If it cannot be carried on it fails loudly rather than start a second copy
+            o["continue"] = "true";
+            o["auto-file-renaming"] = "false";
+            if (holdNew)
+                o["pause"] = "true";
+            call("aria2.addUri", [[url], o], function (add) {
+                if (add.error) {
+                    say(add.error.message, true);
+                    return;
+                }
+                lastAdded = t;
+                say(r.done > 0 ? "New link set  \u00b7  carrying on from " + Aria2.bytes(r.done) : "New link set", false);
+                call("aria2.removeDownloadResult", [gid], function () {
+                    refresh();
+                });
+            });
+        });
+        return true;
+    }
+
     // how: "top" | "up" | "down"
     function moveQueue(gids, how) {
         let list = gids.filter(function (g) {
@@ -1311,7 +1573,7 @@ Singleton {
                 say("It is a web page  \u00b7  looking for a video", false);
             return;
         }
-        if (Config.downloadPreview === "note" && d && d.ok && d.status < 400) {
+        if (Config.downloadPreview === "note" && d && d.ok && d.status < 400 && !d.exists) {
             addFile(req.url, req.dir);
             say(d.name + "  \u00b7  " + (d.size !== null ? Aria2.bytes(d.size) : "size not given"), false);
             return;
@@ -1322,6 +1584,7 @@ Singleton {
     function openPreview(req, d) {
         const lines = [];
         let yes = "Download";
+        let alt = "";
         if (d === null || !d.ok) {
             confirmTitle = req.url.length > 70 ? req.url.slice(0, 70) + "\u2026" : req.url;
             confirmSub = "No answer from the server";
@@ -1342,6 +1605,17 @@ Singleton {
                     "tone": "bad"
                 });
                 yes = "Try anyway";
+            }
+            // A file of that name is already there: keep both, replace it, or skip
+            // (Cancel). An unfinished one is carried on, or started over.
+            if (d.exists && d.status < 400) {
+                lines.push({
+                    "label": d.partial ? "Unfinished" : "Already there",
+                    "value": d.partial ? "a partial copy is in that folder" : (d.have !== null && d.have !== undefined ? Aria2.bytes(d.have) : "a folder") + (d.modified ? "  \u00b7  " + Qt.formatDate(new Date(d.modified * 1000), "d MMM yyyy") : ""),
+                    "tone": "warn"
+                });
+                yes = d.partial ? "Resume" : "Keep both";
+                alt = d.partial ? "Start over" : "Replace";
             }
             lines.push({
                 "label": "From",
@@ -1368,9 +1642,13 @@ Singleton {
         confirmKind = "preview";
         confirmLines = lines;
         confirmYes = yes;
+        confirmAlt = alt;
         confirmData = {
             "url": req.url,
-            "dir": req.dir
+            "dir": req.dir,
+            "exists": !!(d && d.exists),
+            "partial": !!(d && d.partial),
+            "path": d && d.path ? d.path : ""
         };
         confirmOpen = true;
     }
@@ -1378,6 +1656,7 @@ Singleton {
     function closeConfirm() {
         confirmOpen = false;
         confirmLines = [];
+        confirmAlt = "";
         confirmData = null;
     }
 
@@ -1387,15 +1666,54 @@ Singleton {
         const kind = confirmKind;
         const data = confirmData;
         closeConfirm();
+        // The config has continue=true, which would treat a finished file of the same
+        // name as the start of this one: Keep both has to turn that off so aria2
+        // numbers the new file instead. (An unfinished file is simply carried on.)
         if (kind === "preview")
-            addFile(data.url, data.dir);
+            addFile(data.url, data.dir, data.exists && !data.partial ? {
+                "continue": "false"
+            } : null);
         else if (kind === "cleanup")
             deleteLeftovers(data);
+    }
+
+    // The sheet's second answer: Replace (the file there is overwritten) or Start
+    // over (the partial copy and its control file are removed first)
+    function confirmAlternate() {
+        if (!confirmOpen || confirmAlt === "")
+            return;
+        const kind = confirmKind;
+        const data = confirmData;
+        closeConfirm();
+        if (kind !== "preview")
+            return;
+        const opts = {
+            "continue": "false",
+            "allow-overwrite": "true",
+            "auto-file-renaming": "false"
+        };
+        if (data.partial && data.path !== "")
+            wipeThen([data.path, data.path + ".aria2"], function () {
+                addFile(data.url, data.dir, opts);
+            });
+        else
+            addFile(data.url, data.dir, opts);
+    }
+
+    // Removes files, then carries on
+    function wipeThen(paths, then) {
+        if (wipeProc.running)
+            return;
+        wipeProc.then = then;
+        wipeProc.command = ["rm", "-f", "--"].concat(paths);
+        wipeProc.running = true;
     }
 
     function confirmKey(event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             confirmAccept();
+        else if (event.key === Qt.Key_R && confirmAlt !== "")
+            confirmAlternate();
         else if (event.key === Qt.Key_Escape)
             closeConfirm();
     }
@@ -1755,7 +2073,7 @@ Singleton {
         let dd = 0;
         let uu = 0;
         const last = usageLast;
-        const secs = (isOpen ? pollMs : watchMs) / 1000;
+        const secs = (isOpen ? pollInterval : watchMs) / 1000;
         list.forEach(function (d) {
             const done = Number(d.completedLength || 0);
             const up = Number(d.uploadLength || 0);
@@ -2617,9 +2935,23 @@ Singleton {
         id: probeD
     }
 
+    // Removes files, then runs what wipeThen was given
+    Process {
+        id: wipeProc
+
+        property var then: null
+
+        onExited: {
+            const f = then;
+            then = null;
+            if (f)
+                f();
+        }
+    }
+
     // Live updates while the panel is open
     Timer {
-        interval: dl.pollMs
+        interval: dl.pollInterval
         repeat: true
         running: dl.isOpen && dl.secret !== ""
         onTriggered: dl.refresh()

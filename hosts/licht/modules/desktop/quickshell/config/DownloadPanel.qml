@@ -1,14 +1,18 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 
 // The downloads panel: one glass card, a third of the way up the screen.
 //
-//   speed readout + a ruler of the last minute's speed   limits, parallel
-//   tabs: All / Active / Queued / Done / Failed          pause all, clear, ...
+//   the speed, big, over a soft hill of the last minute      what is left, limits
+//   tabs: All / Active / Queued / Done / Failed               pause all, clear, ...
 //   ---------------------------------------------------------------------
-//   the list (a row per download; Enter opens its details)
+//   the list, hung off a spine (a node per download, a caption per group;
+//   Enter opens a row's details). The row under the cursor lifts into a card
+//   and shows its progress as a Ruler; on the All tab, finished downloads
+//   fold into one line at the end of the spine that opens the Done tab.
 //   ---------------------------------------------------------------------
 //   save-to chips / clipboard offer
 //   add pill (paste a link, drop one, or type)            search
@@ -27,6 +31,8 @@ PanelWindow {
     property int lastIndex: 0
     property var selected: ({})
     property string expandedGid: ""
+    // The failed download the add pill is giving a new link (E); "" = adding as usual
+    property string relinkGid: ""
     property string sortMode: "status"
     property bool showHelp: false
     property string tip: ""
@@ -65,7 +71,7 @@ PanelWindow {
     readonly property int pad: Style.cardPad
     readonly property int innerW: cardW - pad * 2
     readonly property int gap: Style.spaceMd
-    readonly property int headH: 56
+    readonly property int headH: 132
     readonly property int barH: Style.buttonCompact
     readonly property int footH: Math.round(Math.max(Style.fieldHeight, Math.min(104, addInput.contentHeight + 17)))
     readonly property bool extraOn: !showHelp && !Downloads.sheetOpen && (addInput.activeFocus || addInput.text.length > 0 || Downloads.clip !== "")
@@ -90,6 +96,54 @@ PanelWindow {
     }
 
     // ---- The list as shown --------------------------------------------------
+    // On the All tab (with no search) the finished ones fold into one line
+    readonly property bool collapseDone: tab === "all" && query.trim() === ""
+    readonly property int doneHidden: collapseDone ? (Downloads.counts.done || 0) : 0
+
+    // Group captions on the spine (only when the list is in status order)
+    readonly property bool showCaptions: tab === "all" && sortMode === "status"
+    readonly property var groupNames: ({
+            "active": "downloading",
+            "queued": "waiting",
+            "failed": "failed",
+            "done": "finished"
+        })
+    readonly property var groupCounts: {
+        const c = {};
+        shownRows.forEach(r => c[r.group] = (c[r.group] || 0) + 1);
+        return c;
+    }
+
+    function captionAt(i) {
+        const l = shownRows;
+        if (!showCaptions || i < 0 || i >= l.length)
+            return "";
+        if (i > 0 && l[i - 1].group === l[i].group)
+            return "";
+        return groupNames[l[i].group] || "";
+    }
+
+    function captionCount(i) {
+        const l = shownRows;
+        return i >= 0 && i < l.length ? (groupCounts[l[i].group] || 0) : 0;
+    }
+
+    // The header's figures: the speed split into number and unit, and what is left
+    readonly property real speedNow: Downloads.stat.downloadSpeed
+    readonly property var speedParts: {
+        const t = Aria2.rate(speedNow);
+        const i = t.indexOf(" ");
+        return [t.slice(0, i), t.slice(i + 1)];
+    }
+    readonly property real leftBytes: {
+        let n = 0;
+        Downloads.rows.forEach(function (r) {
+            if ((r.group === "active" || r.group === "queued") && r.total > 0)
+                n += Math.max(0, r.total - r.done);
+        });
+        return n;
+    }
+    readonly property string leftText: leftBytes > 0 ? Aria2.bytes(leftBytes) + " left" + (speedNow > 0 ? "  \u00b7  " + Aria2.dur(Math.round(leftBytes / speedNow)) : "") : "all caught up"
     readonly property var shownRows: {
         const q = query.trim().toLowerCase();
         const order = {
@@ -104,6 +158,8 @@ PanelWindow {
         for (let i = 0; i < src.length; i++) {
             const r = src[i];
             if (tab !== "all" && r.group !== tab)
+                continue;
+            if (collapseDone && r.group === "done")
                 continue;
             if (q !== "" && r.name.toLowerCase().indexOf(q) < 0)
                 continue;
@@ -183,6 +239,10 @@ PanelWindow {
         {
             "k": ["R"],
             "d": "Retry failed"
+        },
+        {
+            "k": ["E"],
+            "d": "New link for a failed one"
         },
         {
             "k": ["Shift", "R"],
@@ -388,6 +448,7 @@ PanelWindow {
 
     // ---- Focus and the add pill ---------------------------------------------
     function leaveInput() {
+        relinkGid = "";
         keys.forceActiveFocus();
     }
 
@@ -403,10 +464,34 @@ PanelWindow {
 
     function submitAdd() {
         const text = addInput.text;
+        const gid = relinkGid;
         addInput.text = "";
-        if (text.trim().length > 0)
-            Downloads.addText(text, Downloads.saveDir(), true);
+        relinkGid = "";
+        if (text.trim().length > 0) {
+            if (gid !== "")
+                Downloads.relink(gid, text);
+            else
+                Downloads.addText(text, Downloads.saveDir(), true);
+        }
         leaveInput();
+    }
+
+    // E, or the row's link button: the add pill takes a new link for a failed
+    // download (a copied link is already in it, ready to confirm with Enter)
+    function startRelink(gid) {
+        const r = Downloads.rowMap[gid !== "" && gid !== undefined ? gid : cursorGid];
+        if (!r || r.state !== "failed") {
+            Downloads.say("A new link is for a failed download: move to one first", true);
+            return;
+        }
+        if (r.isBt || Downloads.isGrab(r.gid)) {
+            Downloads.say(r.isBt ? "A torrent has no link to replace" : "A video grab keeps its page link: press R to try it again", true);
+            return;
+        }
+        focusAdd();
+        relinkGid = r.gid;
+        addInput.text = Downloads.clip;
+        addInput.selectAll();
     }
 
     function removeKey(deleteFiles) {
@@ -516,7 +601,11 @@ PanelWindow {
                 toggleSelect(cursorGid);
             return;
         case Qt.Key_A:
+            relinkGid = "";
             focusAdd();
+            return;
+        case Qt.Key_E:
+            startRelink("");
             return;
         case Qt.Key_Slash:
             focusSearch();
@@ -737,6 +826,89 @@ PanelWindow {
             }
         }
 
+        // The light behind the speed: it grows brighter with the speed
+        Item {
+            id: glow
+
+            x: 1
+            y: 1
+            width: card.width - 2
+            height: 200
+            clip: true
+
+            property real level: Math.min(1, panel.speedNow / (12 * 1048576))
+            property real drift: 0
+
+            Behavior on level {
+                NumberAnimation {
+                    duration: Style.sweepMs * 2
+                    easing.type: Style.easeMove
+                }
+            }
+
+            SequentialAnimation on drift {
+                running: panel.visible && panel.speedNow > 0
+                loops: Animation.Infinite
+
+                NumberAnimation {
+                    from: -24
+                    to: 24
+                    duration: Style.ambientMs * 10
+                    easing.type: Style.easeAmbient
+                }
+                NumberAnimation {
+                    from: 24
+                    to: -24
+                    duration: Style.ambientMs * 10
+                    easing.type: Style.easeAmbient
+                }
+            }
+
+            Shape {
+                anchors.fill: parent
+
+                ShapePath {
+                    strokeColor: "transparent"
+                    strokeWidth: 1
+                    startX: 0
+                    startY: 0
+                    fillGradient: RadialGradient {
+                        centerX: 170 + glow.drift
+                        centerY: 30
+                        centerRadius: 190
+                        focalX: centerX
+                        focalY: centerY
+
+                        GradientStop {
+                            position: 0
+                            color: Qt.alpha(Colors.accent, 0.05 + 0.2 * glow.level)
+                        }
+                        GradientStop {
+                            position: 1
+                            color: Qt.alpha(Colors.accent, 0)
+                        }
+                    }
+
+                    PathLine {
+                        x: glow.width
+                        y: 0
+                    }
+                    PathLine {
+                        x: glow.width
+                        y: glow.height
+                    }
+                    PathLine {
+                        x: 0
+                        y: glow.height
+                    }
+                    PathLine {
+                        x: 0
+                        y: 0
+                    }
+                }
+            }
+        }
+
         Column {
             id: col
 
@@ -745,129 +917,210 @@ PanelWindow {
             width: panel.innerW
             spacing: panel.gap
 
-            // ---- Header: speed, its ruler, limits -----------------------------
+            // ---- Header: the speed, the hill behind it, what is left, limits ---
             Item {
                 id: head
 
                 width: parent.width
                 height: panel.headH
 
-                Column {
-                    id: speedCol
-
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 214
-                    spacing: 3
-
-                    Txt {
-                        text: Aria2.rate(Downloads.stat.downloadSpeed)
-                        color: Downloads.stat.downloadSpeed > 0 ? Colors.foreground : Colors.muted
-                        font.pixelSize: 22
-                        font.bold: true
-                    }
-
-                    Txt {
-                        width: parent.width
-                        text: Downloads.down ? "aria2 is not running" : "\u2191 " + Aria2.rate(Downloads.stat.uploadSpeed) + "   " + Downloads.counts.active + " active   " + Downloads.counts.queued + " queued" + (Downloads.usageText !== "" ? "   " + Downloads.usageText : "")
-                        color: Downloads.down ? Colors.critical : Colors.muted
-                        font.pixelSize: Style.fontSm
-                        elide: Text.ElideRight
-                    }
-                }
-
-                // The last minute of speed, as a ruler: the newest tick is the bright one
+                // The last minute of speed, as a soft hill; the dot is now
                 Item {
                     id: graph
 
-                    anchors.left: speedCol.right
-                    anchors.leftMargin: 12
-                    anchors.right: limits.left
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 36
-                    clip: true
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 56
 
                     readonly property real peak: Math.max(1048576, Math.max.apply(null, Downloads.speedHistory.concat([0])))
-                    readonly property real step: width / Downloads.historyLength
+                    readonly property real step: width / Math.max(1, Downloads.historyLength - 1)
+                    readonly property var pts: {
+                        const n = Downloads.historyLength;
+                        const hist = Downloads.speedHistory;
+                        const out = [];
+                        for (let i = 0; i < n; i++) {
+                            const at = i - (n - hist.length);
+                            const v = at >= 0 ? hist[at] : 0;
+                            out.push(Qt.point(i * step, height - 4 - (height - 12) * Math.min(1, v / peak)));
+                        }
+                        return out;
+                    }
+                    readonly property var area: [Qt.point(0, height)].concat(pts).concat([Qt.point(width, height)])
 
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 1
-                        color: Style.outline
+                    Shape {
+                        anchors.fill: parent
+                        layer.enabled: true
+                        layer.samples: 4
+
+                        ShapePath {
+                            strokeColor: "transparent"
+                            strokeWidth: 1
+                            fillGradient: LinearGradient {
+                                x1: 0
+                                y1: 0
+                                x2: 0
+                                y2: graph.height
+
+                                GradientStop {
+                                    position: 0
+                                    color: Qt.alpha(Colors.foreground, 0.1)
+                                }
+                                GradientStop {
+                                    position: 1
+                                    color: Qt.alpha(Colors.foreground, 0)
+                                }
+                            }
+
+                            PathPolyline {
+                                path: graph.area
+                            }
+                        }
+
+                        ShapePath {
+                            strokeColor: Qt.alpha(Colors.foreground, 0.38)
+                            strokeWidth: 1.25
+                            fillColor: "transparent"
+                            joinStyle: ShapePath.RoundJoin
+
+                            PathPolyline {
+                                path: graph.pts
+                            }
+                        }
                     }
 
-                    Repeater {
-                        model: Downloads.historyLength
+                    Rectangle {
+                        readonly property point last: graph.pts.length > 0 ? graph.pts[graph.pts.length - 1] : Qt.point(0, graph.height)
 
-                        delegate: Rectangle {
-                            required property int index
-                            readonly property int at: index - (Downloads.historyLength - Downloads.speedHistory.length)
-                            readonly property real v: at >= 0 ? Downloads.speedHistory[at] : 0
-                            readonly property bool newest: index === Downloads.historyLength - 1
+                        x: last.x - width / 2 - 2
+                        y: last.y - height / 2
+                        width: 5
+                        height: 5
+                        radius: 2.5
+                        color: Colors.accent
+                    }
+                }
 
-                            x: index * graph.step
-                            width: Math.max(1, graph.step - 1.5)
-                            height: 2 + (graph.height - 4) * Math.min(1, v / graph.peak)
-                            anchors.bottom: parent.bottom
-                            radius: width / 2
-                            color: newest ? Colors.accent : Qt.alpha(Colors.accent, 0.25 + 0.5 * (index / Downloads.historyLength))
-                            opacity: at >= 0 && v > 0 ? 1 : 0.35
+                Column {
+                    id: speedCol
+
+                    x: 0
+                    y: 2
+                    spacing: 0
+
+                    Txt {
+                        text: Downloads.down ? "aria2 is not running" : (panel.speedNow > 0 ? "downloading" : "idle")
+                        color: Downloads.down ? Colors.critical : Colors.muted
+                        font.pixelSize: Style.fontSm
+                    }
+
+                    Item {
+                        width: speedNum.width + speedUnit.width + 8
+                        height: speedNum.height
+
+                        Txt {
+                            id: speedNum
+
+                            text: panel.speedParts[0]
+                            color: panel.speedNow > 0 ? Colors.foreground : Colors.muted
+                            font.pixelSize: 54
+                            font.weight: Font.Light
+                            font.letterSpacing: -2
+                        }
+
+                        Txt {
+                            id: speedUnit
+
+                            x: speedNum.width + 8
+                            anchors.baseline: speedNum.baseline
+                            text: panel.speedParts[1]
+                            color: Colors.muted
+                            font.pixelSize: Style.fontMd
                         }
                     }
                 }
 
-                Row {
-                    id: limits
+                Column {
+                    id: headRight
 
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
+                    y: 4
+                    width: 340
+                    spacing: 4
 
-                    TextButton {
-                        compact: true
-                        glyph: Icons.arrowDown
-                        text: Downloads.limitLabel(Downloads.globalOpt["max-overall-download-limit"])
-                        onClicked: Downloads.cycleLimit("max-overall-download-limit")
-                        onHoveredChanged: panel.tip = hovered ? "Speed limit for downloads" : ""
+                    Txt {
+                        anchors.right: parent.right
+                        text: panel.leftText
+                        color: Colors.foreground
+                        font.pixelSize: Style.fontBase
                     }
 
-                    TextButton {
-                        compact: true
-                        glyph: Icons.arrowUp
-                        text: Downloads.limitLabel(Downloads.globalOpt["max-overall-upload-limit"])
-                        onClicked: Downloads.cycleLimit("max-overall-upload-limit")
-                        onHoveredChanged: panel.tip = hovered ? "Speed limit for seeding" : ""
+                    Txt {
+                        anchors.right: parent.right
+                        width: parent.width
+                        horizontalAlignment: Text.AlignRight
+                        text: "\u2191 " + Aria2.rate(Downloads.stat.uploadSpeed) + "   " + Downloads.counts.active + " active   " + Downloads.counts.queued + " queued" + (Downloads.usageText !== "" ? "   " + Downloads.usageText : "")
+                        color: Colors.muted
+                        font.pixelSize: Style.fontSm
+                        elide: Text.ElideLeft
+                    }
+
+                    Item {
+                        width: 1
+                        height: 6
                     }
 
                     Row {
-                        spacing: 0
-                        anchors.verticalCenter: parent.verticalCenter
+                        id: limits
 
-                        IconButton {
-                            size: 24
-                            glyph: Icons.minus
-                            tip: "Fewer at once"
-                            onClicked: Downloads.stepParallel(-1)
-                            onHoveredChanged: panel.tip = hovered ? tip : ""
+                        anchors.right: parent.right
+                        spacing: 6
+
+                        TextButton {
+                            compact: true
+                            glyph: Icons.arrowDown
+                            text: Downloads.limitLabel(Downloads.globalOpt["max-overall-download-limit"])
+                            onClicked: Downloads.cycleLimit("max-overall-download-limit")
+                            onHoveredChanged: panel.tip = hovered ? "Speed limit for downloads" : ""
                         }
 
-                        Txt {
+                        TextButton {
+                            compact: true
+                            glyph: Icons.arrowUp
+                            text: Downloads.limitLabel(Downloads.globalOpt["max-overall-upload-limit"])
+                            onClicked: Downloads.cycleLimit("max-overall-upload-limit")
+                            onHoveredChanged: panel.tip = hovered ? "Speed limit for seeding" : ""
+                        }
+
+                        Row {
+                            spacing: 0
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 26
-                            horizontalAlignment: Text.AlignHCenter
-                            text: Downloads.parallel() + "\u00d7"
-                            color: Colors.foreground
-                            font.pixelSize: Style.fontMd
-                            font.bold: true
-                        }
 
-                        IconButton {
-                            size: 24
-                            glyph: Icons.plus
-                            tip: "More at once"
-                            onClicked: Downloads.stepParallel(1)
-                            onHoveredChanged: panel.tip = hovered ? tip : ""
+                            IconButton {
+                                size: 24
+                                glyph: Icons.minus
+                                tip: "Fewer at once"
+                                onClicked: Downloads.stepParallel(-1)
+                                onHoveredChanged: panel.tip = hovered ? tip : ""
+                            }
+
+                            Txt {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 26
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Downloads.parallel() + "\u00d7"
+                                color: Colors.foreground
+                                font.pixelSize: Style.fontMd
+                                font.bold: true
+                            }
+
+                            IconButton {
+                                size: 24
+                                glyph: Icons.plus
+                                tip: "More at once"
+                                onClicked: Downloads.stepParallel(1)
+                                onHoveredChanged: panel.tip = hovered ? tip : ""
+                            }
                         }
                     }
                 }
@@ -878,25 +1131,65 @@ PanelWindow {
                 width: parent.width
                 height: panel.barH
 
+                // Tabs are plain text with a hairline under the open one
                 Row {
                     id: tabRow
 
-                    spacing: 4
+                    spacing: 16
 
                     Repeater {
                         model: panel.tabs
 
-                        delegate: TextButton {
+                        delegate: Item {
+                            id: tabItem
+
                             required property var modelData
                             readonly property int n: Downloads.counts[modelData.id] || 0
+                            readonly property bool open: panel.tab === modelData.id
 
-                            compact: true
-                            raised: panel.tab === modelData.id
-                            primary: panel.tab === modelData.id
-                            text: modelData.label + (n > 0 && modelData.id !== "all" ? "  " + n : "")
-                            onClicked: {
-                                panel.tab = modelData.id;
-                                panel.leaveInput();
+                            width: tabLabel.implicitWidth
+                            height: panel.barH
+
+                            Txt {
+                                id: tabLabel
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: tabItem.modelData.label + (tabItem.n > 0 && tabItem.modelData.id !== "all" ? "  " + tabItem.n : "")
+                                color: tabItem.open || tabHover.hovered ? Colors.foreground : Colors.muted
+                                font.pixelSize: Style.fontMd
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Style.fadeMs
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: 1
+                                color: Colors.foreground
+                                opacity: tabItem.open ? 0.85 : 0
+
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: Style.baseMs
+                                    }
+                                }
+                            }
+
+                            HoverHandler {
+                                id: tabHover
+
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            TapHandler {
+                                onTapped: {
+                                    panel.tab = tabItem.modelData.id;
+                                    panel.leaveInput();
+                                }
                             }
                         }
                     }
@@ -986,7 +1279,7 @@ PanelWindow {
 
                     anchors.fill: parent
                     anchors.rightMargin: 6
-                    visible: !panel.showHelp && !Downloads.sheetOpen && count > 0
+                    visible: !panel.showHelp && !Downloads.sheetOpen && (count > 0 || panel.doneHidden > 0)
                     clip: true
                     spacing: 2
                     boundsBehavior: Flickable.StopAtBounds
@@ -1000,6 +1293,58 @@ PanelWindow {
                         objectProp: "gid"
                     }
 
+                    // The finished ones, folded into one line at the end of the spine
+                    footer: Item {
+                        width: list.width
+                        height: panel.doneHidden > 0 ? 48 : 0
+                        visible: height > 0
+
+                        Rectangle {
+                            x: 24
+                            width: 1
+                            height: 24
+                            color: Qt.alpha(Colors.foreground, 0.12)
+                        }
+
+                        Rectangle {
+                            x: 24.5 - width / 2
+                            y: 24 - height / 2
+                            width: 5
+                            height: 5
+                            radius: 2.5
+                            color: Qt.alpha(Colors.foreground, 0.35)
+                        }
+
+                        Rectangle {
+                            x: 42
+                            width: parent.width - 42
+                            height: parent.height
+                            radius: Style.radiusLg
+                            color: foldHover.hovered ? Style.well : "transparent"
+                        }
+
+                        Txt {
+                            x: 56
+                            y: 24 - height / 2
+                            text: panel.doneHidden + " finished"
+                            color: Colors.muted
+                            font.pixelSize: Style.fontMd
+                        }
+
+                        HoverHandler {
+                            id: foldHover
+
+                            cursorShape: Qt.PointingHandCursor
+                        }
+
+                        TapHandler {
+                            onTapped: {
+                                panel.tab = "done";
+                                panel.leaveInput();
+                            }
+                        }
+                    }
+
                     delegate: DownloadRow {
                         width: list.width
                         current: modelData.gid === panel.cursorGid
@@ -1007,6 +1352,10 @@ PanelWindow {
                         armed: Downloads.pendingDelete.indexOf(modelData.gid) >= 0
                         expanded: panel.expandedGid === modelData.gid
                         breath: panel.breath
+                        caption: panel.captionAt(index)
+                        captionN: panel.captionCount(index)
+                        first: index === 0
+                        last: index === list.count - 1 && panel.doneHidden === 0
                         onClicked: ctrl => panel.rowClicked(modelData.gid, ctrl)
                         onPauseClicked: {
                             if (!current)
@@ -1014,6 +1363,10 @@ PanelWindow {
                             Downloads.togglePause([modelData.gid]);
                         }
                         onRetryClicked: Downloads.retryRows([modelData.gid])
+                        onRelinkClicked: {
+                            panel.cursorGid = modelData.gid;
+                            panel.startRelink(modelData.gid);
+                        }
                         onOpenClicked: Downloads.openRow(modelData)
                         onFolderClicked: Downloads.revealRow(modelData)
                         onCopyClicked: Downloads.copyLink(modelData)
@@ -1035,7 +1388,7 @@ PanelWindow {
 
                 // Nothing to show
                 Column {
-                    visible: !panel.showHelp && !Downloads.sheetOpen && list.count === 0
+                    visible: !panel.showHelp && !Downloads.sheetOpen && list.count === 0 && panel.doneHidden === 0
                     anchors.centerIn: parent
                     spacing: 10
 
@@ -1134,15 +1487,15 @@ PanelWindow {
                                 height: 20
 
                                 Txt {
-                                    width: 80
+                                    width: 104
                                     text: modelData.label
                                     color: Colors.muted
                                     font.pixelSize: Style.fontMd
                                 }
 
                                 Txt {
-                                    x: 90
-                                    width: parent.width - 90
+                                    x: 114
+                                    width: parent.width - 114
                                     text: modelData.value
                                     color: modelData.tone === "bad" ? Colors.critical : (modelData.tone === "warn" ? Colors.color3 : Colors.foreground)
                                     font.pixelSize: Style.fontMd
@@ -1167,6 +1520,12 @@ PanelWindow {
                             }
 
                             TextButton {
+                                visible: Downloads.confirmAlt !== ""
+                                text: Downloads.confirmAlt
+                                onClicked: Downloads.confirmAlternate()
+                            }
+
+                            TextButton {
                                 text: "Cancel"
                                 onClicked: Downloads.closeConfirm()
                             }
@@ -1174,7 +1533,7 @@ PanelWindow {
 
                         Txt {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Enter  \u00b7  Esc"
+                            text: Downloads.confirmAlt !== "" ? "Enter  \u00b7  R  \u00b7  Esc" : "Enter  \u00b7  Esc"
                             color: Colors.muted
                             opacity: 0.6
                             font.pixelSize: Style.fontSm
@@ -1234,7 +1593,7 @@ PanelWindow {
                                 width: parent.width
                                 height: 24
                                 radius: Style.radiusSm
-                                color: at === Downloads.pickCur ? Qt.alpha(Colors.accent, Style.tintAlpha) : "transparent"
+                                color: at === Downloads.pickCur ? Style.hoverFill : "transparent"
 
                                 Txt {
                                     x: 8
@@ -1377,8 +1736,18 @@ PanelWindow {
                 visible: height > 0.5
                 clip: true
 
+                Txt {
+                    visible: panel.relinkGid !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    text: Downloads.rowMap[panel.relinkGid] ? "New link for " + Downloads.rowMap[panel.relinkGid].name + "  \u00b7  keeps the partial file  \u00b7  a copied cURL command works too" : ""
+                    color: Colors.muted
+                    font.pixelSize: Style.fontSm
+                    elide: Text.ElideMiddle
+                }
+
                 Row {
-                    visible: addInput.activeFocus || addInput.text.length > 0
+                    visible: (addInput.activeFocus || addInput.text.length > 0) && panel.relinkGid === ""
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
 
@@ -1524,7 +1893,7 @@ PanelWindow {
 
                         Txt {
                             visible: addInput.text.length === 0
-                            text: "Paste a link, magnet or curl command"
+                            text: panel.relinkGid !== "" ? "Paste the new link, or a copied cURL command" : "Paste a link, magnet or curl command"
                             color: Colors.muted
                             opacity: 0.7
                             font.pixelSize: Style.fontLg
