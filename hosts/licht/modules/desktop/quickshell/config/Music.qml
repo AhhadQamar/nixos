@@ -53,6 +53,16 @@ Singleton {
     // [{ filename, current }] and the index of the playing entry
     property var queue: []
     property string cover: ""
+    // Loudness along the song (0..1, 64 numbers) for the waveform; empty for streams or when ffmpeg is missing
+    property var peaks: []
+    property var peaksCache: ({})
+    property string peaksFor: ""
+    property bool peaksDirty: false
+    // Sleep timer: minutes asked for (0 = off), when it ends, seconds left, and the volume to give back
+    property int sleepMin: 0
+    property double sleepEnd: 0
+    property int sleepLeft: 0
+    property int sleepVol: -1
 
     readonly property bool hasTrack: online && !idle && path !== ""
     readonly property bool playing: hasTrack && !paused
@@ -212,6 +222,7 @@ Singleton {
             break;
         case "path":
             path = typeof d === "string" ? d : "";
+            peaks = peaksCache[path] || [];
             if (path === "") {
                 title = "";
                 artist = "";
@@ -230,6 +241,7 @@ Singleton {
                 // Until the tags arrive, show the file name
                 title = baseName(path);
                 fetchCover();
+                loadPeaks();
             }
             tryResumeSeek();
             requestQueue();
@@ -298,6 +310,53 @@ Singleton {
         }
         coverFor = path;
         coverProc.running = true;
+    }
+
+    function loadPeaks() {
+        if (isRemote(path) || peaksCache[path])
+            return;
+        if (peaksProc.running) {
+            peaksDirty = true;
+            return;
+        }
+        peaksFor = path;
+        peaksProc.running = true;
+    }
+
+    function onPeaks(text) {
+        const a = text.trim().split(/\s+/).map(Number).filter(v => isFinite(v));
+        if (a.length >= 8) {
+            const c = Object.assign({}, peaksCache);
+            // Keep the cache small
+            const keys = Object.keys(c);
+            if (keys.length > 60)
+                delete c[keys[0]];
+            c[peaksFor] = a;
+            peaksCache = c;
+            if (peaksFor === path)
+                peaks = a;
+        }
+        if (peaksDirty || peaksFor !== path) {
+            peaksDirty = false;
+            loadPeaks();
+        }
+    }
+
+    // Off, 15, 30, 60 minutes, off again. The music fades over the last
+    // seconds and then pauses; the volume is given back.
+    function cycleSleep() {
+        const next = sleepMin === 0 ? 15 : (sleepMin === 15 ? 30 : (sleepMin === 30 ? 60 : 0));
+        setSleep(next);
+    }
+
+    function setSleep(min) {
+        if (sleepVol >= 0) {
+            setVolume(sleepVol);
+            sleepVol = -1;
+        }
+        sleepMin = min;
+        sleepEnd = min > 0 ? Date.now() + min * 60000 : 0;
+        sleepLeft = min * 60;
     }
 
     // ---- Controls -----------------------------------------------------------
@@ -1008,6 +1067,38 @@ Singleton {
 
         interval: 450
         onTriggered: root.startLyrics()
+    }
+
+    Process {
+        id: peaksProc
+
+        command: ["qs-music-py", Quickshell.shellPath("music/wave.py"), root.peaksFor, "64"]
+        stdout: StdioCollector {
+            onStreamFinished: root.onPeaks(text)
+        }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.sleepEnd > 0
+        onTriggered: {
+            const left = Math.max(0, Math.round((root.sleepEnd - Date.now()) / 1000));
+            root.sleepLeft = left;
+            if (left <= 12 && left > 0 && root.playing) {
+                if (root.sleepVol < 0)
+                    root.sleepVol = root.volume;
+                root.setVolume(root.sleepVol * left / 12);
+            } else if (left === 0) {
+                if (root.playing)
+                    root.send(["set_property", "pause", true]);
+                if (root.sleepVol >= 0)
+                    root.setVolume(root.sleepVol);
+                root.sleepVol = -1;
+                root.sleepMin = 0;
+                root.sleepEnd = 0;
+            }
+        }
     }
 
     Process {

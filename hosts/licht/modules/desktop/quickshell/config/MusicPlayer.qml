@@ -1,38 +1,42 @@
 // MusicPlayer.qml
-// Music on the launcher's dial: the same borderless stage rising from the
-// bottom edge, the same fine ruler, glass squircles and accent underline.
+// The music player: one card, two sides, nothing hidden behind anything.
 //
-// Two things are on screen at once and neither hides the other:
-//   BROWSE   a dial of covers. Five tabs, one key apart (Tab):
-//              Albums  one cover per album: the quick way to put something on
-//              Tracks  every song, an album's tracks together, a gap between
-//              Queue   what is coming up
+//   LEFT   what is playing. The cover runs edge to edge across the top with the
+//          title laid over its foot; under it the time as a big light numeral, a
+//          waveform that is the song (click or drag to seek), the transport, the
+//          volume and what comes next. The lyrics (Ctrl+Y or the lines button)
+//          slide in under a slim banner and stay beside the lists.
+//   RIGHT  browsing, as real lists. Search on top (it is always the box you type
+//          in), then six tabs one key apart (Tab):
+//              Albums  one row per album: the quick way to put something on
+//              Tracks  every song, an album's tracks together under its cover;
+//                      the spine on the left is lit up to the song that plays
+//              Queue   what is playing and what is coming; move, remove, undo
 //              Online  search YouTube Music; Enter streams, Ctrl+D downloads
 //              Lists   playlists (plain .m3u8 files), Liked Songs first
-//            Type to search: on the library tabs the dial jumps to the best
-//            matching song (and goes back to Albums when you clear it); on
-//            Online the same box searches the web; on Lists it filters.
-//   PLAYING  a glass card at the foot, always there: cover, title, transport,
-//            volume, and a ruler that is the track itself. Click or drag the
-//            ruler to seek.
-// Opening lands you on the album that is playing.
+//          The row under the cursor shows its actions as buttons (play, next,
+//          queue, like, add to a playlist); the keys still do the same.
 //
 //   qs ipc call music toggle | open | close | playpause | next | prev | stop | rescan
 //   qs ipc call music download <url | ytsearch1:words | browse:id> <track|album>
-//   qs ipc call music resume | like | lyrics
+//   qs ipc call music resume | like | lyrics | shuffleall | sleep <minutes, 0 = off>
 //   qs ipc call music media <playpause|next|prev>   (media keys: falls back to playerctl)
 //
-// Keys   browse   ← → ↑ ↓ (Ctrl+N / Ctrl+P) move   PgUp PgDn jump 8   Home End ends
+// Keys   browse   Up Down (Ctrl+N / Ctrl+P) move   PgUp PgDn jump 8   Home End ends
 //                 Tab (Shift+Tab) next / previous tab   Ctrl+1 .. 5 pick a tab
-//                 Ctrl+← Ctrl+→ previous / next album (in Tracks)   Ctrl+J back to what is playing
+//                 Ctrl+Left Ctrl+Right previous / next album (in Tracks)   Ctrl+J back to what is playing
 //        play     Enter  Albums: play the album   Tracks: play from this song on
 //                 Ctrl+Enter  Albums: play from this album on   Tracks: play this album
 //                 Shift+Enter add to the queue   Space play / pause (search empty)   Ctrl+Space always
-//        player   Alt+← Alt+→ previous / next track   Shift+← Shift+→ seek 10 s
-//                 Shift+↑ Shift+↓ volume   Ctrl+M mute   Ctrl+S shuffle   Ctrl+R repeat
+//                 Ctrl+Shift+S shuffle everything shown
+//        player   Alt+Left Alt+Right previous / next track   Shift+Left Shift+Right seek 10 s
+//                 Shift+Up Shift+Down volume   Ctrl+M mute   Ctrl+S shuffle   Ctrl+R repeat
+//                 Ctrl+E sleep timer (15, 30, 60 minutes, off)
 //        queue    Delete (or Ctrl+D) remove the highlighted entry   Ctrl+Z puts it back
 //                 Alt+Up / Alt+Down move it up / down   Alt+Enter play it next
+//                 Ctrl+Shift+A save the queue as a playlist
 //        any tab  Alt+Enter plays the song (album, playlist) right after the current one
+//        albums   Ctrl+O sorts by artist or by album name
 //        online   Ctrl+T songs / albums / playlists / artists   Enter stream (from here on)
 //                 Shift+Enter queue   Ctrl+Enter open an album, playlist or artist
 //                 Ctrl+D download (Ctrl+Shift+D: the whole album you are in)
@@ -41,16 +45,13 @@
 //                 Ctrl+L like the song (or the one playing)   Ctrl+A add to a playlist:
 //                 pick one with Enter, or type a new name and press Enter
 //        space    Space with nothing playing picks up the last queue and position
-//        lyrics   Ctrl+Y (or the note by the title) shows the lyrics of the song that
-//                 plays, in time with it. Click a line to jump there. Unsynced lyrics
-//                 scroll with the wheel and the arrows. Esc, a search or a tab leaves.
+//        lyrics   Ctrl+Y (or the lines button) shows the lyrics of the song that plays, in
+//                 time with it. Click a line to jump there. Up / Down nudge the timing.
 //        Esc clears the search, then closes
-// Mouse  click a cover to bring it to the middle, click it again to play from
-//        there; scroll the dial to move, scroll the player card for volume;
-//        click or drag its ruler to seek; click outside to close
+// Mouse  click a row to put the cursor on it, double-click to play it; the buttons
+//        on the row do the rest. Scroll the lists; scroll the left side for volume;
+//        click or drag the waveform to seek; click outside to close
 //
-// Like the launcher it arrives as a rainbow: the covers swing in from the left
-// over a tight dome and unfurl into the calm dial. Closing plays it in reverse.
 // State and mpv live in Music.qml; this file is only the interface.
 
 import QtQuick
@@ -65,43 +66,28 @@ PanelWindow {
     id: panel
 
     // ---- Settings -------------------------------------------------------
-    // The dial, in the launcher's proportions
-    readonly property int topY: 64
-    readonly property int ruleDrop: 46
-    readonly property int ruleY: topY + ruleDrop
-    readonly property real stepPx: 74
-    readonly property real dialR: Math.max(900, width * 0.92)
-    // The dome the dial starts as when it opens (and ends as when it closes)
-    readonly property real rainbowR: Math.min(380, Math.max(280, width * 0.2))
-    readonly property int itemSize: 46
-    readonly property int selectedSize: 76
-    readonly property int tickGap: 12
-    readonly property int tickCount: Math.ceil(width / tickGap) + 24
-    readonly property int slotHalf: Math.min(22, Math.ceil(width * 0.52 / stepPx) + 1)
-    // The extra gap, in discs, between two albums
+    // One card in the middle of the screen: the player on the left, the lists
+    // on the right
+    readonly property int stageW: Math.min(980, width - 48)
+    readonly property int stageH: Math.min(640, height - 64)
+    readonly property int leftW: 340
+    readonly property int pad: 28
+    // The cover banner: tall, or a slim strip while the lyrics are open
+    readonly property int bannerTall: 330
+    readonly property int bannerSlim: 92
+    // The spine and the gutters of the lists
+    readonly property int spineX: 54
+    readonly property int gutter: 34
+    // Where each entry sits along a list (kept for the code that builds the lists)
     readonly property real groupGap: 0.5
-
-    // Rows of the stage, top to bottom (all measured from the top of the stage)
-    readonly property int readoutY: ruleY + 22
-    readonly property int rowY: readoutY + 66
-    readonly property int cardW: Math.min(720, width - 40)
-    readonly property int cardH: 74
-    readonly property int cardY: rowY + Style.fieldHeight + 10
-    readonly property int stageH: cardY + cardH + 22
 
     // ---- State ----------------------------------------------------------
     property bool isOpen: false
-    // 0 = hidden below the edge, 1 = in place
+    // 0 = away, 1 = in place
     property real reveal: 0
-    // Slots the dial is swung to the left while arriving (and right when leaving)
-    property real spinIn: 0
-    // 1 = tight rainbow dome, 0 = the resting dial
-    property real fan: 1
-    // A slow pulse (0..1) for the rings
+    // A slow pulse (0..1) for the node of the song that plays
     property real breath: 0
-    // 0 -> 1 each time the selection changes: the read-out fades up
-    property real swap: 1
-    // The lyrics take the dial's place; lyricsMix is 0..1 as it fades
+    // The lyrics open on the left, under a slim banner; lyricsMix is 0..1 as it fades
     property bool lyricsOn: false
     property real lyricsMix: lyricsOn ? 1 : 0
     // Which line unsynced lyrics are scrolled to
@@ -110,8 +96,12 @@ PanelWindow {
     // The shortcuts sheet (F1, or ? with an empty search): any key puts it away
     property bool helpOn: false
     property real helpMix: helpOn ? 1 : 0
-    // How far the dial has given way to the lyrics or the sheet
-    readonly property real overlayMix: Math.max(lyricsMix, helpMix)
+    // What a hovered row button does, shown in the foot
+    property string tipNow: ""
+    // Albums: "artist" (the library's order) or "title"
+    property string albSort: "artist"
+    // The songs of each album, by group, for playing one or several
+    property var groupPaths: ({})
     readonly property var keyHelp: [
         {
             "k": ["Enter"],
@@ -168,6 +158,22 @@ PanelWindow {
         {
             "k": ["Ctrl", "Y"],
             "d": "lyrics (\u2191\u2193 nudge the timing)"
+        },
+        {
+            "k": ["Ctrl", "Shift", "S"],
+            "d": "shuffle everything shown"
+        },
+        {
+            "k": ["Ctrl", "Shift", "A"],
+            "d": "save the queue as a playlist"
+        },
+        {
+            "k": ["Ctrl", "O"],
+            "d": "sort albums by artist or name"
+        },
+        {
+            "k": ["Ctrl", "E"],
+            "d": "sleep timer: 15, 30, 60 min, off"
         }
     ]
 
@@ -234,7 +240,7 @@ PanelWindow {
     property bool clearArmed: false
     // A short message that takes the place of the small line over the name
     property string note: ""
-    // Whether the dial glides to a new selection (off while jumping)
+    // (kept so the lists below can say "jump, do not glide"; the lists do not glide)
     property bool animateView: false
     // Covers by album, and the albums still waiting for theirs
     property var covers: ({})
@@ -247,7 +253,6 @@ PanelWindow {
     property var targetScreen: Focus.screen
 
     readonly property var items: [albItems, libItems, qItems, oItems, lItems][tab]
-    readonly property var poss: [albPos, libPos, qPos, oPos, lPos][tab]
     readonly property int n: items.length
     readonly property int selIdx: n > 0 ? clamp([asel, sel, qsel, osel, lsel][tab], 0, n - 1) : 0
     // Something to step back out of: an album you opened, a playlist
@@ -262,34 +267,42 @@ PanelWindow {
     }
     readonly property var curItem: n > 0 ? items[selIdx] : null
     readonly property bool curPlaying: curItem !== null && isPlaying(curItem)
-    readonly property real targetPos: n > 0 ? poss[selIdx] : 0
-    // Where the dial is turned to; glides to the selected entry
-    property real viewPos: targetPos
-    readonly property int baseIdx: nearestIdx(viewPos)
-    // Radius of the dial right now: curvature eases from the dome to the dial
-    readonly property real dialNow: 1 / (1 / dialR + (1 / rainbowR - 1 / dialR) * fan)
+    // Where the song that plays sits among the shown songs (-1 = not shown), for the spine
+    readonly property int playIdx: {
+        if (!Music.hasTrack)
+            return -1;
+        const p = Music.path;
+        for (let i = 0; i < libItems.length; i++) {
+            if (libItems[i].path === p)
+                return i;
+        }
+        return -1;
+    }
+    readonly property string playIdxGroup: playIdx >= 0 ? libItems[playIdx].group : ""
+    // The next song in the queue, for the line under the transport
+    readonly property string nextTitle: {
+        const q = Music.queue;
+        let c = -1;
+        for (let i = 0; i < q.length; i++) {
+            if (q[i].current) {
+                c = i;
+                break;
+            }
+        }
+        if (c < 0 || c + 1 >= q.length)
+            return "";
+        const t = Music.lookup(q[c + 1].filename);
+        return t && t.title ? t.title : Music.baseName(q[c + 1].filename);
+    }
     readonly property color tint: Colors.accent
 
-    Behavior on viewPos {
-        enabled: panel.animateView
-
-        // The dial glides into place and settles, with no bounce. Quick, so
-        // that holding an arrow key keeps up.
-        NumberAnimation {
-            duration: Style.moveMs
-            easing.type: Style.easeMove
-        }
-    }
-
     onSelIdxChanged: {
-        if (isOpen)
-            swapAnim.restart();
         coverTimer.restart();
+        Qt.callLater(scrollToSel);
     }
     onTabChanged: {
-        if (isOpen)
-            swapAnim.restart();
         coverTimer.restart();
+        Qt.callLater(scrollToSel);
     }
     onQueryChanged: {
         const q = query.trim();
@@ -325,19 +338,6 @@ PanelWindow {
         return String.fromCodePoint(cp);
     }
 
-    // Ease-out with a small overshoot for the arrival of each cover (0..1 in,
-    // about 1.04 at the peak): the shell's `pop`, kept gentle.
-    function backOut(t) {
-        const c1 = 0.8;
-        const u = t - 1;
-        return 1 + (c1 + 1) * u * u * u + c1 * u * u;
-    }
-
-    // Staggered arrival: 0 until `from`, 1 at `to` (in reveal units).
-    function stage_(from, to) {
-        return clamp((reveal - from) / (to - from), 0, 1);
-    }
-
     function mod(a, b) {
         return ((a % b) + b) % b;
     }
@@ -358,23 +358,32 @@ PanelWindow {
         return parts.length >= 2 ? parts[parts.length - 2] : path;
     }
 
-    // The entry whose place on the dial is nearest to `v`
-    function nearestIdx(v) {
-        const p = poss;
-        if (p.length === 0)
-            return 0;
-        let lo = 0;
-        let hi = p.length - 1;
-        while (lo < hi) {
-            const mid = (lo + hi) >> 1;
-            if (p[mid] < v)
-                lo = mid + 1;
-            else
-                hi = mid;
-        }
-        if (lo > 0 && Math.abs(p[lo - 1] - v) <= Math.abs(p[lo] - v))
-            return lo - 1;
-        return lo;
+    // Keep the cursor row in view (the lists are plain ListViews)
+    function scrollToSel() {
+        if (typeof list === "undefined" || list === null || n === 0)
+            return;
+        if (selIdx === 0)
+            list.positionViewAtBeginning();
+        else
+            list.positionViewAtIndex(selIdx, ListView.Contain);
+    }
+
+    // Tracks: a header (the album's cover and name) before the first song of each album
+    function groupHead(i) {
+        return tab === 1 && i >= 0 && i < n && (i === 0 || items[i - 1].group !== items[i].group);
+    }
+
+    // Queue: what each stretch of it is called
+    function queueCaption(i) {
+        if (tab !== 2 || query.trim() !== "" || i < 0 || i >= n)
+            return "";
+        if (items[i].current)
+            return "now playing";
+        if (i > 0 && items[i - 1].current)
+            return "up next  \u00b7  " + (n - i);
+        if (i === 0)
+            return "played";
+        return "";
     }
 
     // Tracks of one album share a group; a loose file groups with its folder
@@ -438,7 +447,7 @@ PanelWindow {
         if (n === 0)
             return;
         wantCover(items[selIdx], true);
-        for (let d = 1; d <= 6; d++) {
+        for (let d = 1; d <= 14; d++) {
             if (selIdx + d < n)
                 wantCover(items[selIdx + d], false);
             if (selIdx - d >= 0)
@@ -531,6 +540,18 @@ PanelWindow {
                 alb[alb.length - 1].count++;
             }
         }
+        if (albSort === "title")
+            alb.sort((a, b) => a.title.localeCompare(b.title, undefined, {
+                    "sensitivity": "base",
+                    "numeric": true
+                }));
+        const gp = {};
+        for (const t of out) {
+            if (gp[t.group] === undefined)
+                gp[t.group] = [];
+            gp[t.group].push(t.path);
+        }
+        groupPaths = gp;
         let aAt = -1;
         const wantGroup = keepGroup !== "" ? keepGroup : (mode === "best" && out.length > 0 ? out[best].group : "");
         if (wantGroup !== "") {
@@ -552,6 +573,7 @@ PanelWindow {
         sel = Math.max(0, at);
         asel = Math.max(0, aAt);
         animateView = true;
+        Qt.callLater(scrollToSel);
         coverTimer.restart();
     }
 
@@ -569,16 +591,72 @@ PanelWindow {
 
     // Play just the songs of one album (the shown ones, if a search is on)
     function playGroup(grp) {
-        const paths = [];
-        for (let k = 0; k < libItems.length; k++) {
-            if (libItems[k].group === grp)
-                paths.push(libItems[k].path);
-        }
+        const paths = groupPaths[grp] || [];
         if (paths.length === 0)
             return;
         Music.playList(paths, 0);
         say("Playing the album, " + paths.length + (paths.length === 1 ? " song" : " songs"));
         watchPlay();
+    }
+
+    // Albums, in the order they are shown: this one, then the ones after it
+    function playAlbumsFrom(i) {
+        const paths = [];
+        for (let k = i; k < albItems.length && paths.length < 2000; k++) {
+            const g = groupPaths[albItems[k].group] || [];
+            for (const p of g)
+                paths.push(p);
+        }
+        if (paths.length === 0)
+            return;
+        Music.playList(paths, 0);
+        say("Playing " + paths.length + (paths.length === 1 ? " song" : " songs"));
+        watchPlay();
+    }
+
+    // Ctrl+Shift+S: everything that is shown (the whole library, or what a search found), shuffled
+    function shuffleAll() {
+        const paths = libItems.map(m => m.path);
+        if (paths.length === 0) {
+            say("Nothing to shuffle");
+            return;
+        }
+        for (let i = paths.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const t = paths[i];
+            paths[i] = paths[j];
+            paths[j] = t;
+        }
+        Music.playList(paths, 0);
+        say("Shuffling " + songsWord(Math.min(paths.length, Music.queueCap)));
+        watchPlay();
+    }
+
+    function cycleSort() {
+        if (tab !== 0)
+            return;
+        albSort = albSort === "artist" ? "title" : "artist";
+        refilter("keep");
+        say(albSort === "artist" ? "Albums by artist" : "Albums by name");
+    }
+
+    // The queue as songs, for saving it as a playlist
+    function queueEntries() {
+        return Music.queue.map(e => {
+            const t = Music.lookup(e.filename);
+            return entryOf(t ? t : {
+                "path": e.filename
+            });
+        });
+    }
+
+    function saveQueue() {
+        const list = queueEntries();
+        if (list.length === 0) {
+            say("The queue is empty");
+            return;
+        }
+        startPick(list);
     }
 
     // ---- Queue ----------------------------------------------------------
@@ -619,6 +697,7 @@ PanelWindow {
         else
             qsel = clamp(qsel, 0, Math.max(0, out.length - 1));
         animateView = true;
+        Qt.callLater(scrollToSel);
         coverTimer.restart();
     }
 
@@ -690,6 +769,7 @@ PanelWindow {
         oPos = pos;
         osel = keepSel ? clamp(osel, 0, Math.max(0, out.length - 1)) : 0;
         animateView = true;
+        Qt.callLater(scrollToSel);
         coverTimer.restart();
     }
 
@@ -867,6 +947,7 @@ PanelWindow {
         // With nothing matching, the "new playlist" entry is the one to land on
         lsel = keepSel ? clamp(lsel, 0, Math.max(0, out.length - 1)) : 0;
         animateView = true;
+        Qt.callLater(scrollToSel);
         coverTimer.restart();
     }
 
@@ -1327,6 +1408,7 @@ PanelWindow {
             refilterLists(true);
         }
         animateView = true;
+        Qt.callLater(scrollToSel);
     }
 
     // ---- Doing ----------------------------------------------------------
@@ -1365,7 +1447,7 @@ PanelWindow {
         if (curItem === null)
             return;
         if (tab === 0)
-            playFrom(curItem.first);
+            playAlbumsFrom(selIdx);
         else if (tab === 1)
             playGroup(curItem.group);
         else if (tab === 3) {
@@ -1394,12 +1476,9 @@ PanelWindow {
             Music.enqueue(curItem.path);
             say("Added to the end of the queue");
         } else {
-            let c = 0;
-            for (let k = curItem.first; k < libItems.length && libItems[k].group === curItem.group; k++) {
-                Music.enqueue(libItems[k].path);
-                c++;
-            }
-            say("Added " + c + (c === 1 ? " song" : " songs") + " to the end of the queue");
+            const g = groupPaths[curItem.group] || [];
+            g.forEach(p => Music.enqueue(p));
+            say("Added " + g.length + (g.length === 1 ? " song" : " songs") + " to the end of the queue");
         }
         Music.requestQueue();
     }
@@ -1423,12 +1502,7 @@ PanelWindow {
         if (c === null)
             return;
         if (tab === 0) {
-            const list = [];
-            for (let k = 0; k < libItems.length; k++) {
-                if (libItems[k].group === c.group)
-                    list.push(entryOf(libItems[k]));
-            }
-            playNextEntries(list);
+            playNextEntries(libItems.filter(t => t.group === c.group).map(entryOf));
         } else if (tab === 2) {
             // An entry of the queue: move it to just after the current one
             const cur = Music.currentIndex();
@@ -1504,7 +1578,7 @@ PanelWindow {
         if (tab !== 2 || curItem.current)
             return;
         Music.removeFromQueue(curItem.idx);
-        say("Removed from the queue");
+        say("Removed from the queue", 5000);
     }
 
     function nudgeVolume(delta) {
@@ -1546,10 +1620,9 @@ PanelWindow {
             }
         }
         reveal = 0;
-        spinIn = 3.2;
-        fan = 1;
         openAnim.restart();
         search.forceActiveFocus();
+        Qt.callLater(scrollToSel);
     }
 
     function close() {
@@ -1600,10 +1673,8 @@ PanelWindow {
             panel.refilterQueue(false);
         }
 
-        // A new track: the name fades and settles
+        // A new track: its cover is the album's
         function onPathChanged() {
-            if (panel.isOpen)
-                swapAnim.restart();
             panel.seedCover();
         }
 
@@ -1737,6 +1808,16 @@ PanelWindow {
             panel.likePlaying();
         }
 
+        // Shuffle everything in the library
+        function shuffleall() {
+            panel.shuffleAll();
+        }
+
+        // Pause after this many minutes, fading out (0 = off)
+        function sleep(minutes: int) {
+            Music.setSleep(minutes);
+        }
+
         // Show or hide the lyrics of the song that is playing
         function lyrics() {
             panel.toggleLyrics();
@@ -1790,7 +1871,7 @@ PanelWindow {
         }
     }
 
-    // Covers are looked for a moment after the dial settles, not on every
+    // Covers are looked for a moment after the cursor settles, not on every
     // step of a fast scroll
     Timer {
         id: coverTimer
@@ -1799,7 +1880,7 @@ PanelWindow {
         onTriggered: panel.ensureCovers()
     }
 
-    // After letting go of the ruler, keep showing where it was dragged to
+    // After letting go of the waveform, keep showing where it was dragged to
     // until mpv's own position has caught up
     Timer {
         id: seekHold
@@ -1821,65 +1902,29 @@ PanelWindow {
         }
     }
 
-    // Rises smoothly. The covers swing in from the left over a tight dome and
-    // unfurl into the dial.
-    ParallelAnimation {
+    // Arrives with a short rise and a fade, leaves the same way back
+    NumberAnimation {
         id: openAnim
 
-        NumberAnimation {
-            target: panel
-            property: "reveal"
-            from: 0
-            to: 1
-            duration: Style.sweepMs
-            easing.type: Style.easeEnter
-        }
-        NumberAnimation {
-            target: panel
-            property: "spinIn"
-            from: 3.2
-            to: 0
-            duration: Style.sweepMs + Style.moveMs
-            easing.type: Style.easeEnter
-        }
-        NumberAnimation {
-            target: panel
-            property: "fan"
-            from: 1
-            to: 0
-            duration: Style.sweepMs + Style.ambientMs / 2
-            easing.type: Style.easeMove
-        }
+        target: panel
+        property: "reveal"
+        from: 0
+        to: 1
+        duration: Style.enterMs
+        easing.type: Style.easeEnter
     }
 
-    // Leaving: the dial curls back into the dome and sweeps off right.
-    ParallelAnimation {
+    NumberAnimation {
         id: closeAnim
 
-        NumberAnimation {
-            target: panel
-            property: "reveal"
-            to: 0
-            duration: Style.moveMs + Style.fadeMs
-            easing.type: Style.easeExit
-        }
-        NumberAnimation {
-            target: panel
-            property: "spinIn"
-            to: -3.2
-            duration: Style.moveMs + Style.fadeMs
-            easing.type: Style.easeExit
-        }
-        NumberAnimation {
-            target: panel
-            property: "fan"
-            to: 1
-            duration: Style.moveMs + Style.fadeMs
-            easing.type: Style.easeExit
-        }
+        target: panel
+        property: "reveal"
+        to: 0
+        duration: Style.moveMs
+        easing.type: Style.easeExit
     }
 
-    // Slow breath for the rings
+    // Slow breath for the playing node
     SequentialAnimation {
         running: panel.isOpen
         loops: Animation.Infinite
@@ -1900,18 +1945,6 @@ PanelWindow {
             duration: Style.ambientMs * 2
             easing.type: Style.easeAmbient
         }
-    }
-
-    // A different entry is selected: the words fade up
-    NumberAnimation {
-        id: swapAnim
-
-        target: panel
-        property: "swap"
-        from: 0
-        to: 1
-        duration: Style.baseMs
-        easing.type: Style.easeMove
     }
 
     // ---- Small pieces ---------------------------------------------------
@@ -2090,13 +2123,131 @@ PanelWindow {
         }
     }
 
-    // Click above the stage to close. It stops at the stage's top edge: a
-    // click on a button inside must not fall through to this as well.
+    // A quiet text button: muted until hovered, accent while `on`
+    component Link: Item {
+        id: lk
+
+        property string text: ""
+        property bool on: false
+        property bool armed: false
+
+        signal clicked
+
+        implicitWidth: lkText.implicitWidth + 14
+        implicitHeight: 24
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Style.radiusSm
+            color: lkHover.hovered ? Style.well : "transparent"
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Style.fadeMs
+                }
+            }
+        }
+
+        Txt {
+            id: lkText
+
+            anchors.centerIn: parent
+            text: lk.text
+            color: lk.armed ? Colors.critical : (lk.on ? Colors.accent : (lkHover.hovered ? Colors.foreground : Colors.muted))
+            font.pixelSize: Style.fontSm
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Style.fadeMs
+                }
+            }
+        }
+
+        HoverHandler {
+            id: lkHover
+
+            cursorShape: Qt.PointingHandCursor
+        }
+
+        TapHandler {
+            onTapped: lk.clicked()
+        }
+    }
+
+    // A row button: the icon button, and while the pointer is on it the foot says what it does
+    component Act: IconButton {
+        size: 28
+        glyphSize: 14
+        onHoveredChanged: panel.tipNow = hovered ? tip : (panel.tipNow === tip ? "" : panel.tipNow)
+        Component.onDestruction: if (panel.tipNow === tip)
+            panel.tipNow = ""
+    }
+
+    // The song as bars: their height is how loud it is. Played ones are lit,
+    // the head stands taller, and the bars near the pointer rise a little.
+    // Without peaks (a stream, or no ffmpeg) it is a plain ruler.
+    component Wave: Item {
+        id: wv
+
+        property var peaks: []
+        property real frac: 0
+        // 0..1 under the pointer, or -1
+        property real aim: -1
+        readonly property int count: Math.max(8, Math.floor(width / 5))
+        readonly property real slot: width / count
+
+        Repeater {
+            model: wv.count
+
+            delegate: Rectangle {
+                id: bar
+
+                required property int index
+
+                readonly property real t: (index + 0.5) / wv.count
+                readonly property real pk: wv.peaks.length > 7 ? wv.peaks[Math.min(wv.peaks.length - 1, Math.floor(t * wv.peaks.length))] : (index % 4 === 0 ? 0.42 : 0.22)
+                readonly property real near: wv.aim >= 0 ? Math.max(0, 1 - Math.abs(t - wv.aim) * wv.count / 6) : 0
+
+                x: index * wv.slot + (wv.slot - width) / 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 2
+                height: Math.min(wv.height, 4 + pk * (wv.height - 4) + 4 * near)
+                radius: 1
+                antialiasing: true
+                color: t <= wv.frac ? Qt.alpha(Colors.accent, 0.75) : Qt.alpha(Colors.foreground, 0.17 + 0.3 * near)
+
+                Behavior on height {
+                    NumberAnimation {
+                        duration: Style.fadeMs
+                    }
+                }
+            }
+        }
+
+        // A soft halo and the head
+        Rectangle {
+            x: wv.frac * wv.width - 4
+            anchors.verticalCenter: parent.verticalCenter
+            width: 8
+            height: wv.height + 12
+            radius: 4
+            color: Qt.alpha(Colors.accent, 0.16)
+        }
+
+        Rectangle {
+            x: wv.frac * wv.width - 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: 2
+            height: wv.height + 8
+            radius: 1
+            color: Colors.accent
+        }
+    }
+
+    // ---- The stage --------------------------------------------------------
+    // Click outside the card to close
     MouseArea {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: stage.top
+        anchors.fill: parent
         onClicked: panel.close()
     }
 
@@ -2105,1383 +2256,1921 @@ PanelWindow {
         reveal: panel.reveal
     }
 
-    // Screenshot's feathered backing (StageShade.qml), outside the stage which
-    // clips, so it can reach above it and fade out instead of ending in an edge.
-    Item {
-        anchors.fill: parent
-        opacity: Math.min(1, panel.reveal * 3)
-        transform: Translate {
-            y: (1 - panel.reveal) * (panel.stageH + 40)
-        }
-
-        StageShade {
-            h: panel.stageH
-        }
-    }
-
-    // ---- Stage ----------------------------------------------------------
     Item {
         id: stage
 
-        readonly property real cx: width / 2
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        width: panel.stageW
         height: panel.stageH
-        clip: true
-        opacity: Math.min(1, panel.reveal * 3)
-        transform: Translate {
-            y: (1 - panel.reveal) * (panel.stageH + 40)
-        }
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: (parent.height - height) / 2 + (1 - panel.reveal) * 28
+        opacity: Math.min(1, panel.reveal * 2.2)
+        scale: 0.985 + 0.015 * panel.reveal
 
-        // Scroll wheel turns the dial. It takes no clicks, so a click on the
-        // empty stage still closes the player.
-        MouseArea {
+        ClippingRectangle {
+            id: card
+
             anchors.fill: parent
-            acceptedButtons: Qt.NoButton
-            onWheel: wheel => {
-                const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : -wheel.angleDelta.x;
-                if (d !== 0)
-                    panel.move(d < 0 ? 1 : -1);
-            }
-        }
+            radius: 24
+            color: Style.card
+            border.width: 1
+            border.color: Style.outline
 
-        // Low light in the accent, brighter while music plays
-        Shape {
-            id: horizon
-
-            readonly property real r: Math.min(stage.width * 0.46, 760)
-
-            x: stage.cx - r
-            y: stage.height - r
-            width: r * 2
-            height: r * 2
-            layer.enabled: true
-            layer.samples: 4
-            transform: Scale {
-                origin.x: horizon.r
-                origin.y: horizon.r
-                yScale: 0.45
+            // Keeps a click on the card from reaching the "outside" area
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.AllButtons
+                onClicked: search.forceActiveFocus()
             }
 
-            ShapePath {
-                strokeColor: "transparent"
-                startX: 0
-                startY: horizon.r
+            // The record behind the cover: a little of it shows past the edge
+            // while music plays, turning slowly
+            Item {
+                id: disc
 
-                fillGradient: RadialGradient {
-                    centerX: horizon.r
-                    centerY: horizon.r
-                    centerRadius: horizon.r
-                    focalX: horizon.r
-                    focalY: horizon.r
+                x: panel.leftW - 164
+                y: 56
+                width: 220
+                height: 220
+                opacity: Music.hasTrack && !panel.lyricsOn ? 0.45 : 0
 
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(panel.tint, Music.playing ? 0.10 + 0.05 * panel.breath : 0.07)
-                    }
-                    GradientStop {
-                        position: 0.5
-                        color: Qt.alpha(panel.tint, 0.035)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(panel.tint, 0)
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Style.moveMs
                     }
                 }
 
-                PathArc {
-                    x: horizon.r * 2
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
-                }
-                PathArc {
-                    x: 0
-                    y: horizon.r
-                    radiusX: horizon.r
-                    radiusY: horizon.r
-                }
-            }
-        }
-
-        // ---- The ruler: it turns with the dial, and the ticks by the middle
-        // rise a little, like a magnifier ------------------------------------
-        Repeater {
-            model: panel.tickCount
-
-            delegate: Rectangle {
-                id: tick
-
-                required property int index
-
-                readonly property real s: (index - panel.tickCount / 2) * panel.tickGap - panel.mod(panel.viewPos * panel.stepPx - panel.spinIn * panel.stepPx * 0.5, panel.tickGap * 10)
-                readonly property real a: s / panel.dialNow
-                readonly property real rr: panel.dialNow - panel.ruleDrop
-                readonly property bool major: index % 10 === 0
-                readonly property real near: Math.max(0, 1 - Math.abs(s) / 90)
-
-                x: stage.cx + rr * Math.sin(a) - 0.75
-                y: panel.topY + panel.dialNow - rr * Math.cos(a)
-                width: 1.5
-                height: (major ? 9 : 5) + 6 * near
-                radius: 0.75
-                antialiasing: true
-                visible: Math.abs(a) < 1.2
-                transformOrigin: Item.Top
-                rotation: a * 180 / Math.PI
-                color: Qt.tint(Qt.alpha(Colors.foreground, major ? 0.34 : 0.18), Qt.alpha(panel.tint, 0.7 * near))
-                opacity: panel.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1) * panel.clamp(panel.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1) * (1 - panel.overlayMix)
-            }
-        }
-
-        // The middle of the ruler: the accent's 2px, standing where the
-        // selected entry is.
-        Rectangle {
-            x: stage.cx - 1
-            y: panel.ruleY - 3
-            width: 2
-            height: 16
-            radius: 1
-            color: panel.tint
-            opacity: panel.clamp(panel.reveal * 2 - 0.5, 0, 1) * (1 - panel.overlayMix)
-        }
-
-        // ---- The covers --------------------------------------------------
-        // A fixed set of slots that is handed whichever entries are near the
-        // middle, so a library of thousands costs the same as a dozen. The
-        // swell is a function of where a slot is, not of which entry it holds.
-        Repeater {
-            model: panel.slotHalf * 2 + 1
-
-            delegate: Item {
-                id: slot
-
-                required property int index
-
-                readonly property int idx: panel.baseIdx + index - panel.slotHalf
-                readonly property var m: idx >= 0 && idx < panel.n ? panel.items[idx] : null
-                readonly property real pos: m ? panel.poss[idx] : 0
-                readonly property bool current: m !== null && idx === panel.selIdx
-                readonly property bool playing: m ? panel.isPlaying(m) : false
-                readonly property real rel: pos - panel.viewPos
-                // Swung left while arriving, right while leaving
-                readonly property real s: (rel - panel.spinIn) * panel.stepPx
-                readonly property real a: s / panel.dialNow
-                // 0 at rest, 1 in the middle, smooth in between
-                readonly property real near: Math.max(0, 1 - Math.abs(rel))
-                readonly property real grow: near * near * (3 - 2 * near)
-                readonly property real sz: panel.itemSize + (panel.selectedSize - panel.itemSize) * grow
-                readonly property real corner: sz * 0.3
-                readonly property real px: stage.cx + panel.dialNow * Math.sin(a)
-                // The one in the middle also lifts a little off the dial
-                readonly property real py: panel.topY + panel.dialNow * (1 - Math.cos(a)) - 6 * grow
-                // Arrive in a left-to-right wave, each with a small overshoot
-                readonly property real appear: panel.clamp(panel.reveal * 2.2 - (panel.clamp(rel, -6, 6) + 6) * 0.09, 0, 1)
-                readonly property real edge: panel.clamp((stage.cx - Math.abs(px - stage.cx)) / 230, 0, 1)
-                readonly property string coverUrl: m ? (m.cover ? m.cover : (playing && Music.cover !== "" ? Music.cover : panel.coverOf(m))) : ""
-
-                visible: m !== null && Math.abs(a) < 1.3 && opacity > 0.01
-                width: sz
-                height: sz
-                x: px - sz / 2
-                y: py - sz / 2
-                z: 10 + grow * 10
-                opacity: appear * edge * (1 - panel.overlayMix)
-                scale: 0.55 + 0.45 * panel.backOut(appear)
-                // Tilts along the dial, and rises from below as it arrives
-                rotation: a * 180 / Math.PI * 0.6
-                transform: Translate {
-                    y: (1 - slot.appear) * 30
+                RotationAnimator on rotation {
+                    from: 0
+                    to: 360
+                    duration: 14000
+                    loops: Animation.Infinite
+                    running: Music.playing && panel.isOpen && !panel.lyricsOn
                 }
 
-                // Breathing ring around the one in the middle
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    antialiasing: true
+                    color: Style.vinyl
+                    border.width: 1
+                    border.color: Qt.alpha(Colors.foreground, 0.1)
+                }
+
+                Repeater {
+                    model: [92, 72, 54]
+
+                    delegate: Rectangle {
+                        required property int modelData
+
+                        anchors.centerIn: parent
+                        width: modelData * 2
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.alpha(Style.vinylLight, 0.06)
+                    }
+                }
+
                 Rectangle {
                     anchors.centerIn: parent
-                    width: parent.width + 12
+                    width: 42
                     height: width
-                    radius: slot.corner + 6
-                    color: "transparent"
-                    antialiasing: true
-                    visible: slot.grow > 0.05
-                    border.width: 1
-                    border.color: Qt.alpha(panel.tint, slot.grow * (Music.playing && slot.playing ? 0.3 + 0.3 * panel.breath : 0.25))
+                    radius: width / 2
+                    color: Qt.alpha(Colors.accent, 0.6)
                 }
 
-                // Glass, like the bar: one flat surface with a hairline outline
+                // The notch that shows it turning
                 Rectangle {
-                    anchors.fill: parent
-                    radius: slot.corner
-                    antialiasing: true
-                    color: Style.card
-                    border.width: 1
-                    border.color: slot.current ? Qt.alpha(panel.tint, 0.8) : (slot.playing ? Qt.alpha(panel.tint, 0.55) : Qt.alpha(Colors.foreground, 0.2))
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: Style.baseMs
-                        }
-                    }
+                    x: parent.width / 2 - 1.5
+                    y: 14
+                    width: 3
+                    height: 14
+                    radius: 1.5
+                    color: Qt.alpha(Style.vinylLight, 0.22)
                 }
+            }
 
-                // The soft tint inside the glass
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 1
-                    radius: slot.corner - 1
-                    antialiasing: true
-                    color: Qt.alpha(panel.tint, slot.current ? Style.tintAlpha : (slot.playing ? Style.tintAlpha * 0.6 : 0))
+            // ---- Left: what is playing --------------------------------------
+            Item {
+                id: leftPane
 
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: Style.baseMs
-                        }
-                    }
-                }
+                width: panel.leftW
+                height: parent.height
 
-                // The album's cover, or its first letter
-                Art {
-                    anchors.fill: parent
-                    anchors.margins: 3
-                    corner: slot.corner - 3
-                    source: slot.coverUrl
-                    letter: slot.m ? (slot.m.album || slot.m.title || "?").charAt(0).toUpperCase() : ""
-                }
+                // The cover, edge to edge, with the title over its foot
+                Item {
+                    id: banner
 
-                // Light catching the top edge, as on the bar
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.topMargin: 1
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: parent.width * 0.5
-                    height: 1
+                    width: parent.width
+                    height: panel.lyricsOn ? panel.bannerSlim : panel.bannerTall
+                    clip: true
 
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-
-                        GradientStop {
-                            position: 0
-                            color: Qt.alpha(Colors.foreground, 0)
-                        }
-                        GradientStop {
-                            position: 0.5
-                            color: Qt.alpha(Colors.foreground, 0.16)
-                        }
-                        GradientStop {
-                            position: 1
-                            color: Qt.alpha(Colors.foreground, 0)
-                        }
-                    }
-                }
-
-                // This is the one playing: bars that dance (still when paused)
-                Rectangle {
-                    x: parent.width - width * 0.62
-                    y: parent.height - height * 0.62
-                    width: 22
-                    height: 22
-                    radius: 11
-                    antialiasing: true
-                    color: Style.card
-                    border.width: 1
-                    border.color: Qt.alpha(panel.tint, 0.7)
-                    opacity: slot.playing ? 1 : 0
-                    scale: slot.playing ? 1 : 0.4
-
-                    Behavior on opacity {
+                    Behavior on height {
                         NumberAnimation {
-                            duration: Style.baseMs
-                        }
-                    }
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Style.baseMs
+                            duration: Style.moveMs
                             easing.type: Style.easeMove
                         }
                     }
 
-                    Eq {
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Qt.tint(Style.card, Qt.alpha(Colors.accent, 0.1))
+                    }
+
+                    Txt {
                         anchors.centerIn: parent
-                        active: Music.playing
-                    }
-                }
-
-                // Click to bring it to the middle; click the one in the
-                // middle to play from there. Position, not hover, so the dial
-                // never turns under a mouse you are only passing over.
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (!slot.m)
-                            return;
-                        if (slot.current)
-                            panel.activate();
-                        else
-                            panel.setSel(slot.idx);
-                    }
-                }
-            }
-        }
-
-        // Nothing here: one quiet squircle in the middle, in place of the dial
-        Item {
-            id: emptyDisc
-
-            readonly property real appear: panel.stage_(0.1, 0.6)
-
-            x: stage.cx - width / 2
-            y: panel.topY - 6 - height / 2
-            width: panel.selectedSize
-            height: panel.selectedSize
-            opacity: (panel.n === 0 ? appear : 0) * (1 - panel.overlayMix)
-            visible: opacity > 0.01
-            scale: 0.55 + 0.45 * panel.backOut(appear)
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: Style.baseMs
-                }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: width * 0.3
-                antialiasing: true
-                color: Style.card
-                border.width: 1
-                border.color: Qt.alpha(Colors.foreground, 0.2)
-            }
-
-            Txt {
-                anchors.centerIn: parent
-                text: panel.g(0xF075A)
-                color: Colors.muted
-                font.pixelSize: 28
-            }
-        }
-
-        // Accent underline under the selected cover; it breathes with the ring.
-        Rectangle {
-            readonly property real rel: panel.targetPos - panel.viewPos
-            readonly property real a: (rel - panel.spinIn) * panel.stepPx / panel.dialNow
-
-            visible: panel.n > 0
-            width: 20 + 10 * panel.breath
-            height: 2
-            radius: 1
-            color: panel.tint
-            x: stage.cx + panel.dialNow * Math.sin(a) - width / 2
-            y: panel.topY + panel.dialNow * (1 - Math.cos(a)) - 6 + panel.selectedSize / 2 + 8
-            rotation: a * 180 / Math.PI
-            opacity: panel.clamp(panel.reveal * 2 - 0.6, 0, 1) * (1 - panel.overlayMix)
-        }
-
-        // ---- The middle: what the selected entry is ------------------------
-        Item {
-            id: readout
-
-            x: stage.cx - width / 2
-            y: panel.readoutY
-            width: Math.min(560, stage.width - 48)
-            height: 60
-            // Clicks pass through to the dial
-            enabled: false
-            opacity: (0.25 + 0.75 * panel.swap) * panel.stage_(0.2, 0.7) * (1 - panel.overlayMix)
-            transform: Translate {
-                y: (1 - panel.stage_(0.2, 0.7)) * 12 + (1 - panel.swap) * 6
-            }
-
-            Column {
-                width: parent.width
-                spacing: 3
-
-                // Where it is, or what just happened
-                Txt {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    visible: text !== ""
-                    text: panel.lineOne()
-                    color: panel.note !== "" || panel.curPlaying || Music.dlActive ? Colors.accent : Colors.muted
-                    font.pixelSize: Style.fontXs
-                    font.letterSpacing: 1.4
-                    font.capitalization: Font.AllUppercase
-                }
-
-                // The title, with a soft shadow in the background colour so it reads on any wallpaper
-                Item {
-                    width: parent.width
-                    height: title.implicitHeight
-
-                    Txt {
-                        y: 1.5
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                        text: title.text
-                        color: Qt.alpha(Colors.background, 0.9)
-                        font.pixelSize: Style.fontXl + 2
-                        font.bold: true
+                        anchors.verticalCenterOffset: -30
+                        visible: !bannerArt.ready
+                        text: Music.hasTrack ? (Music.album || Music.title || "?").charAt(0).toUpperCase() : ""
+                        color: Qt.alpha(Colors.foreground, 0.3)
+                        font.pixelSize: 110
+                        font.weight: Font.Light
                     }
 
-                    Txt {
-                        id: title
+                    Image {
+                        id: bannerArt
 
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                        text: panel.curItem !== null ? panel.curItem.title : panel.emptyTitle()
-                        color: Colors.foreground
-                        font.pixelSize: Style.fontXl + 2
-                        font.bold: true
+                        readonly property bool ready: status === Image.Ready
+
+                        anchors.fill: parent
+                        source: Music.hasTrack ? Music.cover : ""
+                        sourceSize.width: 700
+                        sourceSize.height: 700
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        opacity: ready ? 1 : 0
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: Style.moveMs
+                            }
+                        }
                     }
-                }
 
-                Txt {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    visible: text !== ""
-                    text: panel.curItem !== null ? panel.subLine(panel.curItem) : panel.emptySub()
-                    color: Colors.muted
-                    font.pixelSize: Style.fontMd
-                }
-            }
-        }
+                    // Fades into the card, so the words are always readable
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: Math.min(parent.height, 210)
 
-        // ---- Lyrics: in the dial's place, the line being sung in the middle ---
-        Item {
-            id: lyricsView
-
-            readonly property real lineH: 36
-            // Synced: the line being sung. Plain: where the wheel has scrolled to.
-            readonly property real focusIdx: Music.lyricSynced ? Math.max(0, Music.lyricIndex) : panel.lyricScroll
-
-            x: stage.cx - width / 2
-            y: 16
-            width: Math.min(680, stage.width - 48)
-            height: panel.rowY - 32
-            clip: true
-            visible: panel.lyricsMix > 0.01
-            opacity: panel.lyricsMix * panel.stage_(0.2, 0.7)
-
-            Column {
-                id: lyricCol
-
-                width: parent.width
-                y: lyricsView.height / 2 - (lyricsView.focusIdx + 0.5) * lyricsView.lineH
-
-                Behavior on y {
-                    NumberAnimation {
-                        duration: 340
-                        easing.type: Easing.OutCubic
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0
+                                color: Qt.alpha(Style.card, 0)
+                            }
+                            GradientStop {
+                                position: 0.6
+                                color: Qt.alpha(Style.card, 0.8)
+                            }
+                            GradientStop {
+                                position: 1
+                                color: Style.card
+                            }
+                        }
                     }
-                }
 
-                Repeater {
-                    model: Music.lyricLines
+                    // Click the cover to play or pause
+                    TapHandler {
+                        onTapped: {
+                            panel.togglePlay();
+                            search.forceActiveFocus();
+                        }
+                    }
 
-                    delegate: Item {
-                        id: ln
+                    Row {
+                        id: bannerBtns
 
-                        required property var modelData
-                        required property int index
-                        readonly property bool cur: Music.lyricSynced && index === Music.lyricIndex
+                        anchors.right: parent.right
+                        anchors.rightMargin: panel.pad - 6
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: panel.lyricsOn ? 12 : 16
+                        spacing: 0
+                        visible: Music.hasTrack
 
-                        width: lyricCol.width
-                        height: lyricsView.lineH
-                        opacity: Math.max(0.12, 1 - Math.abs(index - lyricsView.focusIdx) * 0.3)
+                        Act {
+                            glyph: "≡"
+                            tip: panel.lyricsOn ? "Close the lyrics" : "Lyrics"
+                            on: panel.lyricsOn
+                            glyphSize: 18
+                            onClicked: {
+                                panel.toggleLyrics();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Act {
+                            glyph: panel.playingLiked ? Icons.heart : Icons.heartOutline
+                            tip: panel.playingLiked ? "Unlike" : "Like"
+                            on: panel.playingLiked
+                            glyphSize: 15
+                            onClicked: {
+                                panel.likePlaying();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        DlButton {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: Music.isRemote(Music.path)
+                            busy: panel.playingJob !== null
+                            progress: panel.playingJob !== null ? panel.playingJob.pct / 100 : 0
+                            done: Music.downloaded(Music.path)
+                            onClicked: {
+                                panel.downloadPlaying();
+                                search.forceActiveFocus();
+                            }
+                        }
+                    }
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: panel.pad
+                        anchors.right: bannerBtns.left
+                        anchors.rightMargin: 8
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: panel.lyricsOn ? 12 : 18
+                        spacing: 4
 
                         Txt {
-                            anchors.fill: parent
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+                            width: parent.width
+                            visible: !panel.lyricsOn
                             elide: Text.ElideRight
-                            fontSizeMode: Text.Fit
-                            minimumPixelSize: 11
-                            text: ln.modelData.text !== "" ? ln.modelData.text : "\u266a"
-                            color: ln.cur ? Colors.foreground : Colors.muted
-                            font.pixelSize: ln.cur ? Style.fontXl : Style.fontMd
-                            font.bold: ln.cur
+                            text: Music.hasTrack ? (panel.note !== "" ? panel.note : (Music.dlActive ? "downloading " + Music.dlCount + "  ·  " + Math.round(Music.dlPct) + "%" : (Music.playing ? "now playing" : "paused"))) : (Music.resumable ? "pick up where you left off" : "nothing playing")
+                            color: Colors.accent
+                            font.pixelSize: Style.fontSm
+                        }
+
+                        Txt {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: Music.hasTrack ? (Music.title || "Unknown") : (Music.resumable ? Music.resumeTitle : "Pick something and press Enter")
+                            color: Music.hasTrack || Music.resumable ? Colors.foreground : Colors.muted
+                            font.pixelSize: panel.lyricsOn ? Style.fontBase : 22
+                            font.weight: Font.Medium
+                            font.letterSpacing: panel.lyricsOn ? 0 : -0.4
+                        }
+
+                        Txt {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : ""
+                            visible: text !== ""
+                            color: Qt.alpha(Colors.foreground, 0.65)
+                            font.pixelSize: panel.lyricsOn ? Style.fontSm : Style.fontMd
+                        }
+                    }
+                }
+
+                // ---- Lyrics, under the slim banner --------------------------
+                Item {
+                    id: lyricsView
+
+                    readonly property real lineH: 34
+                    // Synced: the line being sung. Plain: where the wheel has scrolled to.
+                    readonly property real focusIdx: Music.lyricSynced ? Math.max(0, Music.lyricIndex) : panel.lyricScroll
+
+                    anchors.top: banner.bottom
+                    anchors.bottom: lower.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    visible: panel.lyricsMix > 0.01
+                    opacity: panel.lyricsMix
+
+                    Row {
+                        id: lyricHead
+
+                        x: panel.pad
+                        y: 6
+                        width: parent.width - panel.pad * 2
+                        height: 20
+                        spacing: 6
+
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "lyrics"
+                            color: Colors.accent
+                            font.pixelSize: Style.fontSm
+                        }
+
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Music.lyricLines.length === 0 ? "" : (Music.lyricSynced ? "·  synced  ·  ↑↓ timing" : "·  plain  ·  scroll")
+                            color: Colors.muted
+                            font.pixelSize: Style.fontSm
+                        }
+                    }
+
+                    Item {
+                        id: lyricClip
+
+                        anchors.top: lyricHead.bottom
+                        anchors.topMargin: 4
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.leftMargin: panel.pad
+                        anchors.right: parent.right
+                        anchors.rightMargin: panel.pad
+                        clip: true
+
+                        Column {
+                            id: lyricCol
+
+                            width: parent.width
+                            y: lyricClip.height / 2 - (lyricsView.focusIdx + 0.5) * lyricsView.lineH
+
+                            Behavior on y {
+                                NumberAnimation {
+                                    duration: 340
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+
+                            Repeater {
+                                model: Music.lyricLines
+
+                                delegate: Item {
+                                    id: ln
+
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool cur: Music.lyricSynced && index === Music.lyricIndex
+
+                                    width: lyricCol.width
+                                    height: lyricsView.lineH
+                                    opacity: Math.max(0.12, 1 - Math.abs(index - lyricsView.focusIdx) * 0.28)
+
+                                    Txt {
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                        fontSizeMode: Text.Fit
+                                        minimumPixelSize: 11
+                                        text: ln.modelData.text !== "" ? ln.modelData.text : "♪"
+                                        color: ln.cur ? Colors.foreground : Colors.muted
+                                        font.pixelSize: ln.cur ? Style.fontXl + 3 : Style.fontMd
+                                        font.weight: ln.cur ? Font.Medium : Font.Normal
+
+                                        Behavior on color {
+                                            ColorAnimation {
+                                                duration: Style.baseMs
+                                            }
+                                        }
+                                    }
+
+                                    // Click a line to jump to it
+                                    TapHandler {
+                                        enabled: Music.lyricSynced
+                                        onTapped: Music.seekTo(ln.modelData.t)
+                                    }
+                                }
+                            }
+                        }
+
+                        Txt {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            visible: Music.lyricLines.length === 0
+                            text: !Music.hasTrack ? "Nothing playing" : (Music.lyricState === "error" ? Music.lyricError : (Music.lyricState === "none" ? "No lyrics found for this song" : "Looking for lyrics…"))
+                            color: Colors.muted
+                            font.pixelSize: Style.fontMd
+                        }
+                    }
+
+                    // The edges fade into the card
+                    Rectangle {
+                        anchors.top: lyricClip.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 36
+
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0
+                                color: Style.card
+                            }
+                            GradientStop {
+                                position: 1
+                                color: Qt.alpha(Style.card, 0)
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 36
+
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0
+                                color: Qt.alpha(Style.card, 0)
+                            }
+                            GradientStop {
+                                position: 1
+                                color: Style.card
+                            }
+                        }
+                    }
+                }
+
+                // ---- Time, waveform, transport, volume ------------------------
+                Item {
+                    id: lower
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 212
+
+                    // Scroll here for volume
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.NoButton
+                        onWheel: wheel => {
+                            const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x;
+                            if (d !== 0)
+                                panel.nudgeVolume(d > 0 ? 5 : -5);
+                        }
+                    }
+
+                    // The time, big and light
+                    Item {
+                        id: timeRow
+
+                        x: panel.pad
+                        y: 4
+                        width: parent.width - panel.pad * 2
+                        height: 46
+
+                        Txt {
+                            id: bigTime
+
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Music.hasTrack ? Music.fmt(seekArea.aiming ? seekArea.aim * Music.duration : Music.position) : "0:00"
+                            color: Music.hasTrack ? (seekArea.aiming ? Colors.accent : Colors.foreground) : Colors.muted
+                            font.pixelSize: 44
+                            font.weight: Font.Light
+                            font.letterSpacing: -1.5
+                        }
+
+                        Txt {
+                            anchors.right: parent.right
+                            anchors.baseline: bigTime.baseline
+                            visible: seekArea.can
+                            text: "−" + Music.fmt(Math.max(0, Music.duration - Music.position)) + "  ·  " + Music.fmt(Music.duration)
+                            color: Colors.muted
+                            font.pixelSize: Style.fontSm
+                        }
+                    }
+
+                    // The song
+                    Item {
+                        id: seekArea
+
+                        readonly property bool can: Music.hasTrack && Music.duration > 0
+                        readonly property bool aiming: seekMouse.pressed || (seekMouse.containsMouse && can)
+                        readonly property real aim: panel.clamp(seekMouse.mouseX / Math.max(1, width), 0, 1)
+
+                        x: panel.pad
+                        y: timeRow.y + timeRow.height + 10
+                        width: parent.width - panel.pad * 2
+                        height: 34
+
+                        Wave {
+                            anchors.fill: parent
+                            peaks: Music.peaks
+                            frac: panel.seeking ? panel.seekFrac : Music.progress
+                            aim: seekArea.aiming ? seekArea.aim : -1
+                        }
+
+                        MouseArea {
+                            id: seekMouse
+
+                            anchors.fill: parent
+                            anchors.topMargin: -8
+                            anchors.bottomMargin: -8
+                            hoverEnabled: true
+                            enabled: seekArea.can
+                            cursorShape: Qt.PointingHandCursor
+                            onPressed: mouse => {
+                                panel.seeking = true;
+                                seekHold.stop();
+                                panel.seekFrac = panel.clamp(mouse.x / seekArea.width, 0, 1);
+                                dragSeek.start();
+                            }
+                            onPositionChanged: mouse => {
+                                if (pressed)
+                                    panel.seekFrac = panel.clamp(mouse.x / seekArea.width, 0, 1);
+                            }
+                            onReleased: {
+                                dragSeek.stop();
+                                Music.seekTo(panel.seekFrac * Music.duration);
+                                seekHold.restart();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        // While dragging, the music follows the pointer
+                        Timer {
+                            id: dragSeek
+
+                            interval: 140
+                            repeat: true
+                            onTriggered: Music.seekTo(panel.seekFrac * Music.duration)
+                        }
+                    }
+
+                    // Transport
+                    RowLayout {
+                        id: transport
+
+                        x: panel.pad - 4
+                        y: seekArea.y + seekArea.height + 16
+                        width: parent.width - panel.pad * 2 + 8
+                        height: 48
+                        spacing: 0
+
+                        IconButton {
+                            glyph: panel.g(0xF049F)
+                            tip: "Shuffle"
+                            on: Music.shuffle
+                            size: 30
+                            onClicked: {
+                                Music.toggleShuffle();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        IconButton {
+                            glyph: panel.g(0xF04AE)
+                            size: 36
+                            glyphSize: 17
+                            onClicked: {
+                                Music.prev();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        // Play and pause: the one solid control
+                        Rectangle {
+                            id: playBtn
+
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 48
+                            radius: width / 2
+                            antialiasing: true
+                            color: Qt.alpha(Colors.foreground, playHover.hovered ? 1 : 0.92)
+                            scale: playTap.pressed ? 0.94 : 1
 
                             Behavior on color {
                                 ColorAnimation {
                                     duration: Style.baseMs
                                 }
                             }
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Style.pressMs
+                                    easing.type: Style.easePress
+                                }
+                            }
+
+                            Txt {
+                                anchors.centerIn: parent
+                                text: panel.g(Music.playing ? 0xF03E4 : 0xF040A)
+                                color: Colors.background
+                                font.pixelSize: 20
+                            }
+
+                            HoverHandler {
+                                id: playHover
+
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            TapHandler {
+                                id: playTap
+
+                                onTapped: {
+                                    panel.togglePlay();
+                                    search.forceActiveFocus();
+                                }
+                            }
                         }
 
-                        // Click a line to jump to it
-                        TapHandler {
-                            enabled: Music.lyricSynced
-                            onTapped: Music.seekTo(ln.modelData.t)
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        IconButton {
+                            glyph: panel.g(0xF04AD)
+                            size: 36
+                            glyphSize: 17
+                            onClicked: {
+                                Music.next();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        IconButton {
+                            glyph: panel.g(Music.repeat === "one" ? 0xF0458 : 0xF0456)
+                            tip: "Repeat"
+                            on: Music.repeat !== "off"
+                            size: 30
+                            onClicked: {
+                                Music.cycleRepeat();
+                                search.forceActiveFocus();
+                            }
                         }
                     }
-                }
-            }
 
-            // Nothing to show yet
-            Txt {
-                anchors.centerIn: parent
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                visible: Music.lyricLines.length === 0
-                text: !Music.hasTrack ? "Nothing playing" : (Music.lyricState === "error" ? Music.lyricError : (Music.lyricState === "none" ? "No lyrics found for this song" : "Looking for lyrics\u2026"))
-                color: Colors.muted
-                font.pixelSize: Style.fontMd
-            }
-        }
+                    // Volume, and what comes next
+                    Item {
+                        x: panel.pad
+                        y: transport.y + transport.height + 12
+                        width: parent.width - panel.pad * 2
+                        height: 24
 
-        // ---- The shortcuts: in the dial's place, any key puts them away -------
-        Item {
-            id: helpSheet
+                        IconButton {
+                            id: muteBtn
 
-            x: stage.cx - width / 2
-            y: 22
-            width: Math.min(680, stage.width - 48)
-            height: panel.rowY - 40
-            visible: panel.helpMix > 0.01
-            opacity: panel.helpMix * panel.stage_(0.2, 0.7)
+                            anchors.left: parent.left
+                            anchors.leftMargin: -4
+                            anchors.verticalCenter: parent.verticalCenter
+                            glyph: panel.g(Music.muted || Music.volume === 0 ? 0xF0581 : 0xF057E)
+                            on: Music.muted
+                            size: 24
+                            glyphSize: 13
+                            onClicked: {
+                                Music.toggleMute();
+                                search.forceActiveFocus();
+                            }
+                        }
 
-            Grid {
-                anchors.centerIn: parent
-                flow: Grid.TopToBottom
-                rows: 7
-                columnSpacing: 36
-                rowSpacing: 2
+                        // A hairline with a 2px mark; past 100% it turns red
+                        Item {
+                            id: vol
 
-                Repeater {
-                    model: panel.keyHelp
+                            readonly property real shown: Music.muted ? 0 : Music.volume
 
-                    delegate: Row {
-                        required property var modelData
+                            anchors.left: muteBtn.right
+                            anchors.leftMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 72
+                            height: 18
 
-                        height: 20
-                        spacing: 8
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width
+                                height: 1
+                                color: Qt.alpha(Colors.foreground, 0.16)
+                            }
 
-                        Row {
-                            width: 112
-                            height: parent.height
-                            spacing: 4
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width * Math.min(1, vol.shown / 130)
+                                height: 1
+                                color: vol.shown > 100 ? Colors.critical : Qt.alpha(Colors.foreground, 0.6)
+                            }
 
-                            Repeater {
-                                model: modelData.k
+                            Rectangle {
+                                x: parent.width * Math.min(1, vol.shown / 130) - 1
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 2
+                                height: 11
+                                radius: 1
+                                color: vol.shown > 100 ? Colors.critical : Colors.foreground
+                            }
 
-                                delegate: KeyCap {
-                                    required property string modelData
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -5
+                                cursorShape: Qt.PointingHandCursor
+                                onPressed: mouse => set(mouse.x)
+                                onPositionChanged: mouse => {
+                                    if (pressed)
+                                        set(mouse.x);
+                                }
 
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    label: modelData
+                                function set(mx) {
+                                    const f = panel.clamp((mx - 5) / vol.width, 0, 1);
+                                    Music.setVolume(Math.round(f * 130 / 5) * 5);
                                 }
                             }
                         }
 
                         Txt {
-                            width: (helpSheet.width - 36) / 2 - 120
+                            id: volText
+
+                            anchors.left: vol.right
+                            anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.d
-                            elide: Text.ElideRight
-                            color: Qt.alpha(Colors.foreground, 0.85)
-                            font.pixelSize: Style.fontMd
+                            text: Music.muted ? "muted" : String(Music.volume)
+                            color: Music.volume > 100 && !Music.muted ? Colors.critical : Colors.muted
+                            font.pixelSize: Style.fontXs
                         }
-                    }
-                }
-            }
-        }
-
-        // ---- Library or queue, and the search ------------------------------
-        RowLayout {
-            id: row
-
-            x: stage.cx - width / 2
-            y: panel.rowY
-            width: panel.cardW
-            spacing: Style.spaceMd
-            opacity: panel.stage_(0.25, 0.8)
-            transform: Translate {
-                y: (1 - panel.stage_(0.25, 0.8)) * 10
-            }
-
-            // The three lists, one Tab apart
-            Rectangle {
-                id: seg
-
-                Layout.preferredWidth: 420
-                Layout.preferredHeight: Style.fieldHeight
-                radius: height / 2
-                antialiasing: true
-                color: Style.well
-
-                // The highlight glides between them
-                Rectangle {
-                    x: 3 + panel.tab * (seg.width - 6) / 5
-                    y: 3
-                    width: (seg.width - 6) / 5
-                    height: seg.height - 6
-                    radius: height / 2
-                    antialiasing: true
-                    color: Qt.alpha(Colors.accent, Style.selectedAlpha)
-
-                    Behavior on x {
-                        NumberAnimation {
-                            duration: Style.moveMs
-                            easing.type: Style.easeMove
-                        }
-                    }
-                }
-
-                Repeater {
-                    model: [
-                        {
-                            "label": "Albums",
-                            "count": panel.albItems.length
-                        },
-                        {
-                            "label": "Tracks",
-                            "count": Music.library.length
-                        },
-                        {
-                            "label": "Queue",
-                            "count": Music.queue.length
-                        },
-                        {
-                            "label": "Online",
-                            "count": panel.oItems.length
-                        },
-                        {
-                            "label": "Lists",
-                            "count": MusicLists.lists.length
-                        }
-                    ]
-
-                    delegate: Item {
-                        id: segItem
-
-                        required property var modelData
-                        required property int index
-
-                        readonly property bool on: panel.tab === index
-
-                        x: 3 + index * (seg.width - 6) / 5
-                        y: 3
-                        width: (seg.width - 6) / 5
-                        height: seg.height - 6
 
                         Row {
-                            anchors.centerIn: parent
-                            spacing: Style.spaceXs + 1
+                            anchors.right: parent.right
+                            anchors.left: volText.right
+                            anchors.leftMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            layoutDirection: Qt.RightToLeft
+                            spacing: 6
 
                             Txt {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: segItem.modelData.label
-                                color: segItem.on ? Colors.accent : (segHover.hovered ? Colors.foreground : Colors.muted)
-                                font.pixelSize: Style.fontMd
-                                font.bold: segItem.on
-
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: Style.baseMs
-                                    }
-                                }
+                                width: Math.min(implicitWidth, 120)
+                                elide: Text.ElideRight
+                                text: panel.nextTitle
+                                visible: panel.nextTitle !== ""
+                                color: Qt.alpha(Colors.foreground, 0.7)
+                                font.pixelSize: Style.fontSm
                             }
 
                             Txt {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: segItem.modelData.count > 0
-                                text: segItem.modelData.count
+                                text: "next"
+                                visible: panel.nextTitle !== ""
                                 color: Colors.muted
-                                opacity: 0.8
-                                font.pixelSize: Style.fontXs
+                                font.pixelSize: Style.fontSm
                             }
-                        }
 
-                        HoverHandler {
-                            id: segHover
-
-                            cursorShape: Qt.PointingHandCursor
-                        }
-
-                        TapHandler {
-                            onTapped: {
-                                panel.setTab(segItem.index);
-                                search.forceActiveFocus();
+                            Txt {
+                                text: "sleep " + Math.ceil(Music.sleepLeft / 60) + "m"
+                                visible: Music.sleepMin > 0
+                                color: Colors.accent
+                                font.pixelSize: Style.fontSm
                             }
                         }
                     }
                 }
             }
 
-            SearchField {
-                id: search
-
-                Layout.fillWidth: true
-                placeholder: panel.placeholderText()
-                badge: panel.badgeText()
-                busy: panel.tab === 3 ? MusicNet.busy : Music.scanning
-                onTextChanged: panel.query = text
-                Keys.onPressed: event => {
-                    const k = event.key;
-                    const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-                    const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                    const alt = (event.modifiers & Qt.AltModifier) !== 0;
-                    const plain = event.modifiers === Qt.NoModifier;
-                    const left = k === Qt.Key_Left;
-                    const right = k === Qt.Key_Right;
-                    if (panel.helpOn) {
-                        panel.helpOn = false;
-                        event.accepted = true;
-                    } else if (k === Qt.Key_F1 || (event.text === "?" && panel.query === "")) {
-                        panel.lyricsOn = false;
-                        panel.helpOn = true;
-                        event.accepted = true;
-                    } else if (k === Qt.Key_Escape) {
-                        if (panel.pickFor.length > 0)
-                            panel.cancelPick();
-                        else if (panel.lyricsOn)
-                            panel.lyricsOn = false;
-                        else if (panel.query !== "")
-                            search.clear();
-                        else if (panel.canGoBack)
-                            panel.goBack();
-                        else
-                            panel.close();
-                    } else if (k === Qt.Key_Backspace && panel.query === "" && panel.canGoBack)
-                        panel.goBack();
-                    else if (alt && left)
-                        Music.prev();
-                    else if (alt && right)
-                        Music.next();
-                    else if (alt && k === Qt.Key_Up)
-                        panel.moveEntry(-1);
-                    else if (alt && k === Qt.Key_Down)
-                        panel.moveEntry(1);
-                    else if (ctrl && k === Qt.Key_Z)
-                        panel.undoRemove();
-                    else if (shift && !ctrl && left)
-                        Music.seekBy(-10);
-                    else if (shift && !ctrl && right)
-                        Music.seekBy(10);
-                    else if (shift && !ctrl && k === Qt.Key_Up)
-                        panel.nudgeVolume(5);
-                    else if (shift && !ctrl && k === Qt.Key_Down)
-                        panel.nudgeVolume(-5);
-                    else if (ctrl && left)
-                        panel.jumpAlbum(-1);
-                    else if (ctrl && right)
-                        panel.jumpAlbum(1);
-                    else if (ctrl && k === Qt.Key_J)
-                        panel.jumpToPlaying();
-                    else if (ctrl && k === Qt.Key_M)
-                        Music.toggleMute();
-                    else if (ctrl && k === Qt.Key_S)
-                        Music.toggleShuffle();
-                    else if (ctrl && k === Qt.Key_R)
-                        Music.cycleRepeat();
-                    else if (ctrl && k === Qt.Key_D)
-                        panel.ctrlD(shift);
-                    else if (ctrl && k === Qt.Key_T)
-                        panel.cycleKind();
-                    else if (ctrl && k === Qt.Key_L)
-                        panel.likeSel();
-                    else if (ctrl && k === Qt.Key_Y)
-                        panel.toggleLyrics();
-                    else if (ctrl && k === Qt.Key_A)
-                        panel.pickSel();
-                    else if (ctrl && k === Qt.Key_Space)
-                        panel.togglePlay();
-                    else if (k === Qt.Key_Space && panel.query === "" && plain)
-                        panel.togglePlay();
-                    else if (ctrl && k >= Qt.Key_1 && k <= Qt.Key_5)
-                        panel.setTab(k - Qt.Key_1);
-                    else if (k === Qt.Key_Tab)
-                        panel.setTab((panel.tab + 1) % 5);
-                    else if (k === Qt.Key_Backtab)
-                        panel.setTab((panel.tab + 4) % 5);
-                    else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-                        if (alt)
-                            panel.playNextSel();
-                        else if (ctrl)
-                            panel.activateAlt();
-                        else if (shift)
-                            panel.enqueueSel();
-                        else
-                            panel.activate();
-                    } else if (plain && (right || k === Qt.Key_Down))
-                        panel.move(1);
-                    else if (plain && (left || k === Qt.Key_Up))
-                        panel.move(-1);
-                    else if (ctrl && k === Qt.Key_N)
-                        panel.move(1);
-                    else if (ctrl && k === Qt.Key_P)
-                        panel.move(-1);
-                    else if (plain && k === Qt.Key_PageDown)
-                        panel.move(8);
-                    else if (plain && k === Qt.Key_PageUp)
-                        panel.move(-8);
-                    else if (plain && k === Qt.Key_Home)
-                        panel.setSel(0);
-                    else if (plain && k === Qt.Key_End)
-                        panel.setSel(panel.n - 1);
-                    else if (plain && k === Qt.Key_Delete && panel.query === "" && (panel.tab === 2 || panel.tab === 4 || (panel.tab === 3 && panel.curItem !== null && panel.curItem.kind === "recent")))
-                        panel.removeSel();
-                    else
-                        return;
-                    event.accepted = true;
-                }
-            }
-
-            // Library: read the folder again
-            IconButton {
-                Layout.alignment: Qt.AlignVCenter
-                visible: panel.tab < 2
-                glyph: Icons.refresh
-                size: Style.fieldHeight - 4
-                active: !Music.scanning
-                onClicked: {
-                    Music.scan();
-                    panel.say("Reading " + Config.musicDir);
-                    search.forceActiveFocus();
-                }
-            }
-
-            // Queue: empty it, with a second press to be sure
-            TextButton {
-                Layout.alignment: Qt.AlignVCenter
-                visible: panel.tab === 2 && panel.qItems.length > 0
-                compact: true
-                minWidth: 92
-                danger: panel.clearArmed
-                armed: panel.clearArmed
-                text: panel.clearArmed ? "Press again" : "Clear"
-                onClicked: {
-                    panel.requestClear();
-                    search.forceActiveFocus();
-                }
-            }
-
-            // Online: what is being searched for; click to change (Ctrl+T)
-            TextButton {
-                Layout.alignment: Qt.AlignVCenter
-                visible: panel.tab === 3 && panel.oOpened === null
-                compact: true
-                minWidth: 84
-                text: MusicNet.kindLabel
-                onClicked: {
-                    panel.cycleKind();
-                    search.forceActiveFocus();
-                }
-            }
-
-            // Choosing a playlist for some songs: back out
-            TextButton {
-                Layout.alignment: Qt.AlignVCenter
-                visible: panel.tab === 4 && panel.pickFor.length > 0
-                compact: true
-                minWidth: 84
-                text: "Cancel"
-                onClicked: {
-                    panel.cancelPick();
-                    search.forceActiveFocus();
-                }
-            }
-        }
-
-        // ---- What is playing ----------------------------------------------
-        // Always here. The bar's glass, with the dial's parts in it: a
-        // squircle cover, the transport, and along the foot a ruler that is
-        // the track itself.
-        Item {
-            id: card
-
-            x: stage.cx - width / 2
-            y: panel.cardY
-            width: panel.cardW
-            height: panel.cardH
-            opacity: panel.stage_(0.3, 0.85)
-            transform: Translate {
-                y: (1 - panel.stage_(0.3, 0.85)) * 14
-            }
-
-            // Scroll the card for volume
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.NoButton
-                onWheel: wheel => {
-                    const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x;
-                    if (d !== 0)
-                        panel.nudgeVolume(d > 0 ? 5 : -5);
-                }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Style.barRadius
-                antialiasing: true
-                color: Style.card
-                border.width: 1
-                border.color: Style.outline
-            }
-
-            // Light catching the top edge, as on the bar
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 1
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: Style.barRadius
-                anchors.rightMargin: Style.barRadius
-                height: 1
-
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.foreground, 0)
-                    }
-                    GradientStop {
-                        position: 0.5
-                        color: Qt.alpha(Colors.foreground, 0.12)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.foreground, 0)
-                    }
-                }
-            }
-
-            // The cover of what is playing: click to play or pause
+            // ---- Right: the lists -------------------------------------------
             Item {
-                id: nowCover
+                id: rightPane
 
-                x: 14
-                y: 10
-                width: 44
-                height: 44
+                x: panel.leftW
+                width: parent.width - panel.leftW
+                height: parent.height
 
-                // Breathes while the music plays
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: parent.width + 8
-                    height: width
-                    radius: nowArt.corner + 4
-                    color: "transparent"
-                    antialiasing: true
-                    visible: Music.hasTrack
-                    border.width: 1
-                    border.color: Qt.alpha(Colors.accent, Music.playing ? 0.2 + 0.3 * panel.breath : 0.14)
-                }
+                // Search: always the box you type in
+                FocusScope {
+                    id: search
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: width * 0.3
-                    antialiasing: true
-                    color: Style.well
-                    border.width: 1
-                    border.color: Music.hasTrack ? Qt.alpha(Colors.accent, 0.6) : Style.outline
-                }
+                    property alias text: field.text
+                    property alias input: field
+                    readonly property bool filled: field.text !== ""
 
-                Art {
-                    id: nowArt
-
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    corner: 11
-                    source: Music.hasTrack ? Music.cover : ""
-                    letter: Music.hasTrack ? (Music.album || Music.title || "?").charAt(0).toUpperCase() : ""
-                }
-
-                Txt {
-                    anchors.centerIn: parent
-                    visible: !Music.hasTrack
-                    text: panel.g(0xF075A)
-                    color: Colors.muted
-                    font.pixelSize: 20
-                }
-
-                HoverHandler {
-                    cursorShape: Qt.PointingHandCursor
-                }
-
-                TapHandler {
-                    onTapped: {
-                        panel.togglePlay();
-                        search.forceActiveFocus();
-                    }
-                }
-            }
-
-            // Transport and volume, on the right
-            Row {
-                id: controls
-
-                anchors.right: parent.right
-                anchors.rightMargin: 14
-                y: 10 + (44 - height) / 2
-                spacing: Style.spaceLg
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.g(0xF049F)
-                        on: Music.shuffle
-                        size: 30
-                        onClicked: Music.toggleShuffle()
+                    function clear() {
+                        field.text = "";
                     }
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.g(0xF04AE)
-                        size: 32
-                        glyphSize: 16
-                        onClicked: Music.prev()
+                    x: panel.gutter
+                    y: 26
+                    width: parent.width - panel.gutter * 2
+                    height: 34
+                    activeFocusOnTab: false
+                    onTextChanged: panel.query = text
+
+                    Keys.onPressed: event => {
+                        const k = event.key;
+                        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                        const alt = (event.modifiers & Qt.AltModifier) !== 0;
+                        const plain = event.modifiers === Qt.NoModifier;
+                        const left = k === Qt.Key_Left;
+                        const right = k === Qt.Key_Right;
+                        if (panel.helpOn) {
+                            panel.helpOn = false;
+                            event.accepted = true;
+                        } else if (k === Qt.Key_F1 || (event.text === "?" && panel.query === "")) {
+                            panel.helpOn = true;
+                            event.accepted = true;
+                        } else if (k === Qt.Key_Escape) {
+                            if (panel.pickFor.length > 0)
+                                panel.cancelPick();
+                            else if (panel.lyricsOn)
+                                panel.lyricsOn = false;
+                            else if (panel.query !== "")
+                                search.clear();
+                            else if (panel.canGoBack)
+                                panel.goBack();
+                            else
+                                panel.close();
+                        } else if (k === Qt.Key_Backspace && panel.query === "" && panel.canGoBack)
+                            panel.goBack();
+                        else if (alt && left)
+                            Music.prev();
+                        else if (alt && right)
+                            Music.next();
+                        else if (alt && k === Qt.Key_Up)
+                            panel.moveEntry(-1);
+                        else if (alt && k === Qt.Key_Down)
+                            panel.moveEntry(1);
+                        else if (ctrl && k === Qt.Key_Z)
+                            panel.undoRemove();
+                        else if (shift && !ctrl && left)
+                            Music.seekBy(-10);
+                        else if (shift && !ctrl && right)
+                            Music.seekBy(10);
+                        else if (shift && !ctrl && k === Qt.Key_Up)
+                            panel.nudgeVolume(5);
+                        else if (shift && !ctrl && k === Qt.Key_Down)
+                            panel.nudgeVolume(-5);
+                        else if (ctrl && left)
+                            panel.jumpAlbum(-1);
+                        else if (ctrl && right)
+                            panel.jumpAlbum(1);
+                        else if (ctrl && k === Qt.Key_J)
+                            panel.jumpToPlaying();
+                        else if (ctrl && k === Qt.Key_M)
+                            Music.toggleMute();
+                        else if (ctrl && shift && k === Qt.Key_S)
+                            panel.shuffleAll();
+                        else if (ctrl && shift && k === Qt.Key_A)
+                            panel.saveQueue();
+                        else if (ctrl && k === Qt.Key_S)
+                            Music.toggleShuffle();
+                        else if (ctrl && k === Qt.Key_R)
+                            Music.cycleRepeat();
+                        else if (ctrl && k === Qt.Key_O)
+                            panel.cycleSort();
+                        else if (ctrl && k === Qt.Key_E)
+                            Music.cycleSleep();
+                        else if (ctrl && k === Qt.Key_D)
+                            panel.ctrlD(shift);
+                        else if (ctrl && k === Qt.Key_T)
+                            panel.cycleKind();
+                        else if (ctrl && k === Qt.Key_L)
+                            panel.likeSel();
+                        else if (ctrl && k === Qt.Key_Y)
+                            panel.toggleLyrics();
+                        else if (ctrl && k === Qt.Key_A)
+                            panel.pickSel();
+                        else if (ctrl && k === Qt.Key_Space)
+                            panel.togglePlay();
+                        else if (k === Qt.Key_Space && panel.query === "" && plain)
+                            panel.togglePlay();
+                        else if (ctrl && k >= Qt.Key_1 && k <= Qt.Key_5)
+                            panel.setTab(k - Qt.Key_1);
+                        else if (k === Qt.Key_Tab)
+                            panel.setTab((panel.tab + 1) % 5);
+                        else if (k === Qt.Key_Backtab)
+                            panel.setTab((panel.tab + 4) % 5);
+                        else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+                            if (alt)
+                                panel.playNextSel();
+                            else if (ctrl)
+                                panel.activateAlt();
+                            else if (shift)
+                                panel.enqueueSel();
+                            else
+                                panel.activate();
+                        } else if (plain && k === Qt.Key_Down)
+                            panel.move(1);
+                        else if (plain && k === Qt.Key_Up)
+                            panel.move(-1);
+                        else if (ctrl && k === Qt.Key_N)
+                            panel.move(1);
+                        else if (ctrl && k === Qt.Key_P)
+                            panel.move(-1);
+                        else if (plain && k === Qt.Key_PageDown)
+                            panel.move(8);
+                        else if (plain && k === Qt.Key_PageUp)
+                            panel.move(-8);
+                        else if (plain && k === Qt.Key_Home && panel.query === "")
+                            panel.setSel(0);
+                        else if (plain && k === Qt.Key_End && panel.query === "")
+                            panel.setSel(panel.n - 1);
+                        else if (plain && k === Qt.Key_Delete && panel.query === "" && (panel.tab === 2 || panel.tab === 4 || (panel.tab === 3 && panel.curItem !== null && panel.curItem.kind === "recent")))
+                            panel.removeSel();
+                        else
+                            return;
+                        event.accepted = true;
                     }
 
-                    // Play and pause: the one accent-filled control
-                    Rectangle {
-                        id: playBtn
+                    Txt {
+                        id: searchIcon
 
+                        anchors.left: parent.left
+                        anchors.leftMargin: 2
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 40
-                        height: 40
-                        radius: width / 2
-                        antialiasing: true
-                        color: Qt.alpha(Colors.accent, playHover.hovered ? 0.32 : 0.22)
-                        scale: playTap.pressed ? 0.94 : 1
+                        text: Icons.search
+                        color: field.activeFocus || search.filled ? Colors.accent : Colors.muted
+                        opacity: (panel.tab === 3 ? MusicNet.busy : Music.scanning) ? searchBreath : 1
+                        font.pixelSize: Style.fontXl
+
+                        property real searchBreath: 1
+
+                        SequentialAnimation on searchBreath {
+                            running: (panel.tab === 3 ? MusicNet.busy : Music.scanning) && panel.isOpen
+                            loops: Animation.Infinite
+
+                            NumberAnimation {
+                                to: 0.35
+                                duration: Style.ambientMs
+                                easing.type: Style.easeAmbient
+                            }
+                            NumberAnimation {
+                                to: 1
+                                duration: Style.ambientMs
+                                easing.type: Style.easeAmbient
+                            }
+                        }
 
                         Behavior on color {
                             ColorAnimation {
                                 duration: Style.baseMs
                             }
                         }
-                        Behavior on scale {
-                            NumberAnimation {
-                                duration: Style.pressMs
-                                easing.type: Style.easePress
-                            }
+                    }
+
+                    TextInput {
+                        id: field
+
+                        anchors.left: searchIcon.right
+                        anchors.leftMargin: 12
+                        anchors.right: scopeText.left
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        focus: true
+                        clip: true
+                        color: Colors.foreground
+                        selectionColor: Qt.alpha(Colors.accent, 0.4)
+                        selectedTextColor: Colors.foreground
+                        Keys.forwardTo: [search]
+
+                        font {
+                            family: Style.fontFamily
+                            pixelSize: Style.fontBase
                         }
 
                         Txt {
+                            anchors.fill: parent
+                            visible: field.text.length === 0
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: panel.placeholderText()
+                            color: Colors.muted
+                            font.pixelSize: Style.fontBase
+                        }
+                    }
+
+                    // Where the words go, and how many things they found
+                    Txt {
+                        id: scopeText
+
+                        anchors.right: clearX.left
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: panel.badgeText() !== "" ? panel.badgeText() : (panel.tab === 3 ? "online" : "library")
+                        color: Colors.muted
+                        font.pixelSize: Style.fontSm
+                    }
+
+                    Rectangle {
+                        id: clearX
+
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: search.filled ? 24 : 0
+                        height: 24
+                        radius: 12
+                        opacity: search.filled ? 1 : 0
+                        color: xHover.hovered ? Style.hoverFill : "transparent"
+
+                        Txt {
                             anchors.centerIn: parent
-                            text: panel.g(Music.playing ? 0xF03E4 : 0xF040A)
-                            color: Colors.accent
-                            font.pixelSize: 19
+                            text: Icons.close
+                            color: Colors.muted
+                            font.pixelSize: Style.fontMd
                         }
 
                         HoverHandler {
-                            id: playHover
+                            id: xHover
 
                             cursorShape: Qt.PointingHandCursor
                         }
 
                         TapHandler {
-                            id: playTap
-
                             onTapped: {
-                                panel.togglePlay();
-                                search.forceActiveFocus();
+                                search.clear();
+                                field.forceActiveFocus();
                             }
                         }
                     }
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.g(0xF04AD)
-                        size: 32
-                        glyphSize: 16
-                        onClicked: Music.next()
-                    }
+                    // The underline
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 1
+                        color: field.activeFocus || search.filled ? Qt.alpha(Colors.accent, 0.5) : Qt.alpha(Colors.foreground, 0.1)
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.g(Music.repeat === "one" ? 0xF0458 : 0xF0456)
-                        on: Music.repeat !== "off"
-                        size: 30
-                        onClicked: Music.cycleRepeat()
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: Style.baseMs
+                            }
+                        }
                     }
                 }
 
-                // Volume: the speaker mutes, the bars set it (click or drag),
-                // and they turn red past 100%
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spaceXs
+                // Tabs, with a hairline under them
+                Item {
+                    id: tabsBar
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.g(Music.muted || Music.volume === 0 ? 0xF0581 : 0xF057E)
-                        on: Music.muted
-                        size: 28
-                        onClicked: Music.toggleMute()
+                    x: panel.gutter
+                    y: search.y + search.height + 12
+                    width: parent.width - panel.gutter * 2
+                    height: 30
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 1
+                        color: Qt.alpha(Colors.foreground, 0.07)
                     }
 
-                    Item {
-                        id: volBars
-
-                        readonly property int bars: 13
-                        readonly property int gap: 6
-                        readonly property real shown: Music.muted ? 0 : Music.volume
-
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: bars * gap
-                        height: 22
+                    Row {
+                        spacing: 0
 
                         Repeater {
-                            model: volBars.bars
+                            model: [
+                                {
+                                    "label": "Albums",
+                                    "tab": 0
+                                },
+                                {
+                                    "label": "Tracks",
+                                    "tab": 1
+                                },
+                                {
+                                    "label": "",
+                                    "tab": -1
+                                },
+                                {
+                                    "label": "Queue",
+                                    "tab": 2
+                                },
+                                {
+                                    "label": "Online",
+                                    "tab": 3
+                                },
+                                {
+                                    "label": "Lists",
+                                    "tab": 4
+                                }
+                            ]
 
-                            delegate: Rectangle {
-                                required property int index
+                            delegate: Item {
+                                id: tabItem
 
-                                readonly property bool lit: (index + 1) * 10 <= volBars.shown + 4
-                                readonly property bool over: (index + 1) * 10 > 100
+                                required property var modelData
 
-                                x: index * volBars.gap + (volBars.gap - width) / 2
-                                anchors.bottom: parent.bottom
-                                width: 2
-                                height: 5 + index * 1.1
-                                radius: 1
-                                antialiasing: true
-                                color: lit ? (over ? Colors.critical : Colors.accent) : Qt.alpha(Colors.foreground, 0.14)
+                                readonly property bool gap: modelData.tab < 0
+                                readonly property bool on: panel.tab === modelData.tab
 
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: Style.fadeMs
+                                width: gap ? 26 : tabLabel.implicitWidth + (tabCount.visible ? tabCount.implicitWidth + 6 : 0) + 16
+                                height: tabsBar.height
+
+                                Rectangle {
+                                    visible: tabItem.gap
+                                    anchors.centerIn: parent
+                                    width: 1
+                                    height: 12
+                                    color: Qt.alpha(Colors.foreground, 0.14)
+                                }
+
+                                Row {
+                                    visible: !tabItem.gap
+                                    anchors.left: parent.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.verticalCenterOffset: -1
+                                    spacing: 6
+
+                                    Txt {
+                                        id: tabLabel
+
+                                        text: tabItem.modelData.label
+                                        color: tabItem.on ? Colors.foreground : (tabHover.hovered ? Qt.alpha(Colors.foreground, 0.85) : Colors.muted)
+                                        font.pixelSize: Style.fontMd
+
+                                        Behavior on color {
+                                            ColorAnimation {
+                                                duration: Style.fadeMs
+                                            }
+                                        }
+                                    }
+
+                                    // Only the queue's length: the one number that matters at a glance
+                                    Txt {
+                                        id: tabCount
+
+                                        anchors.baseline: tabLabel.baseline
+                                        visible: tabItem.modelData.tab === 2 && Music.queue.length > 0
+                                        text: Music.queue.length
+                                        color: Colors.muted
+                                        font.pixelSize: Style.fontXs
+                                    }
+                                }
+
+                                Rectangle {
+                                    visible: tabItem.on
+                                    anchors.left: parent.left
+                                    anchors.bottom: parent.bottom
+                                    width: tabLabel.implicitWidth + (tabCount.visible ? tabCount.implicitWidth + 6 : 0)
+                                    height: 2
+                                    radius: 1
+                                    color: Colors.foreground
+                                }
+
+                                HoverHandler {
+                                    id: tabHover
+
+                                    enabled: !tabItem.gap
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                TapHandler {
+                                    enabled: !tabItem.gap
+                                    onTapped: {
+                                        panel.setTab(tabItem.modelData.tab);
+                                        search.forceActiveFocus();
                                     }
                                 }
                             }
                         }
+                    }
 
-                        // A little wider than the bars, so they are easy to hit
-                        MouseArea {
-                            id: volArea
+                    // What can be done to the whole list, for this tab
+                    Row {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 3
+                        spacing: 0
 
-                            function set(mx) {
-                                const f = panel.clamp((mx - 4) / volBars.width, 0, 1);
-                                Music.setVolume(Math.round(f * 130 / 5) * 5);
-                            }
-
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            cursorShape: Qt.PointingHandCursor
-                            onPressed: mouse => set(mouse.x)
-                            onPositionChanged: mouse => {
-                                if (pressed)
-                                    set(mouse.x);
+                        Link {
+                            visible: panel.tab === 0
+                            text: panel.albSort === "artist" ? "sort · artist" : "sort · name"
+                            onClicked: {
+                                panel.cycleSort();
+                                search.forceActiveFocus();
                             }
                         }
-                    }
 
-                    Txt {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 34
-                        horizontalAlignment: Text.AlignRight
-                        text: Music.muted ? "Muted" : Music.volume + "%"
-                        color: Music.muted ? Colors.muted : (Music.volume > 100 ? Colors.critical : Colors.muted)
-                        font.pixelSize: Style.fontXs
-                    }
-                }
-            }
+                        Link {
+                            visible: panel.tab < 2
+                            text: "shuffle all"
+                            onClicked: {
+                                panel.shuffleAll();
+                                search.forceActiveFocus();
+                            }
+                        }
 
-            // What is playing
-            Item {
-                x: 70
-                y: 10
-                width: Math.max(40, controls.x - 70 - 14)
-                height: 44
+                        Link {
+                            visible: panel.tab < 2
+                            text: Music.scanning ? "reading…" : "rescan"
+                            onClicked: {
+                                Music.scan();
+                                panel.say("Reading " + Config.musicDir);
+                                search.forceActiveFocus();
+                            }
+                        }
 
-                // Like, and (for a streamed song) keep a copy
-                Row {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-                    visible: Music.hasTrack
+                        Link {
+                            visible: panel.tab === 2 && panel.qItems.length > 0
+                            text: "save as playlist"
+                            onClicked: {
+                                panel.saveQueue();
+                                search.forceActiveFocus();
+                            }
+                        }
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: "\u266a"
-                        on: panel.lyricsOn
-                        size: 28
-                        glyphSize: 15
-                        onClicked: {
-                            panel.toggleLyrics();
-                            search.forceActiveFocus();
+                        Link {
+                            visible: panel.tab === 2
+                            on: Music.sleepMin > 0
+                            text: Music.sleepMin > 0 ? "sleep · " + Music.sleepMin + "m" : "sleep"
+                            onClicked: {
+                                Music.cycleSleep();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Link {
+                            visible: panel.tab === 2 && panel.qItems.length > 0
+                            text: panel.clearArmed ? "press again" : "clear"
+                            armed: panel.clearArmed
+                            onClicked: {
+                                panel.requestClear();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Link {
+                            visible: panel.tab === 3 && panel.oOpened === null
+                            text: MusicNet.kindLabel.toLowerCase()
+                            onClicked: {
+                                panel.cycleKind();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Link {
+                            visible: panel.tab === 4 && panel.pickFor.length > 0
+                            text: "cancel"
+                            onClicked: {
+                                panel.cancelPick();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        Link {
+                            visible: panel.canGoBack
+                            text: "← back"
+                            onClicked: {
+                                panel.goBack();
+                                search.forceActiveFocus();
+                            }
                         }
                     }
-
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: panel.playingLiked ? Icons.heart : Icons.heartOutline
-                        on: panel.playingLiked
-                        size: 28
-                        glyphSize: 15
-                        onClicked: {
-                            panel.likePlaying();
-                            search.forceActiveFocus();
-                        }
-                    }
-
-                    DlButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: Music.isRemote(Music.path)
-                        busy: panel.playingJob !== null
-                        progress: panel.playingJob !== null ? panel.playingJob.pct / 100 : 0
-                        done: Music.downloaded(Music.path)
-                        onClicked: {
-                            panel.downloadPlaying();
-                            search.forceActiveFocus();
-                        }
-                    }
                 }
 
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - (Music.hasTrack ? (Music.isRemote(Music.path) ? 92 : 62) : 0)
-                    spacing: 2
+                // ---- The list ------------------------------------------------
+                ListView {
+                    id: list
 
-                    Txt {
-                        width: parent.width
-                        elide: Text.ElideRight
-                        text: Music.hasTrack ? (Music.title || "Unknown") : (Music.resumable ? "Pick up where you left off" : "Nothing playing")
-                        color: Music.hasTrack ? Colors.foreground : Colors.muted
-                        font.pixelSize: Style.fontLg
-                        font.bold: Music.hasTrack
-                    }
-
-                    Txt {
-                        width: parent.width
-                        elide: Text.ElideRight
-                        text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : (Music.resumable ? Music.resumeTitle : "Pick something and press Enter")
-                        color: Colors.muted
-                        font.pixelSize: Style.fontMd
-                    }
-                }
-            }
-
-            // The track as a ruler: lit up to where it is, the head standing
-            // taller. Click or drag to seek; the time at the left follows the
-            // pointer while you do.
-            Item {
-                id: seekRow
-
-                readonly property bool can: Music.hasTrack && Music.duration > 0
-                readonly property real frac: panel.seeking ? panel.seekFrac : Music.progress
-                readonly property bool aiming: seekArea.pressed || (seekArea.containsMouse && can)
-                readonly property real aim: panel.clamp(seekArea.mouseX / Math.max(1, ticks.width), 0, 1)
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                anchors.bottomMargin: 8
-                height: 14
-
-                Txt {
-                    id: elapsed
-
+                    anchors.top: tabsBar.bottom
+                    anchors.topMargin: 4
+                    anchors.bottom: foot.top
                     anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 36
-                    text: seekRow.can ? Music.fmt(seekRow.aiming ? seekRow.aim * Music.duration : Music.position) : ""
-                    color: seekRow.aiming ? Colors.accent : Colors.muted
-                    font.pixelSize: Style.fontXs
-                }
-
-                Txt {
-                    id: total
-
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 36
-                    horizontalAlignment: Text.AlignRight
-                    text: seekRow.can ? Music.fmt(Music.duration) : ""
-                    color: Colors.muted
-                    font.pixelSize: Style.fontXs
-                }
+                    clip: true
+                    model: panel.items
+                    boundsBehavior: Flickable.StopAtBounds
+                    reuseItems: true
+                    cacheBuffer: 600
+                    onAtYEndChanged: {
+                        if (atYEnd && panel.tab === 3 && panel.oOpened === null && panel.n > 0)
+                            MusicNet.loadMore();
+                    }
 
-                Item {
-                    id: ticks
+                    delegate: Item {
+                        id: row
 
-                    readonly property int gap: 6
-                    readonly property int n: Math.max(1, Math.floor(width / gap))
-                    // The tick the head stands on
-                    readonly property int head: Math.min(n - 1, Math.floor(seekRow.frac * n))
+                        required property var modelData
+                        required property int index
 
-                    anchors.left: elapsed.right
-                    anchors.right: total.left
-                    anchors.leftMargin: Style.spaceMd
-                    anchors.rightMargin: Style.spaceMd
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: parent.height
+                        readonly property var m: modelData
+                        readonly property bool cur: index === panel.selIdx
+                        readonly property bool playing: panel.isPlaying(m)
+                        readonly property bool showHead: panel.groupHead(index)
+                        readonly property string cap: panel.queueCaption(index)
+                        readonly property bool spine: panel.tab === 1
+                        readonly property int headH: showHead ? 62 : (cap !== "" ? 34 : 0)
+                        readonly property int bodyH: panel.tab === 0 ? 56 : (panel.tab === 1 ? 40 : 50)
+                        readonly property bool song: m.kind === undefined || m.kind === "song"
+                        readonly property bool liked: song && m.path !== undefined && m.path !== "" && MusicLists.isLiked(m.path)
+                        readonly property bool showActs: cur || bodyHover.hovered
+                        // Tracks: lit from the top of the playing album to the playing song
+                        readonly property bool lit: spine && panel.playIdx >= 0 && index <= panel.playIdx && m.group === panel.playIdxGroup
+                        readonly property int cardX: spine ? 68 : panel.gutter
+                        readonly property int leadX: spine ? 90 : panel.gutter + 12
+                        readonly property string coverUrl: m.cover ? m.cover : panel.coverOf(m)
 
-                    Repeater {
-                        model: ticks.n
+                        width: list.width
+                        height: headH + bodyH
 
-                        delegate: Rectangle {
-                            required property int index
+                        // The spine
+                        Rectangle {
+                            visible: row.spine
+                            x: panel.spineX
+                            width: 1
+                            height: parent.height
+                            color: row.lit ? Qt.alpha(Colors.accent, 0.55) : Qt.alpha(Colors.foreground, 0.1)
+                        }
 
-                            readonly property bool major: index % 10 === 0
-                            readonly property bool played: seekRow.can && (index + 0.5) / ticks.n <= seekRow.frac
-                            readonly property bool isHead: seekRow.can && index === ticks.head
-                            // Ticks near the pointer rise, like the dial's
-                            readonly property real near: seekRow.aiming ? Math.max(0, 1 - Math.abs((index + 0.5) / ticks.n - seekRow.aim) * ticks.n / 6) : 0
+                        // Tracks: the album's cover and name
+                        Item {
+                            visible: row.showHead
+                            width: parent.width
+                            height: row.headH
 
-                            x: index * ticks.gap + (ticks.gap - width) / 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: isHead ? 2.5 : 1.5
-                            height: (isHead ? 14 : (major ? 8 : 5)) + 4 * near
-                            radius: 1
-                            antialiasing: true
-                            color: isHead ? Colors.accent : (played ? Qt.alpha(Colors.accent, 0.7) : Qt.alpha(Colors.foreground, 0.16 + 0.3 * near))
+                            Art {
+                                x: 68
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: 2
+                                width: 40
+                                height: 40
+                                corner: 10
+                                source: row.coverUrl
+                                letter: (row.m.album || row.m.title || "?").charAt(0).toUpperCase()
+                            }
 
-                            Behavior on height {
-                                NumberAnimation {
-                                    duration: Style.fadeMs
+                            Column {
+                                x: 120
+                                width: parent.width - 120 - 30
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.verticalCenterOffset: 2
+                                spacing: 2
+
+                                Txt {
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: row.m.artist
+                                    visible: text !== ""
+                                    color: Colors.muted
+                                    font.pixelSize: Style.fontSm
+                                }
+
+                                Txt {
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: row.m.album !== "" ? row.m.album : panel.folderOf(row.m.path)
+                                    color: row.m.group === panel.playingGroup ? Colors.accent : Colors.foreground
+                                    font.pixelSize: Style.fontBase
+                                    font.weight: Font.Medium
+                                }
+                            }
+                        }
+
+                        // Queue: "now playing", "up next"
+                        Txt {
+                            visible: row.cap !== ""
+                            x: panel.gutter + 12
+                            y: row.headH - 22
+                            text: row.cap
+                            color: row.cap === "now playing" ? Colors.accent : Colors.muted
+                            font.pixelSize: Style.fontSm
+                        }
+
+                        // The row itself
+                        Item {
+                            id: body
+
+                            y: row.headH
+                            width: parent.width
+                            height: row.bodyH
+
+                            // The cursor: a lifted card
+                            Rectangle {
+                                x: row.cardX
+                                width: parent.width - row.cardX - 30
+                                y: 2
+                                height: parent.height - 4
+                                radius: Style.radiusLg
+                                antialiasing: true
+                                opacity: row.cur ? 1 : (bodyHover.hovered ? 0.5 : 0)
+                                color: Qt.alpha(Colors.foreground, 0.06)
+                                border.width: 1
+                                border.color: Qt.alpha(Colors.foreground, 0.09)
+
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: Style.fadeMs
+                                    }
+                                }
+                            }
+
+                            // Tracks: a node on the spine, and the number or the dancing bars
+                            Rectangle {
+                                visible: row.spine
+                                x: panel.spineX + 0.5 - width / 2
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: row.playing ? 9 : 5
+                                height: width
+                                radius: width / 2
+                                color: row.playing ? Colors.accent : (row.cur ? Colors.foreground : Qt.alpha(Colors.foreground, 0.28))
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width + 6 + 6 * panel.breath
+                                    height: width
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.alpha(Colors.accent, 0.35 * (1 - panel.breath))
+                                    visible: row.playing && Music.playing
+                                }
+                            }
+
+                            Item {
+                                visible: row.spine
+                                x: 74
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 14
+
+                                Eq {
+                                    anchors.centerIn: parent
+                                    visible: row.playing
+                                    active: Music.playing
+                                }
+
+                                Txt {
+                                    anchors.centerIn: parent
+                                    visible: !row.playing
+                                    text: row.m.track > 0 ? String(row.m.track).padStart(2, "0") : "·"
+                                    color: Colors.muted
+                                    font.pixelSize: Style.fontSm
+                                }
+                            }
+
+                            // Everything else: a cover (or a glyph) in front
+                            Art {
+                                visible: !row.spine && row.m.kind !== "recent" && row.m.kind !== "new"
+                                x: row.leadX
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: panel.tab === 0 ? 40 : 34
+                                height: width
+                                corner: width * 0.28
+                                source: row.coverUrl
+                                letter: (row.m.title || row.m.name || "?").charAt(0).toUpperCase()
+                            }
+
+                            Txt {
+                                visible: !row.spine && (row.m.kind === "recent" || row.m.kind === "new")
+                                x: row.leadX
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 34
+                                horizontalAlignment: Text.AlignHCenter
+                                text: row.m.kind === "new" ? Icons.plus : Icons.clock
+                                color: Colors.muted
+                                font.pixelSize: Style.fontXl
+                            }
+
+                            Column {
+                                x: row.spine ? row.leadX + 18 : row.leadX + (panel.tab === 0 ? 40 : 34) + 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - x - 44 - (row.showActs ? actions.width + 8 : 0)
+                                spacing: 2
+
+                                Txt {
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                    text: row.m.title !== undefined ? row.m.title : (row.m.name !== undefined ? row.m.name : "")
+                                    color: row.playing ? Colors.accent : (row.cur ? Colors.foreground : Qt.alpha(Colors.foreground, 0.88))
+                                    font.pixelSize: Style.fontBase
+                                    font.weight: row.playing || row.cur ? Font.Medium : Font.Normal
+                                }
+
+                                Txt {
+                                    width: parent.width
+                                    visible: !row.spine && text !== ""
+                                    elide: Text.ElideRight
+                                    text: panel.subLine(row.m)
+                                    color: Colors.muted
+                                    font.pixelSize: Style.fontSm
+                                }
+                            }
+
+                            // A heart for the ones you like
+                            Txt {
+                                visible: row.liked && !row.showActs
+                                anchors.right: parent.right
+                                anchors.rightMargin: 46
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: Icons.heart
+                                color: Qt.alpha(Colors.foreground, 0.4)
+                                font.pixelSize: Style.fontSm
+                            }
+
+                            // What can be done to this row
+                            // Built only while the row is hovered or under the cursor: twenty
+                            // rows with a dozen buttons each would be a lot to keep around
+                            Loader {
+                                id: actions
+
+                                active: row.showActs
+                                anchors.right: parent.right
+                                anchors.rightMargin: 36
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceComponent: actionsRow
+                            }
+
+                            Component {
+                                id: actionsRow
+
+                                Row {
+                                spacing: 0
+
+                                // Play it
+                                Act {
+                                    visible: panel.tab !== 2 || !row.m.current
+                                    glyph: Icons.play
+                                    tip: panel.tab === 0 ? "Play the album" : (panel.tab === 1 ? "Play from here" : "Play")
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.activate();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Open an album, a playlist, an artist
+                                Act {
+                                    visible: (panel.tab === 3 && row.m.kind !== "song" && row.m.kind !== "recent") || (panel.tab === 4 && row.m.kind === "list" && panel.lOpen === "")
+                                    glyph: Icons.folderOpen
+                                    tip: "Open it"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.activateAlt();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Move in the queue
+                                Act {
+                                    visible: panel.tab === 2 && panel.query.trim() === ""
+                                    glyph: Icons.arrowUp
+                                    tip: "Move up"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.moveEntry(-1);
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                Act {
+                                    visible: panel.tab === 2 && panel.query.trim() === ""
+                                    glyph: Icons.arrowDown
+                                    tip: "Move down"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.moveEntry(1);
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Next, queue
+                                Act {
+                                    visible: panel.tab !== 4 && !(panel.tab === 3 && row.m.kind === "recent") && !(panel.tab === 2 && row.m.current)
+                                    glyph: Icons.chevronRight
+                                    tip: "Play next"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.playNextSel();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                Act {
+                                    visible: panel.tab !== 2 && !(panel.tab === 3 && row.m.kind === "recent") && !(panel.tab === 4 && panel.pickFor.length > 0)
+                                    glyph: Icons.plus
+                                    tip: "Add to the queue"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.enqueueSel();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Like, add to a playlist
+                                Act {
+                                    visible: row.song && row.m.path !== undefined && row.m.path !== "" && panel.tab !== 4
+                                    glyph: row.liked ? Icons.heart : Icons.heartOutline
+                                    on: row.liked
+                                    tip: row.liked ? "Unlike" : "Like"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.likeSel();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                Act {
+                                    visible: panel.tab < 4 && !(panel.tab === 3 && row.m.kind === "recent") && panel.pickFor.length === 0
+                                    glyph: Icons.playlistPlus
+                                    tip: "Add to a playlist"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.pickSel();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Download a streamed song
+                                Act {
+                                    visible: panel.tab === 3 && (row.m.kind === "song" || row.m.kind === "album" || row.m.kind === "playlist")
+                                    glyph: Icons.download
+                                    tip: "Download"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.ctrlD(false);
+                                        search.forceActiveFocus();
+                                    }
+                                }
+
+                                // Remove
+                                Act {
+                                    visible: (panel.tab === 2 && !row.m.current) || (panel.tab === 4 && (panel.lOpen !== "" || (row.m.kind === "list" && row.m.name !== MusicLists.likedName))) || (panel.tab === 3 && row.m.kind === "recent")
+                                    glyph: Icons.close
+                                    danger: true
+                                    tip: panel.tab === 4 && panel.lOpen === "" ? "Delete the playlist (press twice)" : "Remove"
+                                    onClicked: {
+                                        panel.setSel(row.index);
+                                        panel.removeSel();
+                                        search.forceActiveFocus();
+                                    }
+                                }
+                                }
+                            }
+
+                            HoverHandler {
+                                id: bodyHover
+
+                                cursorShape: Qt.PointingHandCursor
+                            }
+
+                            // Click puts the cursor here, double-click plays
+                            TapHandler {
+                                onTapped: {
+                                    panel.setSel(row.index);
+                                    search.forceActiveFocus();
+                                }
+                                onDoubleTapped: {
+                                    panel.setSel(row.index);
+                                    panel.activate();
+                                    search.forceActiveFocus();
                                 }
                             }
                         }
                     }
 
-                    MouseArea {
-                        id: seekArea
+                    // The edge fades into the card
+                    footer: Item {
+                        width: list.width
+                        height: 40
+                    }
+                }
 
-                        anchors.fill: parent
-                        anchors.topMargin: -8
-                        anchors.bottomMargin: -8
-                        hoverEnabled: true
-                        enabled: seekRow.can
-                        cursorShape: Qt.PointingHandCursor
-                        onPressed: mouse => {
-                            panel.seeking = true;
-                            seekHold.stop();
-                            panel.seekFrac = panel.clamp(mouse.x / ticks.width, 0, 1);
-                            dragSeek.start();
+                // Nothing to show
+                Column {
+                    anchors.horizontalCenter: list.horizontalCenter
+                    anchors.verticalCenter: list.verticalCenter
+                    spacing: 6
+                    visible: panel.n === 0
+                    width: list.width - 80
+
+                    Txt {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        text: panel.emptyTitle()
+                        color: Colors.foreground
+                        font.pixelSize: Style.fontLg
+                        font.weight: Font.Medium
+                    }
+
+                    Txt {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        visible: text !== ""
+                        text: panel.emptySub()
+                        color: Colors.muted
+                        font.pixelSize: Style.fontMd
+                    }
+                }
+
+                // The foot fades the list out
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: foot.top
+                    height: 36
+
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.alpha(Style.card, 0)
                         }
-                        onPositionChanged: mouse => {
-                            if (pressed)
-                                panel.seekFrac = panel.clamp(mouse.x / ticks.width, 0, 1);
+                        GradientStop {
+                            position: 1
+                            color: Style.card
                         }
-                        onReleased: {
-                            dragSeek.stop();
-                            Music.seekTo(panel.seekFrac * Music.duration);
-                            seekHold.restart();
-                            search.forceActiveFocus();
+                    }
+                }
+
+                // What just happened, and the way to take it back
+                Rectangle {
+                    id: toast
+
+                    readonly property bool undoable: Music.lastRemoved !== null && panel.note === "Removed from the queue"
+
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: foot.top
+                    anchors.bottomMargin: 6
+                    height: 34
+                    width: toastRow.implicitWidth + 30
+                    radius: height / 2
+                    color: Colors.raisedAlt
+                    border.width: 1
+                    border.color: Style.outline
+                    opacity: panel.note !== "" ? 1 : 0
+                    visible: opacity > 0.01
+                    transform: Translate {
+                        y: panel.note !== "" ? 0 : 8
+
+                        Behavior on y {
+                            NumberAnimation {
+                                duration: Style.baseMs
+                                easing.type: Style.easeEnter
+                            }
                         }
                     }
 
-                    // While dragging, the music follows the pointer
-                    Timer {
-                        id: dragSeek
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Style.fadeMs
+                        }
+                    }
 
-                        interval: 140
-                        repeat: true
-                        onTriggered: Music.seekTo(panel.seekFrac * Music.duration)
+                    Row {
+                        id: toastRow
+
+                        anchors.centerIn: parent
+                        spacing: 10
+
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: panel.note
+                            color: Colors.foreground
+                            font.pixelSize: Style.fontMd
+                        }
+
+                        Link {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: toast.undoable
+                            on: true
+                            text: "undo"
+                            onClicked: {
+                                panel.undoRemove();
+                                search.forceActiveFocus();
+                            }
+                        }
+
+                        KeyCap {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: toast.undoable
+                            label: "Ctrl Z"
+                        }
+                    }
+                }
+
+                // The foot: the keys that matter, or what the button under the pointer does
+                Item {
+                    id: foot
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: panel.gutter
+                    anchors.rightMargin: panel.gutter
+                    height: 44
+
+                    Txt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: panel.tipNow !== ""
+                        text: panel.tipNow
+                        color: Colors.foreground
+                        opacity: 0.85
+                        font.pixelSize: Style.fontSm
+                    }
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 18
+                        visible: panel.tipNow === ""
+
+                        Repeater {
+                            model: panel.tab === 2 ? [["Enter", "play"], ["Alt ↑↓", "move"], ["Del", "remove"]] : [["Enter", "play"], ["Shift Enter", "queue"], ["Alt Enter", "next"]]
+
+                            delegate: Row {
+                                id: hint
+
+                                required property var modelData
+
+                                spacing: 6
+
+                                KeyCap {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    label: hint.modelData[0]
+                                }
+
+                                Txt {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: hint.modelData[1]
+                                    color: Colors.muted
+                                    font.pixelSize: Style.fontSm
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        KeyCap {
+                            anchors.verticalCenter: parent.verticalCenter
+                            label: "?"
+                        }
+
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "all keys"
+                            color: Colors.muted
+                            font.pixelSize: Style.fontSm
+                        }
+                    }
+                }
+            }
+
+            // ---- The shortcuts: over the card, any key puts them away -------
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.alpha(Style.card, 0.98)
+                visible: panel.helpMix > 0.01
+                opacity: panel.helpMix
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        panel.helpOn = false;
+                        search.forceActiveFocus();
+                    }
+                }
+
+                Txt {
+                    x: 48
+                    y: 36
+                    text: "keys"
+                    color: Colors.accent
+                    font.pixelSize: Style.fontSm
+                }
+
+                Grid {
+                    anchors.centerIn: parent
+                    flow: Grid.TopToBottom
+                    rows: Math.ceil(panel.keyHelp.length / 2)
+                    columnSpacing: 56
+                    rowSpacing: 4
+
+                    Repeater {
+                        model: panel.keyHelp
+
+                        delegate: Row {
+                            id: helpRow
+
+                            required property var modelData
+
+                            height: 26
+                            spacing: 12
+
+                            Row {
+                                width: 150
+                                height: parent.height
+                                spacing: 4
+
+                                Repeater {
+                                    model: helpRow.modelData.k
+
+                                    delegate: KeyCap {
+                                        required property string modelData
+
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        label: modelData
+                                    }
+                                }
+                            }
+
+                            Txt {
+                                width: 250
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.d
+                                elide: Text.ElideRight
+                                color: Qt.alpha(Colors.foreground, 0.85)
+                                font.pixelSize: Style.fontMd
+                            }
+                        }
                     }
                 }
             }
