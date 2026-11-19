@@ -24,7 +24,7 @@ Singleton {
     readonly property string queueFile: runtime + "/quickshell-music-queue.m3u"
     readonly property int queueCap: 2000
     // --no-config: your normal mpv.conf (uosc, night mode, resume) is for video
-    readonly property var mpvCommand: ["mpv", "--no-config", "--idle=yes", "--no-video", "--force-window=no", "--no-terminal", "--audio-display=no", "--load-scripts=no", "--load-unsafe-playlists=yes", "--keep-open=no", "--audio-client-name=quickshell-music", "--ytdl=yes", "--ytdl-format=ba[ext=m4a]/ba", "--volume=70", "--volume-max=130", "--input-ipc-server=" + sockPath]
+    readonly property var mpvCommand: ["mpv", "--no-config", "--idle=yes", "--no-video", "--force-window=no", "--no-terminal", "--audio-display=no", "--load-scripts=no", "--load-unsafe-playlists=yes", "--keep-open=no", "--audio-client-name=quickshell-music", "--ytdl=yes", "--ytdl-format=ba[ext=m4a]/ba", "--prefetch-playlist=yes", "--gapless-audio=yes", "--cache=yes", "--demuxer-readahead-secs=30", "--volume=70", "--volume-max=130", "--input-ipc-server=" + sockPath]
 
     // ---- Library --------------------------------------------------------
     // [{ path, artist, album, title }], sorted
@@ -53,11 +53,6 @@ Singleton {
     // [{ filename, current }] and the index of the playing entry
     property var queue: []
     property string cover: ""
-    // Loudness along the song (0..1, 64 numbers) for the waveform; empty for streams or when ffmpeg is missing
-    property var peaks: []
-    property var peaksCache: ({})
-    property string peaksFor: ""
-    property bool peaksDirty: false
     // Sleep timer: minutes asked for (0 = off), when it ends, seconds left, and the volume to give back
     property int sleepMin: 0
     property double sleepEnd: 0
@@ -222,7 +217,6 @@ Singleton {
             break;
         case "path":
             path = typeof d === "string" ? d : "";
-            peaks = peaksCache[path] || [];
             if (path === "") {
                 title = "";
                 artist = "";
@@ -241,7 +235,6 @@ Singleton {
                 // Until the tags arrive, show the file name
                 title = baseName(path);
                 fetchCover();
-                loadPeaks();
             }
             tryResumeSeek();
             requestQueue();
@@ -310,36 +303,6 @@ Singleton {
         }
         coverFor = path;
         coverProc.running = true;
-    }
-
-    function loadPeaks() {
-        if (isRemote(path) || peaksCache[path])
-            return;
-        if (peaksProc.running) {
-            peaksDirty = true;
-            return;
-        }
-        peaksFor = path;
-        peaksProc.running = true;
-    }
-
-    function onPeaks(text) {
-        const a = text.trim().split(/\s+/).map(Number).filter(v => isFinite(v));
-        if (a.length >= 8) {
-            const c = Object.assign({}, peaksCache);
-            // Keep the cache small
-            const keys = Object.keys(c);
-            if (keys.length > 60)
-                delete c[keys[0]];
-            c[peaksFor] = a;
-            peaksCache = c;
-            if (peaksFor === path)
-                peaks = a;
-        }
-        if (peaksDirty || peaksFor !== path) {
-            peaksDirty = false;
-            loadPeaks();
-        }
     }
 
     // Off, 15, 30, 60 minutes, off again. The music fades over the last
@@ -1067,15 +1030,6 @@ Singleton {
 
         interval: 450
         onTriggered: root.startLyrics()
-    }
-
-    Process {
-        id: peaksProc
-
-        command: ["qs-music-py", Quickshell.shellPath("music/wave.py"), root.peaksFor, "64"]
-        stdout: StdioCollector {
-            onStreamFinished: root.onPeaks(text)
-        }
     }
 
     Timer {
