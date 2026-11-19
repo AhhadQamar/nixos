@@ -6,9 +6,6 @@
 //   - The list is every network in range, the strongest first, the one in use
 //     tinted. Click one to join it. A network you have used before (or an open
 //     one) just connects; a new locked one opens a password field under it.
-//   - Under the list, the VPN row switches the WireGuard tunnel (the
-//     wg-quick-wg0 unit) on and off. While it is up, the network in use
-//     carries a small "VPN" tag and the header says so.
 //   - The foot: Scan looks for networks again, Disconnect drops the current
 //     one, and the last button turns the wifi radio off and on.
 //
@@ -44,14 +41,6 @@ PopupWindow {
     // The wifi interface (wlan0...), which Disconnect needs
     property string device: ""
     property bool scanning: false
-    // The WireGuard tunnel (wg-quick-wg0) is up. SystemStats keeps it current
-    // from the bar's five-second check; a switch here sets it at once.
-    property bool vpnOn: false
-    // The last failure of the VPN switch
-    property string vpnError: ""
-    // When the last VPN switch finished (ms since 1970). The bar ignores a
-    // poll that was already running before it (see SystemStats.parseNet).
-    property double vpnSetAt: 0
 
     // ---- What the person is doing -----------------------------------------
     // The network being joined, and the one whose password field is open
@@ -62,7 +51,7 @@ PopupWindow {
     property string errorFor: ""
 
     readonly property var current: networks.find(n => n.inUse) ?? null
-    readonly property bool working: pending !== "" || actProc.running || vpnProc.running
+    readonly property bool working: pending !== "" || actProc.running
     // The list scrolls past six rows
     readonly property int maxList: 6 * 36
     readonly property string status: {
@@ -70,13 +59,11 @@ PopupWindow {
             return "Connecting…";
         if (actProc.running && actProc.kind === "disconnect")
             return "Disconnecting…";
-        if (vpnProc.running)
-            return vpnProc.want === "start" ? "Connecting VPN…" : "Disconnecting VPN…";
         if (scanning)
             return "Scanning…";
         if (!radioOn)
             return "Wi-Fi off";
-        return current ? "Connected  ·  " + current.signal + "%" + (vpnOn ? "  ·  VPN" : "") : "Not connected";
+        return current ? "Connected  ·  " + current.signal + "%" : "Not connected";
     }
 
     // Something changed the connection: the bar should check the network again
@@ -208,31 +195,6 @@ PopupWindow {
         run("radio", ["radio", "wifi", radioOn ? "off" : "on"]);
     }
 
-    // Switch the tunnel. `systemctl` asks polkit, and system/wireguard.nix
-    // lets wheel do this one unit without a password. The shell prints the
-    // exit code on the first line and what systemctl said after it.
-    function toggleVpn() {
-        if (working)
-            return;
-        vpnError = "";
-        vpnProc.want = vpnOn ? "stop" : "start";
-        vpnProc.command = ["sh", "-c", "out=$(systemctl \"$1\" wg-quick-wg0.service 2>&1); echo \"$?\"; echo \"$out\"", "sh", vpnProc.want];
-        vpnProc.running = true;
-    }
-
-    function vpnDone(raw) {
-        const nl = raw.indexOf("\n");
-        const code = parseInt(nl < 0 ? raw : raw.slice(0, nl));
-        const msg = nl < 0 ? "" : raw.slice(nl + 1).trim();
-        if (code === 0) {
-            vpnOn = vpnProc.want === "start";
-            vpnSetAt = Date.now();
-        } else {
-            vpnError = /authori[sz]|polkit|denied|interactive/i.test(msg) ? "Not allowed" : (msg.split("\n")[0] || "Could not switch the VPN");
-        }
-        connectionChanged();
-    }
-
     // A click on a row
     function pick(n) {
         if (working || n.inUse)
@@ -284,7 +246,6 @@ PopupWindow {
         selected = "";
         error = "";
         errorFor = "";
-        vpnError = "";
         anchor.rect = barWindow.contentItem.mapFromItem(target, 0, 0, target.width, target.height + Style.spaceMd);
         visible = true;
     }
@@ -357,17 +318,6 @@ PopupWindow {
 
         stdout: StdioCollector {
             onStreamFinished: pop.actionDone(text)
-        }
-    }
-
-    // Start or stop the tunnel (see toggleVpn). `want` remembers which.
-    Process {
-        id: vpnProc
-
-        property string want: ""
-
-        stdout: StdioCollector {
-            onStreamFinished: pop.vpnDone(text)
         }
     }
 
@@ -559,7 +509,6 @@ PopupWindow {
                             color: row.modelData.inUse || row.connecting ? Colors.accent : Colors.foreground
                             kind: "wifi"
                             strength: row.modelData.signal
-                            vpn: row.modelData.inUse && pop.vpnOn
                         }
 
                         Txt {
@@ -593,14 +542,6 @@ PopupWindow {
                                 visible: row.modelData.saved && !row.modelData.inUse && !row.connecting
                                 text: "Saved"
                                 color: Colors.muted
-                                font.pixelSize: Style.fontXs
-                                font.letterSpacing: 1
-                                font.capitalization: Font.AllUppercase
-                            }
-                            Txt {
-                                visible: row.modelData.inUse && pop.vpnOn && !row.connecting
-                                text: "VPN"
-                                color: Colors.accent
                                 font.pixelSize: Style.fontXs
                                 font.letterSpacing: 1
                                 font.capitalization: Font.AllUppercase
@@ -703,115 +644,6 @@ PopupWindow {
                 text: !pop.radioOn ? "Wi-Fi is off" : (pop.scanning ? "Scanning…" : "No networks found")
                 color: Colors.muted
                 font.pixelSize: Style.fontMd
-            }
-
-            // ---- The VPN ---------------------------------------------------
-            // Same shape as a network row: lit in the accent while the tunnel
-            // is up, a click switches it.
-            Column {
-                width: parent.width
-                spacing: Style.spaceXs
-
-                Rectangle {
-                    width: parent.width
-                    height: 34
-                    radius: Style.radiusLg
-                    antialiasing: true
-                    color: pop.vpnOn ? Qt.alpha(Colors.accent, Style.tintAlpha) : (vpnHover.hovered && !pop.working ? Style.hoverFill : "transparent")
-                    scale: vpnTap.pressed ? 0.98 : 1
-                    opacity: pop.working && !vpnProc.running ? 0.5 : 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: Style.fadeMs
-                        }
-                    }
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Style.pressMs
-                            easing.type: Style.easePress
-                        }
-                    }
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration: Style.fadeMs
-                        }
-                    }
-
-                    // The same shield as the bar's badge: solid while the
-                    // tunnel is up, an outline while it is off
-                    ShieldGlyph {
-                        x: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 16
-                        height: 16
-                        color: pop.vpnOn || vpnProc.running ? Colors.accent : Colors.foreground
-                        on: pop.vpnOn
-                    }
-
-                    Txt {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 36
-                        anchors.right: vpnInfo.left
-                        anchors.rightMargin: Style.spaceMd
-                        anchors.verticalCenter: parent.verticalCenter
-                        elide: Text.ElideRight
-                        text: "WireGuard"
-                        color: pop.vpnOn || vpnProc.running ? Colors.accent : Colors.foreground
-                        font.pixelSize: Style.fontBase
-                    }
-
-                    Row {
-                        id: vpnInfo
-
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.spaceSm
-
-                        Txt {
-                            visible: vpnProc.running
-                            text: vpnProc.want === "start" ? "Connecting…" : "Disconnecting…"
-                            color: Colors.accent
-                            font.pixelSize: Style.fontSm
-                        }
-                        Txt {
-                            visible: !vpnProc.running && !pop.vpnOn
-                            text: "Off"
-                            color: Colors.muted
-                            font.pixelSize: Style.fontXs
-                            font.letterSpacing: 1
-                            font.capitalization: Font.AllUppercase
-                        }
-                        Txt {
-                            visible: !vpnProc.running && pop.vpnOn
-                            text: Icons.check
-                            color: Colors.accent
-                            font.pixelSize: Style.fontMd
-                        }
-                    }
-
-                    HoverHandler {
-                        id: vpnHover
-
-                        cursorShape: Qt.PointingHandCursor
-                    }
-                    TapHandler {
-                        id: vpnTap
-
-                        onTapped: pop.toggleVpn()
-                    }
-                }
-
-                Txt {
-                    width: parent.width
-                    leftPadding: 10
-                    visible: pop.vpnError !== ""
-                    elide: Text.ElideRight
-                    text: pop.vpnError
-                    color: Colors.critical
-                    font.pixelSize: Style.fontSm
-                }
             }
 
             // ---- The foot --------------------------------------------------

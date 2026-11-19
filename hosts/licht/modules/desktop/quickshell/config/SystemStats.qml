@@ -128,21 +128,16 @@ Item {
     property string netKind: "none" // "wifi" | "ethernet" | "none"
     property int netSignal: 0
     property string netName: ""
-    // The WireGuard tunnel is up; the flag lives on the network popup, which
-    // can also switch it
-    property alias vpnOn: netMenu.vpnOn
 
     // The network just came back: a scheduled update check that failed while
     // offline can run again now
     onNetKindChanged: if (netKind !== "none")
         Updater.networkBack()
 
-    // Input is three outputs separated by a line with "---":
+    // Input is two outputs separated by a line with "---":
     //   wifi:connected            <- TYPE:STATE for every device
     //   ---
     //   *:78:MyNetwork            <- IN-USE:SIGNAL:SSID for every access point
-    //   ---
-    //   up                        <- only if the WireGuard tunnel is active
     function parseNet(raw) {
         const parts = raw.split("---");
         let wifi = false;
@@ -174,25 +169,13 @@ Item {
         netKind = eth ? "ethernet" : (wifi ? "wifi" : "none");
         netSignal = signal;
         netName = eth ? "Ethernet" : (wifi ? name : "Offline");
-        // Third part: "up" when the wg0 interface exists. Only trust it if
-        // this run started after the last switch in the network popup;
-        // otherwise it may describe the tunnel from before the switch.
-        if (netProc.startedAt >= netMenu.vpnSetAt)
-            vpnOn = (parts[2] || "").indexOf("up") >= 0;
     }
 
     Process {
         id: netProc
 
-        // When this run began (ms since 1970). A run that began before the
-        // last VPN switch has an out-of-date answer about the tunnel, see
-        // parseNet. `onRunningChanged` fires every time `running` changes.
-        property double startedAt: 0
-        onRunningChanged: if (running)
-            startedAt = Date.now()
-
         // The access-point list is only asked for while wifi is connected
-        command: ["sh", "-c", "d=$(nmcli -t -f TYPE,STATE device); echo \"$d\"; echo ---; case \"$d\" in *wifi:connected*) nmcli -t -f IN-USE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null;; esac; echo ---; [ -d /sys/class/net/wg0 ] && echo up"]
+        command: ["sh", "-c", "d=$(nmcli -t -f TYPE,STATE device); echo \"$d\"; echo ---; case \"$d\" in *wifi:connected*) nmcli -t -f IN-USE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null;; esac"]
 
         stdout: StdioCollector {
             onStreamFinished: root.parseNet(text)
@@ -609,7 +592,6 @@ Item {
                     color: netItem.iconColor
                     kind: root.netKind
                     strength: root.netSignal
-                    vpn: root.vpnOn
                     dropping: netItem.dragging
                     flash: netItem.flash
                 }

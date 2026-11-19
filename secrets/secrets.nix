@@ -5,8 +5,7 @@ let
     licht
     recovery
   ];
-  # wg-licht is read by root (wireguard.nix), so it is not in names.nix.
-  names = (import ./names.nix) ++ ["wg-licht"];
+  names = import ./names.nix;
 in
   builtins.listToAttrs (map (name: {
       name = "${name}.age";

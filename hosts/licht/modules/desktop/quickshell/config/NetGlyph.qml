@@ -1,7 +1,6 @@
 // The network, drawn. Wifi is three arcs over a dot, lit by signal strength
 // (the arcs that are missing stay dim); ethernet is a small port; offline is
-// the same dot and dim arcs with a slash through them. While the VPN tunnel is
-// up (`vpn`), a small solid shield sits in the free lower right corner.
+// the same dot and dim arcs with a slash through them.
 //
 // It also moves, when there is something to show (all of it hairlines on the same
 // grid, and none of it runs while the glyph is at rest):
@@ -22,7 +21,6 @@ Glyph {
 
     property string kind: "none"
     property int strength: 0
-    property bool vpn: false
 
     property bool dropping: false
     property string flash: ""
@@ -195,33 +193,6 @@ Glyph {
             PathLine {
                 x: 10.5 * root.u
                 y: 8.3 * root.u
-            }
-        }
-    }
-
-    // The VPN badge: a small solid shield in the empty lower right, under
-    // where the arcs end. It pops in and out.
-    ShieldGlyph {
-        x: 8.8 * root.u
-        y: 8.6 * root.u
-        width: 7.4 * root.u
-        height: width
-        color: Colors.accent
-        on: true
-        opacity: root.vpn && root.kind !== "none" && root.plain ? 1 : 0
-        scale: root.vpn && root.kind !== "none" ? 1 : 0.5
-        transformOrigin: Item.BottomRight
-        visible: opacity > 0.01
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Style.fadeMs
-            }
-        }
-        Behavior on scale {
-            NumberAnimation {
-                duration: Style.moveMs
-                easing.type: Style.easeMove
             }
         }
     }

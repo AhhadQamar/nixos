@@ -315,7 +315,7 @@ hosts/licht/
   configuration.nix  user, secrets
   hardware-configuration.nix
   home.nix           Home Manager entry and user packages
-  system/            boot, nix, networking, hardware, desktop, greeter, updater, wireguard
+  system/            boot, nix, networking, hardware, desktop, greeter, updater
   modules/
     desktop/         hypr, quickshell, pywal, theme, cava, pyprland
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime

@@ -70,9 +70,6 @@ i() { nix shell "nixpkgs#$1"; }
 
 rmconf() { $EDITOR $HOME/nixos/hosts/licht/home.nix }
 
-#----------Wireguard -alias-----------------------------------------
-alias vpn='sudo systemctl start wg-quick-wg0'
-alias vpnoff='sudo systemctl stop wg-quick-wg0'
 # ─── ALIASES — MUSIC ─────────────────────────────────────────────
 
 

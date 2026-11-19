@@ -13,7 +13,6 @@
     ./system/desktop.nix
     ./system/greeter
     ./system/updater.nix
-    ./system/wireguard.nix
   ];
 
   programs.zsh.enable = true;
