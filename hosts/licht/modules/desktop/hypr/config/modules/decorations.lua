@@ -73,7 +73,7 @@ hl.config({
 		-- together are what tell you where focus is without a loud border.
 		dim_inactive = true,
 		dim_strength = 0.06,
-		-- The Super+S / pypr scratchpad floats over a workspace; dim what is
+		-- The Super+S scratchpad floats over a workspace; dim what is
 		-- behind it a bit more so it reads as a layer above, not a window.
 		dim_special = 0.3,
 

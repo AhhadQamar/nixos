@@ -153,7 +153,7 @@ alias kittyconf='$EDITOR "$NH_FLAKE/hosts/licht/modules/programs/kitty/config/ki
 alias starconf='$EDITOR "$NH_FLAKE/hosts/licht/modules/shell/starship/config/starship.toml"'
 
 # Hyprland helpers
-alias hyprlog='cat /tmp/hypr/*.log | tail -50'
+alias hyprlog='hyprctl rollinglog | tail -50'
 
 # ─── ALIASES — NETWORK ──────────────────────────────────────────
 alias myip='curl -s ifconfig.me && echo'

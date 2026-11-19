@@ -3,8 +3,6 @@
   pkgs,
   ...
 }: {
-  home.username = "licht";
-  home.homeDirectory = "/home/licht";
   home.stateVersion = "26.05";
 
   home.packages = with pkgs; [
@@ -50,7 +48,6 @@
     templates = "${config.home.homeDirectory}/Templates";
   };
 
-  programs.home-manager.enable = true;
   imports = [
     ./modules/desktop
     ./modules/shell

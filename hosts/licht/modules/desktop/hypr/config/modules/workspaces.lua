@@ -182,7 +182,7 @@ hl.config({
 		workspace_back_and_forth = true,
 		allow_workspace_cycles = true,
 
-		-- Switching workspace closes an open Super+S / pypr scratchpad
+		-- Switching workspace closes an open Super+S scratchpad
 		-- instead of leaving it floating over the new one.
 		hide_special_on_workspace_change = true,
 	},

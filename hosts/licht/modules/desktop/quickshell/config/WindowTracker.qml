@@ -48,8 +48,8 @@ Singleton {
     property bool _pending: false
     property bool _reported: false
     // Special workspaces that have been open at least once since the bar
-    // started. A scratchpad that pyprland parked at login exists in Hyprland
-    // from the start but has never been shown, so it gets no disc until its
+    // started. A special workspace that exists in Hyprland from the start
+    // but has never been shown, so it gets no disc until its
     // first opening; after that it keeps one, open or hidden. A plain object
     // on purpose: changing a key notifies nobody, parse() reads it right away.
     property var _opened: ({})

@@ -8,7 +8,7 @@
 //     that monitor's workspaces.
 //   - When the bar is tight, the other monitors fold to the workspace on
 //     their screen plus a "+N" count (red if one of the N wants attention).
-//   - Each special workspace (Super+S, the pypr terminal) has its own disc
+//   - Each special workspace (Super+S, Super+O, Super+C) has its own disc
 //     after the groups, in the order of their names (see SpecialPill.qml). It
 //     is selected on the bar of the monitor it is open on; click to toggle it.
 //

@@ -11,7 +11,7 @@ NixOS flake for my laptop, **`licht`**: Hyprland desktop, a custom Quickshell sh
 | **Shell** | Quickshell (QML), zsh + starship, kitty, tmux, neovim |
 | **Secrets** | `agenix` (keys: `licht` and `recovery`) |
 | **Repo path** | `~/nixos` (not `/etc/nixos`) |
-| **Repo** | private on GitHub: `AhhadQamar/nixos`. A fresh install has to [log in to GitHub](#fresh-machine) before it can clone |
+| **Repo** | public on GitHub: `AhhadQamar/nixos`. A fresh install can clone it without logging in; the login is only needed later, to push |
 
 **Jump to:** [Install](#install) · [Daily use](#daily-use) · [Key bindings](#key-bindings) · [Customise](#customise) · [Secrets](#secrets) · [Troubleshooting](#troubleshooting) · [Layout](#repository-layout)
 
@@ -28,7 +28,7 @@ cd ~/nixos
 
 ### Fresh machine
 
-The repo is **private**, so the installer has to log in to GitHub before it can clone it. You need:
+The repo is **public**, so the installer can clone it without logging in to GitHub (step 2 is optional). You need:
 
 - a NixOS installer USB, booted and online
 - a GitHub account with access to `AhhadQamar/nixos`
@@ -37,7 +37,7 @@ The repo is **private**, so the installer has to log in to GitHub before it can 
 
 **1. Partition and mount** as usual, with the target at `/mnt`.
 
-**2. Log in to GitHub from the installer.** Open a shell that has `gh` (the GitHub CLI) and `git`:
+**2. (Optional) Log in to GitHub from the installer.** Skip this and go to step 3: the repo is public, so a plain `git clone` works. Only do it if you want `gh` to do the cloning. Open a shell that has `gh` (the GitHub CLI) and `git`:
 
 ```bash
 nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#gh nixpkgs#git
@@ -66,7 +66,7 @@ mkdir -p /mnt/home/licht
 gh repo clone AhhadQamar/nixos /mnt/home/licht/nixos
 ```
 
-Use `gh repo clone`, not a plain `git clone`: it passes your login to git. A plain HTTPS clone of a private repo fails with `Repository not found`, because GitHub does not accept account passwords for git.
+Without step 2, use plain git instead (the installer has it): `git clone https://github.com/AhhadQamar/nixos /mnt/home/licht/nixos`. Both clone over HTTPS, so step 8 still applies.
 
 **4. Put the age key in place** so `agenix` can decrypt secrets on first boot.
 
@@ -298,7 +298,7 @@ Commit and push the changed `.age` files.
 | Cannot log in after a fresh install | The `licht` password was never set. Boot the installer, mount the system at `/mnt`, run `nixos-enter --root /mnt -c 'passwd licht'`, then reboot |
 | Secrets or aria2 fail after first boot | The age key is missing or wrong at `/var/lib/agenix/key.txt` |
 | `git push` fails after install | Remote is still HTTPS. Run the `remote set-url` command from [Install](#fresh-machine) step 8 |
-| `Repository not found` or a password prompt when cloning | The repo is private and you are not logged in. Run `gh auth status`, then `gh auth login` and use `gh repo clone` ([Install](#fresh-machine) steps 2-3) |
+| `Repository not found` when cloning | Check the owner and name in the URL: the repo is public, so `git clone https://github.com/AhhadQamar/nixos` needs no login |
 | `u` ends with `Permission denied (publickey)` | The SSH key is not on GitHub. Check `gh ssh-key list`; add it with `gh ssh-key add ~/.ssh/id_ed25519_personal.pub` |
 | Hyprland errors | `hyprlog` shows the last 50 lines of the log |
 
@@ -317,7 +317,7 @@ hosts/licht/
   home.nix           Home Manager entry and user packages
   system/            boot, nix, networking, hardware, desktop, greeter, updater
   modules/
-    desktop/         hypr, quickshell, pywal, theme, cava, pyprland
+    desktop/         hypr, quickshell, pywal, theme, cava
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime
     programs/        aerc, aria2, librewolf, kitty, mpv, nvim, vscodium, yt-dlp
 ```

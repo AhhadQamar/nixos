@@ -5,7 +5,6 @@
 }: {
   home.packages = with pkgs; [
     neovim
-    lazygit
     nodejs
     tree-sitter
     gcc
