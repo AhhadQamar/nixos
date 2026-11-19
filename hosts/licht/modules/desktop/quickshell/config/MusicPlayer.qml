@@ -1,19 +1,19 @@
 // MusicPlayer.qml
-// The music player: one card, nothing hidden behind anything.
+// The music player: a palette. One search box, the scopes under it, the song that plays.
 //
-//   TOP    tabs and the search (it is always the box you type in). Five tabs one key
-//          apart (Tab):
-//              Albums  a wall of covers: the quick way to put something on
-//              Tracks  every song, an album's tracks together under its cover;
-//                      the spine on the left is lit up to the song that plays
-//              Queue   what is playing and what is coming; move, remove, undo
-//              Online  search YouTube Music; Enter streams, Ctrl+D downloads
-//              Lists   playlists (plain .m3u8 files), Liked Songs first
-//          The row under the cursor shows its actions as buttons (play, next,
-//          queue, like, add to a playlist); the keys still do the same.
-//   BAR    at the foot: the song that plays, the shell's ruler (click or drag to
-//          seek; its reading is the time), the transport, like, lyrics, the volume
-//          and a button to the queue. The lyrics (Ctrl+Y) cover the lists until closed.
+//   The search is always the box you type in. Under it five scopes one key apart (Tab):
+//       Albums  every album as a record: a disc, its name, the artist
+//       Tracks  every song, an album's tracks together under its cover;
+//               the spine on the left is lit up to the song that plays
+//       Queue   the stage: what plays, large, and what comes next (move, remove, undo)
+//       Online  search YouTube Music; Enter streams, Ctrl+D downloads
+//       Lists   playlists (plain .m3u8 files), Liked Songs first
+//   The player opens on the stage (Queue). Typing from the stage looks in Tracks; Esc
+//   from any other scope goes back to the stage, and from the stage closes the player.
+//   The row under the cursor shows its actions as buttons (play, next, queue, like, add
+//   to a playlist); the keys still do the same. At the foot: the shell's ruler (click or
+//   drag to seek), the transport, like, lyrics, the volume and the queue.
+//   The lyrics (Ctrl+Y) cover the list: the song's time as a ruler of its own beside them.
 //
 //   qs ipc call music toggle | open | close | playpause | next | prev | stop | rescan
 //   qs ipc call music download <url | ytsearch1:words | browse:id> <track|album>
@@ -69,9 +69,9 @@ PanelWindow {
     // the right, a hairline between
     readonly property real screenW: targetScreen ? targetScreen.width : 1920
     readonly property real screenH: targetScreen ? targetScreen.height : 1080
-    readonly property int cardW: Math.round(Math.min(900, screenW - 32))
-    readonly property int cardH: Math.round(Math.min(640, screenH - Style.panelTop - 48))
-    readonly property int pad: Style.cardPad
+    readonly property int cardW: Math.round(Math.min(760, screenW - 32))
+    readonly property int cardH: Math.round(Math.min(612, screenH - Style.panelTop - 48))
+    readonly property int pad: 20
     // The bar at the foot, and the wall of covers
     readonly property int barH: 88
     readonly property int rightX: pad
@@ -1373,8 +1373,14 @@ PanelWindow {
 
     // Switching keeps your place: from an album to its first song, and from a
     // song back to its album
+    // The stage is the queue with the hero over it; every other scope is looking
+    function home() {
+        setTab(2);
+        browse = false;
+    }
+
     function setTab(i) {
-        browse = true;
+        browse = i !== 2;
         if (tab === i)
             return;
         // Leaving the playlist picker any other way is cancelling it
@@ -1603,7 +1609,7 @@ PanelWindow {
         listTag = null;
         search.text = "";
         browse = false;
-        tab = 0;
+        tab = 2;
         MusicNet.setQuery("");
         MusicLists.refresh();
         if (!Music.scanned)
@@ -2279,12 +2285,12 @@ PanelWindow {
         Item {
             id: lyricsView
 
-            readonly property real lineH: 32
+            readonly property real lineH: 46
             // Synced: the line being sung. Plain: where the wheel has scrolled to.
             readonly property real focusIdx: Music.lyricSynced ? Math.max(0, Music.lyricIndex) : panel.lyricScroll
 
             x: panel.pad
-            y: rightPane.y + tabsBar.height + 12
+            y: rightPane.y + tabsBar.y + tabsBar.height + 12
             width: panel.rightW
             height: card.height - y - panel.barH - 6
             z: 3
@@ -2302,10 +2308,36 @@ PanelWindow {
                 anchors.fill: parent
             }
 
+                // The song's time as a ruler of its own: the line that is sung stands on the marker
+                Repeater {
+                    model: Math.floor(lyricsView.height / 8)
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        readonly property real y0: (index + 1) * 8
+                        readonly property real d: Math.abs(y0 - lyricsView.height / 2) / 8
+
+                        y: y0
+                        width: 4 + (index % 4 === 3 ? 3 : 0) + (d < 8 ? Math.pow(Math.cos(d / 8 * Math.PI / 2), 2) * 14 : 0)
+                        height: 1
+                        color: y0 <= lyricsView.height / 2 ? Qt.alpha(Colors.accent, 0.7) : Qt.alpha(Colors.foreground, 0.16)
+                    }
+                }
+
+                Rectangle {
+                    y: lyricsView.height / 2 - 1
+                    width: 30
+                    height: 2
+                    radius: 1
+                    color: Colors.accent
+                }
+
                 Column {
                     id: lyricCol
 
-                    width: parent.width
+                    x: 56
+                    width: parent.width - 56 - 20
                     y: lyricsView.height / 2 - (lyricsView.focusIdx + 0.5) * lyricsView.lineH
 
                     Behavior on y {
@@ -2334,11 +2366,11 @@ PanelWindow {
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 fontSizeMode: Text.Fit
-                                minimumPixelSize: 11
+                                minimumPixelSize: 12
                                 text: ln.modelData.text !== "" ? ln.modelData.text : "♪"
                                 color: ln.cur ? Colors.foreground : Colors.muted
-                                font.pixelSize: ln.cur ? Style.fontLg : Style.fontMd
-                                font.bold: ln.cur
+                                font.pixelSize: ln.cur ? 24 : 16
+                                font.weight: ln.cur ? Font.DemiBold : Font.Light
 
                                 Behavior on color {
                                     ColorAnimation {
@@ -2495,6 +2527,7 @@ PanelWindow {
 
                 Column {
                     Layout.preferredWidth: 240
+                    visible: panel.browse || panel.lyricsOn
                     spacing: 2
 
                     Txt {
@@ -2713,137 +2746,12 @@ PanelWindow {
                 Link {
                     Layout.leftMargin: 8
                     text: "queue" + (Music.queue.length > 0 ? "  " + Music.queue.length : "")
-                    on: panel.browse && panel.tab === 2
+                    on: panel.tab === 2
                     onClicked: {
                         panel.setTab(2);
                         search.forceActiveFocus();
                     }
                 }
-            }
-        }
-
-        // ---- The stage: what plays, large and quiet -------------------------------
-        Item {
-            id: stage
-
-            readonly property real art: Math.min(height - 120, 300)
-
-            x: panel.pad
-            y: panel.pad + search.height + 8
-            width: panel.rightW
-            height: card.height - y - panel.barH
-            opacity: panel.browse ? 0 : 1
-            visible: opacity > 0.01
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: Style.baseMs
-                }
-            }
-
-            Item {
-                id: stageCover
-
-                x: (parent.width - width) / 2
-                y: 0
-                width: stage.art
-                height: width
-
-                Rectangle {
-                    id: stageShadow
-
-                    anchors.fill: parent
-                    radius: width * 0.2
-                    color: "black"
-                    visible: false
-                }
-
-                MultiEffect {
-                    anchors.fill: stageShadow
-                    source: stageShadow
-                    autoPaddingEnabled: true
-                    shadowEnabled: true
-                    shadowColor: "black"
-                    shadowOpacity: 0.55
-                    shadowBlur: 1.0
-                    shadowVerticalOffset: 16
-                }
-
-                Art {
-                    id: stageArt
-
-                    anchors.fill: parent
-                    corner: width * 0.2
-                    source: Music.hasTrack ? Music.cover : ""
-                    letter: Music.hasTrack ? (Music.album || Music.title || "?").charAt(0).toUpperCase() : "♪"
-
-                    Rectangle {
-                        anchors.fill: parent
-                        z: -1
-                        radius: stageArt.corner
-                        color: Style.well
-                    }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: stageArt.corner
-                        color: "transparent"
-                        antialiasing: true
-                        border.width: 1
-                        border.color: Qt.alpha(Colors.foreground, 0.1)
-                    }
-
-                    HoverHandler {
-                        cursorShape: Qt.PointingHandCursor
-                    }
-
-                    TapHandler {
-                        onTapped: {
-                            panel.togglePlay();
-                            search.forceActiveFocus();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                anchors.top: stageCover.bottom
-                anchors.topMargin: 22
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width, 560)
-                spacing: 4
-
-                Txt {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: Music.hasTrack ? (Music.title || "Unknown") : (Music.resumable ? Music.resumeTitle : "Nothing playing")
-                    color: Music.hasTrack || Music.resumable ? Colors.foreground : Colors.muted
-                    font.pixelSize: 22
-                    font.bold: Music.hasTrack
-                }
-
-                Txt {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    visible: text !== ""
-                    text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : (Music.resumable ? "Space picks up where you left off" : "Type to search, or press Enter for your library")
-                    color: Colors.muted
-                    font.pixelSize: Style.fontMd
-                }
-            }
-        }
-
-        // The way into the library from the stage
-        Link {
-            x: panel.pad
-            y: panel.pad + (search.height - height) / 2
-            visible: !panel.browse
-            text: "library  ›"
-            onClicked: {
-                panel.browse = true;
-                search.forceActiveFocus();
             }
         }
 
@@ -2860,15 +2768,17 @@ PanelWindow {
             SearchField {
                 id: search
 
+                anchors.left: parent.left
                 anchors.right: parent.right
-                width: 230
+                height: 46
                 placeholder: panel.placeholderText()
                 badge: panel.badgeText()
                 busy: panel.tab === 3 ? MusicNet.busy : Music.scanning
                 onTextChanged: {
                     panel.query = text;
-                    if (text !== "")
-                        panel.browse = true;
+                    // Typing from the stage means looking for something: the songs
+                    if (text !== "" && panel.tab === 2 && !panel.browse)
+                        panel.setTab(1);
                 }
 
                 Keys.onPressed: event => {
@@ -2895,15 +2805,13 @@ PanelWindow {
                         else if (panel.canGoBack)
                             panel.goBack();
                         else if (panel.browse)
-                            panel.browse = false;
+                            panel.home();
                         else
                             panel.close();
                     } else if (k === Qt.Key_Backspace && panel.query === "" && panel.canGoBack)
                         panel.goBack();
                     else if (ctrl && k === Qt.Key_Down && panel.tab === 0)
                         panel.setTab(1);
-                    else if (!panel.browse && plain && (k === Qt.Key_Down || k === Qt.Key_Up || k === Qt.Key_Return || k === Qt.Key_Enter))
-                        panel.browse = true;
                     else if (alt && left)
                         Music.prev();
                     else if (alt && right)
@@ -2970,9 +2878,10 @@ PanelWindow {
                         else if (shift)
                             panel.enqueueSel();
                         else {
+                            const was = panel.tab;
                             panel.activate();
-                            if (panel.tab < 3)
-                                panel.browse = false;
+                            if (was < 2)
+                                panel.home();
                         }
                     } else if (plain && k === Qt.Key_Down)
                         panel.move(1);
@@ -3003,9 +2912,9 @@ PanelWindow {
             Item {
                 id: tabsBar
 
-                width: parent.width - search.width - 16
-                height: search.height
-                visible: panel.browse
+                y: search.height + 10
+                width: parent.width
+                height: Style.buttonCompact
 
                 Rule {
                     anchors.bottom: parent.bottom
@@ -3187,122 +3096,168 @@ PanelWindow {
                 }
             }
 
-                // ---- Albums: the chosen album, large and quiet ---------------
+                // ---- Hero: what plays, when nothing else is being looked at ----
                 Item {
-                    id: preview
+                    id: hero
 
-                    readonly property var a: panel.tab === 0 ? panel.curItem : null
-                    readonly property real art: Math.max(120, Math.min(width, height - 130, 300))
+                    readonly property bool on: !panel.browse && !panel.lyricsOn
 
                     anchors.top: tabsBar.bottom
-                    anchors.topMargin: 6
-                    anchors.bottom: foot.top
+                    anchors.topMargin: on ? 16 : 0
+                    anchors.left: parent.left
                     anchors.right: parent.right
-                    width: Math.min(340, Math.floor(parent.width * 0.44))
-                    visible: panel.browse && panel.tab === 0 && a !== null
+                    height: on ? 126 : 0
+                    opacity: on ? 1 : 0
+                    visible: opacity > 0.01
+                    clip: true
 
-                    Item {
-                        id: pvCover
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Style.moveMs
+                            easing.type: Style.easeMove
+                        }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Style.baseMs
+                        }
+                    }
 
-                        x: (parent.width - width) / 2
-                        y: 14
-                        width: preview.art
-                        height: width
+                    Rectangle {
+                        id: heroShadow
+
+                        x: 0
+                        y: 4
+                        width: 118
+                        height: 118
+                        radius: 26
+                        color: "black"
+                        visible: false
+                    }
+
+                    MultiEffect {
+                        anchors.fill: heroShadow
+                        source: heroShadow
+                        autoPaddingEnabled: true
+                        shadowEnabled: true
+                        shadowColor: "black"
+                        shadowOpacity: 0.5
+                        shadowBlur: 1.0
+                        shadowVerticalOffset: 12
+                    }
+
+                    Art {
+                        id: heroArt
+
+                        y: 4
+                        width: 118
+                        height: 118
+                        corner: 26
+                        source: Music.hasTrack ? Music.cover : ""
+                        letter: Music.hasTrack ? (Music.album || Music.title || "?").charAt(0).toUpperCase() : "♪"
 
                         Rectangle {
-                            id: pvShadow
-
                             anchors.fill: parent
-                            radius: width * 0.2
-                            color: "black"
-                            visible: false
+                            z: -1
+                            radius: heroArt.corner
+                            color: Style.well
                         }
 
-                        MultiEffect {
-                            anchors.fill: pvShadow
-                            source: pvShadow
-                            autoPaddingEnabled: true
-                            shadowEnabled: true
-                            shadowColor: "black"
-                            shadowOpacity: 0.5
-                            shadowBlur: 1.0
-                            shadowVerticalOffset: 12
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: heroArt.corner
+                            color: "transparent"
+                            antialiasing: true
+                            border.width: 1
+                            border.color: Music.hasTrack ? Qt.alpha(Colors.accent, 0.4) : Style.outline
                         }
 
-                        Art {
-                            id: pvArt
+                        HoverHandler {
+                            cursorShape: Qt.PointingHandCursor
+                        }
 
-                            anchors.fill: parent
-                            corner: width * 0.2
-                            source: preview.a === null ? "" : (preview.a.cover ? preview.a.cover : panel.coverOf(preview.a))
-                            letter: preview.a === null ? "" : (preview.a.title || "?").charAt(0).toUpperCase()
-
-                            Rectangle {
-                                anchors.fill: parent
-                                z: -1
-                                radius: pvArt.corner
-                                color: Style.well
-                            }
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: pvArt.corner
-                                color: "transparent"
-                                antialiasing: true
-                                border.width: 1
-                                border.color: Qt.alpha(Colors.foreground, 0.1)
+                        TapHandler {
+                            onTapped: {
+                                panel.togglePlay();
+                                search.forceActiveFocus();
                             }
                         }
                     }
 
                     Column {
-                        anchors.top: pvCover.bottom
-                        anchors.topMargin: 18
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width - 16
-                        spacing: 3
+                        x: 118 + 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - x - timeCol.width - 16
+                        spacing: 5
 
-                        Txt {
-                            width: parent.width
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                            text: preview.a === null ? "" : preview.a.title
-                            color: Colors.foreground
-                            font.pixelSize: Style.fontXl
-                            font.bold: true
+                        Row {
+                            spacing: 8
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: Colors.accent
+                                visible: Music.playing
+                            }
+
+                            Txt {
+                                text: Music.hasTrack ? (panel.note !== "" ? panel.note : (Music.dlActive ? "downloading " + Music.dlCount + "  ·  " + Math.round(Music.dlPct) + "%" : (Music.playing ? "now playing" : "paused"))) : (Music.resumable ? "pick up where you left off" : "nothing playing")
+                                color: Music.hasTrack ? Colors.accent : Colors.muted
+                                font.pixelSize: Style.fontSm
+                            }
+
+                            Txt {
+                                visible: Music.sleepMin > 0
+                                text: "·  sleep " + Math.ceil(Music.sleepLeft / 60) + " min"
+                                color: Colors.muted
+                                font.pixelSize: Style.fontSm
+                            }
                         }
 
                         Txt {
                             width: parent.width
-                            horizontalAlignment: Text.AlignHCenter
                             elide: Text.ElideRight
-                            text: preview.a === null ? "" : panel.subLine(preview.a)
+                            text: Music.hasTrack ? (Music.title || "Unknown") : (Music.resumable ? Music.resumeTitle : "Pick something and press Enter")
+                            color: Music.hasTrack || Music.resumable ? Colors.foreground : Colors.muted
+                            font.pixelSize: 22
+                            font.bold: Music.hasTrack
+                        }
+
+                        Txt {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            visible: text !== ""
+                            text: Music.hasTrack ? (Music.artist !== "" && Music.album !== "" ? Music.artist + "  ·  " + Music.album : (Music.artist || Music.album)) : ""
                             color: Colors.muted
                             font.pixelSize: Style.fontMd
                         }
+                    }
 
-                        Row {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            topPadding: 8
-                            spacing: 6
+                    // The time, large and light
+                    Column {
+                        id: timeCol
 
-                            Link {
-                                text: "play"
-                                on: true
-                                onClicked: {
-                                    panel.playGroup(preview.a.group);
-                                    panel.browse = false;
-                                    search.forceActiveFocus();
-                                }
-                            }
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: Music.hasTrack
+                        spacing: 4
 
-                            Link {
-                                text: "its songs  ›"
-                                onClicked: {
-                                    panel.setTab(1);
-                                    search.forceActiveFocus();
-                                }
-                            }
+                        Txt {
+                            anchors.right: parent.right
+                            text: Music.fmt(seekArea.aiming ? seekArea.aim * Music.duration : Music.position)
+                            color: Colors.foreground
+                            font.pixelSize: 46
+                            font.weight: Font.Light
+                        }
+
+                        Txt {
+                            anchors.right: parent.right
+                            visible: Music.duration > 0
+                            text: "of " + Music.fmt(Music.duration)
+                            color: Colors.muted
+                            font.pixelSize: Style.fontSm
                         }
                     }
                 }
@@ -3311,15 +3266,13 @@ PanelWindow {
                 ListView {
                     id: list
 
-                    anchors.top: tabsBar.bottom
+                    anchors.top: hero.bottom
                     anchors.topMargin: 6
                     anchors.bottom: foot.top
                     anchors.left: parent.left
-                    anchors.right: panel.tab === 0 ? preview.left : parent.right
-                    anchors.rightMargin: panel.tab === 0 ? 20 : 0
+                    anchors.right: parent.right
                     clip: true
-                    visible: panel.browse
-                    model: panel.browse ? panel.items : []
+                    model: panel.items
                     boundsBehavior: Flickable.StopAtBounds
                     reuseItems: true
                     cacheBuffer: 600
@@ -3341,7 +3294,7 @@ PanelWindow {
                         readonly property string cap: panel.queueCaption(index)
                         readonly property bool spine: panel.tab === 1
                         readonly property int headH: showHead ? 62 : (cap !== "" ? 34 : 0)
-                        readonly property int bodyH: panel.tab === 0 ? 48 : (panel.tab === 1 ? 40 : 50)
+                        readonly property int bodyH: panel.tab === 0 ? 54 : (panel.tab === 1 ? 40 : 50)
                         readonly property bool song: m.kind === undefined || m.kind === "song"
                         readonly property bool liked: song && m.path !== undefined && m.path !== "" && MusicLists.isLiked(m.path)
                         readonly property bool showActs: cur || bodyHover.hovered
@@ -3504,11 +3457,42 @@ PanelWindow {
                                 visible: !row.spine && panel.tab !== 0 && row.m.kind !== "recent" && row.m.kind !== "new"
                                 x: row.leadX
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: panel.tab === 0 ? 40 : 34
+                                width: panel.tab === 0 ? 42 : 34
                                 height: width
-                                corner: width * 0.28
+                                corner: panel.tab === 0 ? width / 2 : width * 0.28
                                 source: row.coverUrl
                                 letter: (row.m.title || row.m.name || "?").charAt(0).toUpperCase()
+
+                                // An album is a record: grooves and a hole in the middle
+                                Rectangle {
+                                    visible: panel.tab === 0
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.alpha(Colors.foreground, 0.08)
+                                }
+
+                                Rectangle {
+                                    visible: panel.tab === 0
+                                    anchors.centerIn: parent
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: Style.card
+                                    border.width: 1
+                                    border.color: Qt.alpha(Colors.foreground, 0.14)
+                                }
+
+                                Rectangle {
+                                    visible: panel.tab === 0
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Qt.alpha(Colors.foreground, 0.1)
+                                }
                             }
 
                             Txt {
@@ -3523,7 +3507,7 @@ PanelWindow {
                             }
 
                             Column {
-                                x: row.spine ? row.leadX + 26 : row.leadX + (panel.tab === 0 ? 2 : 34 + 12)
+                                x: row.spine ? row.leadX + 26 : row.leadX + (panel.tab === 0 ? 42 : 34) + 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width - x - 12 - (row.showActs ? actions.width + 8 : 0)
                                 spacing: 2
@@ -3843,7 +3827,6 @@ PanelWindow {
                 Item {
                     id: foot
 
-                    visible: panel.browse
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
