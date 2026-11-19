@@ -1,7 +1,4 @@
-{
-  pkgs,
-  ...
-}: {
+{pkgs, ...}: {
   home.packages = with pkgs; [
     gitleaks
     delta # readable diffs: syntax colours, line numbers, n / N between files
