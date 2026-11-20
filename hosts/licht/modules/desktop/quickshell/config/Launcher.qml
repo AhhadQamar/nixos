@@ -49,6 +49,8 @@ PanelWindow {
     // ---- State ----------------------------------------------------------
     property bool isOpen: false
     property var allApps: []
+    property var appIndex: []
+    property var iconCache: ({})
     property var filtered: []
     property var counts: ({})
     property int ringTarget: 0
@@ -57,11 +59,15 @@ PanelWindow {
     property real reveal: 0
     property bool animateRing: true
     property var peek: null
+    // The app the pointer is over; it becomes `peek` after a short settle
+    property var peekNext: null
+    // Wheel movement collected until it adds up to one notch
+    property real wheelAcc: 0
 
     // 1 = tight rainbow dome with spectral tint, 0 = the resting dial
     property real fan: 1
-    // A slow pulse (0..1) for the selected app's ring
-    property real breath: 0
+    // Glow strength (0..1) of the selected app's ring; steady, so an open launcher never repaints on its own
+    property real breath: 0.5
     // Sideways nudge of the name when the dial turns: it slides in from the
     // side the new app came from.
     property real readShift: 0
@@ -86,8 +92,8 @@ PanelWindow {
 
         // The dial glides into place and settles, with no bounce
         NumberAnimation {
-            duration: Style.enterMs
-            easing.type: Style.easeEnter
+            duration: Style.moveMs
+            easing.type: Style.easeMove
         }
     }
 
@@ -119,8 +125,11 @@ PanelWindow {
     // position x (colour1 on the left through colour6 on the right). The wash
     // is `fan` strong, so it only shows while the dial is arriving or leaving,
     // and it follows the wallpaper like everything else in the shell.
+    readonly property var ramp: [Colors.color1, Colors.color2, Colors.color3, Colors.color4, Colors.color5, Colors.color6]
+
     function spectral(base, x, a) {
-        const ramp = [Colors.color1, Colors.color2, Colors.color3, Colors.color4, Colors.color5, Colors.color6];
+        if (fan < 0.001)
+            return Qt.alpha(base, a);
         const t = (clamp((x - width / 2) / (width * 0.34), -1, 1) * 0.5 + 0.5) * (ramp.length - 1);
         const i = Math.min(ramp.length - 2, Math.floor(t));
         const c = Qt.tint(ramp[i], Qt.alpha(ramp[i + 1], t - i));
@@ -143,33 +152,58 @@ PanelWindow {
             out.push(a);
         }
         allApps = out;
+
+        const idx = [];
+        for (let j = 0; j < out.length; j++) {
+            const e = out[j];
+            let kw = "";
+            try {
+                kw = Array.prototype.join.call(e.keywords || [], " ").toLowerCase();
+            } catch (err) {}
+            idx.push({
+                "name": (e.name || "").toLowerCase(),
+                "gen": (e.genericName || "").toLowerCase(),
+                "kw": kw,
+                "id": (e.id || "").toLowerCase()
+            });
+        }
+        appIndex = idx;
+    }
+
+    // Fuzzy.score for a query already split into words, against text that is
+    // already lower-case: -1 when any word is missing
+    function scoreWords(t, words) {
+        let total = 0;
+        for (let i = 0; i < words.length; i++) {
+            const s = Fuzzy.one(t, words[i]);
+            if (s < 0)
+                return -1;
+            total += s;
+        }
+        return total;
     }
 
     // Higher is better; -1 means no match. Name matches outrank looser fields.
-    function rank(a, q) {
-        const name = (a.name || "").toLowerCase();
-        const s = Fuzzy.score(name, q);
-        if (s >= 0)
-            return 1 + s + (name === q ? 100 : (name.indexOf(q) === 0 ? 40 : 0));
-        if (Fuzzy.score((a.genericName || "").toLowerCase(), q) >= 0)
+    function rank(f, q, words) {
+        const sc = scoreWords(f.name, words);
+        if (sc >= 0)
+            return 1 + sc + (f.name === q ? 100 : (f.name.indexOf(q) === 0 ? 40 : 0));
+        if (f.gen !== "" && scoreWords(f.gen, words) >= 0)
             return 0.6;
-        let kw = "";
-        try {
-            kw = Array.prototype.join.call(a.keywords || [], " ").toLowerCase();
-        } catch (e) {}
-        if (kw !== "" && Fuzzy.score(kw, q) >= 0)
+        if (f.kw !== "" && scoreWords(f.kw, words) >= 0)
             return 0.5;
-        if (Fuzzy.score((a.id || "").toLowerCase(), q) >= 0)
+        if (scoreWords(f.id, words) >= 0)
             return 0.4;
         return -1;
     }
 
     function refilter() {
         const q = input.text.toLowerCase().trim();
+        const words = q.split(/\s+/).filter(w => w !== "");
         const list = [];
         for (let i = 0; i < allApps.length; i++) {
             const a = allApps[i];
-            const s = q === "" ? 0 : rank(a, q);
+            const s = q === "" ? 0 : rank(appIndex[i], q, words);
             if (s >= 0) {
                 list.push({
                     "a": a,
@@ -193,6 +227,7 @@ PanelWindow {
         if (count < 2)
             return;
         peek = null;
+        peekNext = null;
         readShift = dir > 0 ? 18 : -18;
         ringTarget += dir;
         ringPos = ringTarget;
@@ -232,11 +267,18 @@ PanelWindow {
 
     function iconFor(entry) {
         const i = entry ? entry.icon : "";
+        const hit = iconCache[i];
+        if (hit !== undefined)
+            return hit;
+        let path;
         if (!i)
-            return Quickshell.iconPath("application-x-executable");
-        if (i.charAt(0) === "/")
-            return "file://" + i;
-        return Quickshell.iconPath(i, "application-x-executable");
+            path = Quickshell.iconPath("application-x-executable");
+        else if (i.charAt(0) === "/")
+            path = "file://" + i;
+        else
+            path = Quickshell.iconPath(i, "application-x-executable");
+        iconCache[i] = path;
+        return path;
     }
 
     // Enter copies a calculator result, or starts the selected app.
@@ -351,15 +393,15 @@ PanelWindow {
             property: "spinIn"
             from: 3.2
             to: 0
-            duration: Style.sweepMs + Style.moveMs
-            easing.type: Style.easeEnter
+            duration: Style.sweepMs
+            easing.type: Style.easeMove
         }
         NumberAnimation {
             target: launcher
             property: "fan"
             from: 1
             to: 0
-            duration: Style.sweepMs + Style.ambientMs / 2
+            duration: Style.sweepMs
             easing.type: Style.easeMove
         }
     }
@@ -372,46 +414,29 @@ PanelWindow {
             target: launcher
             property: "reveal"
             to: 0
-            duration: Style.moveMs + Style.fadeMs
+            duration: Style.moveMs
             easing.type: Style.easeExit
         }
         NumberAnimation {
             target: launcher
             property: "spinIn"
             to: -3.2
-            duration: Style.moveMs + Style.fadeMs
+            duration: Style.moveMs
             easing.type: Style.easeExit
         }
         NumberAnimation {
             target: launcher
             property: "fan"
             to: 1
-            duration: Style.moveMs + Style.fadeMs
+            duration: Style.moveMs
             easing.type: Style.easeExit
         }
     }
 
-    // Slow breath for the ring around the selected app.
-    SequentialAnimation {
-        running: launcher.isOpen
-        loops: Animation.Infinite
-
-        NumberAnimation {
-            target: launcher
-            property: "breath"
-            from: 0
-            to: 1
-            duration: Style.ambientMs * 2
-            easing.type: Style.easeAmbient
-        }
-        NumberAnimation {
-            target: launcher
-            property: "breath"
-            from: 1
-            to: 0
-            duration: Style.ambientMs * 2
-            easing.type: Style.easeAmbient
-        }
+    Timer {
+        id: peekTimer
+        interval: 70
+        onTriggered: launcher.peek = launcher.peekNext
     }
 
     Connections {
@@ -458,7 +483,13 @@ PanelWindow {
     MouseArea {
         anchors.fill: parent
         onClicked: launcher.close()
-        onWheel: wheel => launcher.step(wheel.angleDelta.y < 0 ? 1 : -1)
+        onWheel: wheel => {
+            launcher.wheelAcc += wheel.angleDelta.y;
+            if (Math.abs(launcher.wheelAcc) >= 120) {
+                launcher.step(launcher.wheelAcc < 0 ? 1 : -1);
+                launcher.wheelAcc = 0;
+            }
+        }
     }
 
     // ---- Stage ----------------------------------------------------------
@@ -476,7 +507,9 @@ PanelWindow {
 
         // Screenshot's feathered backing (StageShade.qml): a soft dark ellipse,
         // no visible panel boundary, over the shared dim under it.
-        StageShade {}
+        StageShade {
+            layered: false
+        }
 
         // Wide, low accent light on the horizon
         Shape {
@@ -487,8 +520,6 @@ PanelWindow {
             y: stage.height - r
             width: r * 2
             height: r * 2
-            layer.enabled: true
-            layer.samples: 4
             transform: Scale {
                 origin.x: horizon.r
                 origin.y: horizon.r
@@ -560,10 +591,10 @@ PanelWindow {
                 visible: Math.abs(a) < 1.2 && y < stage.height - 70
                 transformOrigin: Item.Top
                 rotation: a * 180 / Math.PI
-                color: launcher.spectral(Colors.foreground, x, major ? 0.95 : (mid ? 0.7 : 0.5))
-                opacity: launcher.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1)
+                color: visible ? launcher.spectral(Colors.foreground, x, major ? 0.95 : (mid ? 0.7 : 0.5)) : "transparent"
+                opacity: visible ? launcher.clamp((stage.cx - Math.abs(x - stage.cx)) / 230, 0, 1)
                          * launcher.clamp((stage.height - y) / 82, 0, 1)
-                         * launcher.clamp(launcher.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1)
+                         * launcher.clamp(launcher.reveal * 2 - Math.abs(x - stage.cx) / stage.cx * 0.9, 0, 1) : 0
             }
         }
 
@@ -663,7 +694,7 @@ PanelWindow {
                     property: "ping"
                     from: 0
                     to: 1
-                    duration: Style.sweepMs
+                    duration: Style.moveMs
                     easing.type: Style.easeMove
                 }
 
@@ -712,7 +743,7 @@ PanelWindow {
                         anchors.fill: parent
                         radius: slot.corner
                         antialiasing: true
-                        color: Style.card
+                        color: slot.c > 0.01 ? Qt.tint(Style.card, Qt.alpha(Colors.accent, Style.tintAlpha * slot.c)) : Style.card
                         border.width: 1
                         border.color: slot.c > 0.45
                                      ? launcher.spectral(Colors.accent, slot.px, 0.6 + 0.4 * slot.c)
@@ -720,29 +751,8 @@ PanelWindow {
                     }
 
                     // Light catching the top edge, as on the bar
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.topMargin: 1
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: parent.width - slot.corner * 1.2
-                        height: 1
-
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-
-                            GradientStop {
-                                position: 0
-                                color: Qt.alpha(Colors.foreground, 0)
-                            }
-                            GradientStop {
-                                position: 0.5
-                                color: Qt.alpha(Colors.foreground, 0.12)
-                            }
-                            GradientStop {
-                                position: 1
-                                color: Qt.alpha(Colors.foreground, 0)
-                            }
-                        }
+                    EdgeLight {
+                        corner: slot.corner
                     }
 
                     // The shell's hover fill
@@ -776,9 +786,18 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: launcher.peek = slot.app
-                    onExited: if (launcher.peek === slot.app)
-                                  launcher.peek = null
+                    onEntered: {
+                        launcher.peekNext = slot.app;
+                        peekTimer.restart();
+                    }
+                    onExited: {
+                        if (launcher.peekNext === slot.app) {
+                            peekTimer.stop();
+                            launcher.peekNext = null;
+                        }
+                        if (launcher.peek === slot.app)
+                            launcher.peek = null;
+                    }
                     onClicked: {
                         if (Math.abs(slot.k) < 0.5)
                             launcher.launch(slot.app);
@@ -894,29 +913,8 @@ PanelWindow {
             }
 
             // Light catching the top edge, as on the bar
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width - parent.height
-                height: 1
-
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-
-                    GradientStop {
-                        position: 0
-                        color: Qt.alpha(Colors.foreground, 0)
-                    }
-                    GradientStop {
-                        position: 0.5
-                        color: Qt.alpha(Colors.foreground, 0.12)
-                    }
-                    GradientStop {
-                        position: 1
-                        color: Qt.alpha(Colors.foreground, 0)
-                    }
-                }
+            EdgeLight {
+                corner: pill.height / 1.2
             }
 
             SearchField {
@@ -943,6 +941,12 @@ PanelWindow {
                 Keys.onDownPressed: launcher.step(1)
                 Keys.onTabPressed: launcher.step(1)
                 Keys.onPressed: event => {
+                    // A page at a time
+                    if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
+                        launcher.stepTo(launcher.ringTarget + (event.key === Qt.Key_PageDown ? 5 : -5));
+                        event.accepted = true;
+                        return;
+                    }
                     if (!(event.modifiers & Qt.ControlModifier))
                         return;
                     if (event.key === Qt.Key_N) {
