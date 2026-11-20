@@ -1,0 +1,4 @@
+# repeated_keys (W20) wants `a.b = 1; a.c = 2;` nested as `a = {b = 1; c = 2;};`.
+# Here that would force unrelated blocks together (home.packages next to
+# activation scripts), so the lint stays off.
+disabled = ["repeated_keys"]

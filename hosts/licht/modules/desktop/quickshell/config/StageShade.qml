@@ -10,6 +10,9 @@ Shape {
 
     property real h: parent.height
     property real strength: 1
+    // Drawn through a multisampled offscreen copy (a smooth edge). A panel whose
+    // gradient already fades to nothing at the edge can turn it off, which saves a large texture.
+    property bool layered: true
     // Vertical squash of the ellipse. The default makes it rise `h` above the
     // bottom edge; a panel can set its own (a fixed 0.62 for a low, wide one).
     property real yScale: h * 0.96 / r
@@ -19,7 +22,7 @@ Shape {
     y: parent.height - r
     width: r * 2
     height: r * 2
-    layer.enabled: true
+    layer.enabled: shade.layered
     layer.samples: 4
     transform: Scale {
         origin.x: shade.r

@@ -29,6 +29,20 @@
   in {
     formatter.${system} = nixpkgs.legacyPackages.${system}.alejandra;
 
+    # `nix flake check` fails if statix finds a lint or deadnix finds unused
+    # code. hardware-configuration.nix is generated, so both skip it.
+    checks.${system}.lint = let
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
+      pkgs.runCommand "lint" {
+        nativeBuildInputs = [pkgs.statix pkgs.deadnix];
+      } ''
+        cd ${./.}
+        statix check -i hosts/licht/hardware-configuration.nix .
+        deadnix --fail --exclude hosts/licht/hardware-configuration.nix .
+        touch $out
+      '';
+
     # `nix develop`, or automatically in this folder through direnv (.envrc).
     #   agenix    edit secrets:  agenix -e secrets/<name>.age
     #   statix    lint:          statix check .   (statix fix . applies fixes)

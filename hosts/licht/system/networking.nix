@@ -1,4 +1,4 @@
-{...}: {
+_: {
   networking.hostName = "licht";
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
