@@ -698,6 +698,41 @@ PanelWindow {
                     easing.type: Style.easeMove
                 }
 
+                // A soft shadow under the selected app, so it sits above the dial
+                Repeater {
+                    model: 3
+
+                    delegate: Rectangle {
+                        required property int index
+
+                        anchors.centerIn: parent
+                        anchors.verticalCenterOffset: 5 + index * 3
+                        width: parent.width + 2 + index * 9
+                        height: width
+                        radius: slot.corner + 1 + index * 4.5
+                        color: Qt.alpha("#000000", 0.11 * slot.c)
+                        visible: slot.c > 0.05
+                    }
+                }
+
+                // A faint accent halo around it
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width + 46
+                    height: width
+                    radius: slot.corner + 23
+                    color: Qt.alpha(Colors.accent, 0.035 * slot.c)
+                    visible: slot.c > 0.05
+                }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width + 26
+                    height: width
+                    radius: slot.corner + 13
+                    color: Qt.alpha(Colors.accent, 0.045 * slot.c)
+                    visible: slot.c > 0.05
+                }
+
                 // Ring that leaves a newly selected app.
                 Rectangle {
                     anchors.centerIn: parent
@@ -844,9 +879,21 @@ PanelWindow {
                     font.pixelSize: 22
                 }
 
+                Txt {
+                    id: sumText
+
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: launcher.calcResult !== ""
+                    width: Math.min(implicitWidth, readout.width * 0.4)
+                    elide: Text.ElideLeft
+                    text: input.text.trim().replace(/^=\s*/, "")
+                    color: Colors.muted
+                    font.pixelSize: Style.fontXl
+                }
+
                 Item {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(nameText.implicitWidth, readout.width - 44)
+                    width: Math.min(nameText.implicitWidth, readout.width - 44 - (sumText.visible ? sumText.width + Style.spaceMd : 0))
                     height: nameText.implicitHeight
 
                     Txt {

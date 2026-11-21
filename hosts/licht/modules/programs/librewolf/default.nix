@@ -28,6 +28,25 @@ in {
   # wired in through nativeMessagingHosts below, not through this.)
   home.packages = [pywalfoxNative];
 
+  # LibreWolf opens every web link (xdg-open, aerc, Obsidian, `gh`). With
+  # xdg.mimeApps on, Home Manager is the ONLY writer of ~/.config/mimeapps.list,
+  # so `xdg-mime default ...` no longer sticks: add the type here instead.
+  # Other modules add their own types (see aria2); the attribute sets merge.
+  xdg.mimeApps = {
+    enable = true;
+    defaultApplications = let
+      browser = ["librewolf.desktop"];
+    in {
+      "text/html" = browser;
+      "x-scheme-handler/http" = browser;
+      "x-scheme-handler/https" = browser;
+      "x-scheme-handler/about" = browser;
+      "x-scheme-handler/unknown" = browser;
+    };
+  };
+  # For tools that read $BROWSER instead of asking xdg-open.
+  home.sessionVariables.BROWSER = "librewolf";
+
   # Tridactyl reads ~/.config/tridactyl/tridactylrc through its native
   # messenger. The file is a read-only link into the Nix store, so edit
   # config/tridactylrc and rebuild (or `:source` after `ut`).

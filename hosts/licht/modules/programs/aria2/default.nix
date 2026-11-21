@@ -50,9 +50,17 @@ in {
 
   xdg.configFile."aria2/aria2.conf".source = ./config/aria2.conf;
 
-  # Magnet links and .torrent files can be opened with the panel. Make it the
-  # default once with:
-  #   xdg-mime default dl.desktop x-scheme-handler/magnet application/x-bittorrent application/metalink+xml
+  # Magnet links and .torrent files can be opened with the panel. It is made
+  # the default for them in xdg.mimeApps below (the file is Home Manager's, so
+  # `xdg-mime default` would not stick).
+  xdg.mimeApps.defaultApplications = let
+    dlApp = ["dl.desktop"];
+  in {
+    "x-scheme-handler/magnet" = dlApp;
+    "application/x-bittorrent" = dlApp;
+    "application/metalink+xml" = dlApp;
+  };
+
   xdg.desktopEntries.dl = {
     name = "Add to downloads";
     exec = "${dl}/bin/dl %U";
