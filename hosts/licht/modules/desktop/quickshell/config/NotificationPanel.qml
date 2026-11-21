@@ -3,15 +3,13 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 
-// The notification centre: one glass card, an eighth of the way down the screen.
+// The notification centre: no panel, just the cards. Each notification is a glass
+// card of its own, hung off a thin ruler against the right edge. The card the
+// cursor is on is the widest and opens; the others narrow and fade with their
+// distance from it, like the magnifier in the bar's ruler.
 //
-//   7  new          the count of what arrived since you last looked, big;
-//                   do not disturb and clear all beside it
-//   the day         a ruler from 00 to 24: a tick every quarter hour, lit up to
-//                   now, a dot where each notification arrived
-//   tabs            All / Urgent / Snoozed, and search
-//   the log         a row per notification, newest first, by day; the one the
-//                   cursor is on opens with its buttons
+//   chips           what is new, the tabs, search, do not disturb, clear all
+//   the cards       newest first, by day
 //   keys            what the keys do
 //
 // All state lives in NotificationServer.qml. This file is only what is on
@@ -62,31 +60,14 @@ PanelWindow {
     // ---- Layout -------------------------------------------------------------
     readonly property real screenW: targetScreen ? targetScreen.width : 1920
     readonly property real screenH: targetScreen ? targetScreen.height : 1080
-    readonly property int cardW: Math.round(Math.min(520, screenW - 32))
-    readonly property int pad: Style.cardPad
-    readonly property int innerW: cardW - pad * 2
-    readonly property int headH: 58
-    readonly property int dayH: 74
-    readonly property int tabsH: Style.fieldHeight
-    readonly property int footH: 36
-    readonly property int maxCardH: Math.round(screenH) - Style.panelTop - 48
-    readonly property int maxBody: Math.max(200, maxCardH - pad * 2 - headH - 14 - dayH - tabsH - 4 - footH)
-    readonly property int bodyH: Math.min(400, maxBody)
-
-    // ---- The day --------------------------------------------------------------
-    readonly property double dayStart: {
-        const d = new Date(clock.date.getTime());
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
-    }
-    readonly property real nowMin: (clock.date.getTime() - dayStart) / 60000
-    // A dot for every notification shown that arrived today
-    readonly property var pips: entryRows.filter(e => e.time >= dayStart).map(e => ({
-                "key": e.key,
-                "m": (e.time - dayStart) / 60000,
-                "fresh": e.time > NotificationServer.newSince,
-                "crit": e.critical === true
-            }))
+    // The column the cards and the rail sit in, against the right edge
+    readonly property int cardW: Math.round(Math.min(470, screenW - 32))
+    readonly property int edge: Style.barGap + 2
+    readonly property int railTop: Style.barGap + Style.barHeight + Style.barGap
+    readonly property int chipsH: 36
+    readonly property int footH: 34
+    readonly property int listTop: railTop + chipsH + 12
+    readonly property int colX: Math.round(screenW) - edge - cardW
 
     // ---- The list as shown --------------------------------------------------
     readonly property var counts: {
@@ -816,684 +797,453 @@ PanelWindow {
         Keys.onPressed: event => panel.handleKey(event)
     }
 
-    // ---- The card -----------------------------------------------------------
+    // A soft shade down the right edge so the cards and the rail read over any window
     Rectangle {
-        id: card
+        x: panel.colX - 90
+        y: 0
+        width: panel.width - x
+        height: panel.height
+        opacity: panel.reveal
 
-        x: Math.round((panel.width - width) / 2)
-        y: Style.panelTop
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+
+            GradientStop {
+                position: 0
+                color: Qt.alpha(Colors.background, 0)
+            }
+            GradientStop {
+                position: 0.4
+                color: Qt.alpha(Colors.background, 0.55)
+            }
+            GradientStop {
+                position: 1
+                color: Qt.alpha(Colors.background, 0.78)
+            }
+        }
+    }
+
+    // ---- Header: the tabs as chips, and the switches ------------------------------
+    Item {
+        id: chips
+
+        x: panel.width - panel.edge - panel.cardW
+        y: panel.railTop
+        width: panel.cardW - 28
+        height: panel.chipsH
+        opacity: panel.reveal
+
+        Row {
+            id: chipRow
+
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            visible: !(panel.searching || panel.query !== "")
+
+            // One filter: click to go round all, new, urgent, snoozed
+            Rectangle {
+                id: filter
+
+                readonly property string label: panel.tab === "fresh" ? "new" : panel.tab
+                readonly property int n: panel.counts[panel.tab] || 0
+
+                height: 28
+                width: filterRow.width + 26
+                radius: 14
+                color: panel.tab === "all" ? (filterHover.hovered ? Style.hoverFill : Style.well) : Qt.alpha(panel.tab === "urgent" ? Colors.critical : Colors.accent, 0.18)
+                border.width: 1
+                border.color: panel.tab === "all" ? "transparent" : Qt.alpha(panel.tab === "urgent" ? Colors.critical : Colors.accent, 0.5)
+
+                Row {
+                    id: filterRow
+
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    Txt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: panel.tab !== "all"
+                        text: String(filter.n)
+                        color: panel.tab === "urgent" ? Colors.critical : Colors.accent
+                        font.pixelSize: Style.fontBase
+                    }
+
+                    Txt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: panel.tab === "all" ? "all  \u00b7  " + panel.counts.all : filter.label
+                        color: panel.tab === "all" ? Colors.foreground : (panel.tab === "urgent" ? Colors.critical : Colors.accent)
+                        font.pixelSize: Style.fontMd
+                    }
+
+                    Txt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: panel.tab === "all" && panel.counts.fresh > 0
+                        text: panel.counts.fresh + " new"
+                        color: Colors.accent
+                        font.pixelSize: Style.fontMd
+                    }
+                }
+
+                HoverHandler {
+                    id: filterHover
+
+                    cursorShape: Qt.PointingHandCursor
+                }
+                TapHandler {
+                    onTapped: {
+                        const order = ["all", "fresh", "urgent", "snoozed"];
+                        panel.tab = order[(order.indexOf(panel.tab) + 1) % order.length];
+                        panel.leaveInput();
+                    }
+                }
+            }
+
+            IconButton {
+                glyph: Icons.search
+                tip: "Search ( / )"
+                onClicked: panel.openSearch()
+                onHoveredChanged: panel.tip = hovered ? tip : ""
+            }
+
+            IconButton {
+                glyph: NotificationServer.doNotDisturb ? Icons.bellOff : Icons.bell
+                on: NotificationServer.doNotDisturb
+                tip: "Do not disturb (d)  \u00b7  an hour (Shift+D)"
+                onClicked: NotificationServer.toggleDnd()
+                onHoveredChanged: panel.tip = hovered ? tip : ""
+            }
+
+            IconButton {
+                visible: NotificationServer.history.length > 0
+                glyph: Icons.trash
+                danger: true
+                on: panel.clearArmed
+                tip: panel.clearArmed ? "Press again to clear everything" : "Clear everything"
+                onClicked: panel.clearPressed()
+                onHoveredChanged: panel.tip = hovered ? tip : ""
+            }
+        }
+
+        SearchField {
+            id: searchField
+
+            visible: panel.searching || panel.query !== ""
+            anchors.fill: parent
+            placeholder: "Search  ( / )"
+            fontSize: Style.fontMd
+            badge: panel.query.trim() !== "" ? String(panel.entryRows.length) : ""
+            onTextChanged: panel.query = text
+            onAccepted: panel.leaveInput()
+            Keys.onEscapePressed: {
+                if (text !== "")
+                    text = "";
+                panel.searching = false;
+                panel.leaveInput();
+            }
+            Keys.onDownPressed: {
+                panel.moveCursor(1);
+                panel.leaveInput();
+            }
+            Keys.onUpPressed: {
+                panel.moveCursor(-1);
+                panel.leaveInput();
+            }
+        }
+    }
+
+    // ---- The rail ---------------------------------------------------------------
+    Rectangle {
+        x: panel.colX + panel.cardW - 13 - 0.5 + (1 - panel.reveal) * 40
+        y: panel.railTop
+        width: 1
+        height: panel.height - panel.railTop - panel.edge
+        opacity: panel.reveal
+        gradient: Gradient {
+            GradientStop {
+                position: 0
+                color: "transparent"
+            }
+            GradientStop {
+                position: 0.1
+                color: Qt.alpha(Colors.foreground, 0.14)
+            }
+            GradientStop {
+                position: 0.9
+                color: Qt.alpha(Colors.foreground, 0.14)
+            }
+            GradientStop {
+                position: 1
+                color: "transparent"
+            }
+        }
+    }
+
+    // ---- The cards, or the keys ---------------------------------------------------
+    Item {
+        id: listArea
+
+        x: panel.colX + (1 - panel.reveal) * 40
+        y: panel.listTop
         width: panel.cardW
-        height: Math.min(col.implicitHeight + panel.pad * 2, panel.maxCardH)
-        radius: Style.radiusXl
+        height: panel.height - panel.listTop - panel.footH - panel.edge
+        opacity: panel.reveal
+        visible: !panel.showHelp
+
+        ListView {
+            id: list
+
+            anchors.fill: parent
+            visible: count > 0
+            clip: true
+            spacing: 0
+            boundsBehavior: Flickable.StopAtBounds
+            cacheBuffer: 300
+            currentIndex: panel.cursorIndex
+            onCurrentIndexChanged: if (currentIndex >= 0)
+                positionViewAtIndex(currentIndex, ListView.Contain)
+
+            model: ScriptModel {
+                values: panel.shownRows
+                objectProp: "key"
+            }
+
+            // A dismissed row fades and its neighbours close the gap
+            remove: Transition {
+                ParallelAnimation {
+                    NumberAnimation {
+                        property: "opacity"
+                        to: 0
+                        duration: Style.baseMs
+                    }
+                    NumberAnimation {
+                        property: "scale"
+                        to: 0.92
+                        duration: Style.baseMs
+                    }
+                }
+            }
+
+            displaced: Transition {
+                NumberAnimation {
+                    properties: "y"
+                    duration: Style.moveMs
+                    easing.type: Style.easeMove
+                }
+            }
+
+            delegate: NotificationRow {
+                width: list.width
+                dist: panel.cursorIndex < 0 ? 1 : Math.abs(index - panel.cursorIndex)
+                current: modelData.key === panel.cursorKey
+                ticked: panel.ticked[modelData.key] === true
+                nowMs: clock.date.getTime()
+                actions: current ? panel.curActions : []
+                onClicked: ctrl => panel.rowClicked(modelData.key, ctrl)
+                onActionClicked: id => panel.runAction(id)
+                onCopyClicked: panel.copyEntry(modelData, false)
+                onCopyTextClicked: panel.copyEntry(modelData, true)
+                onLinkClicked: panel.openLink(modelData)
+                onSnoozeClicked: {
+                    if (modelData.snoozeUntil > 0)
+                        NotificationServer.unsnooze([modelData]);
+                    else
+                        NotificationServer.snooze([modelData], 10);
+                }
+                onDismissClicked: NotificationServer.dismissEntries([modelData])
+                onGroupClearClicked: NotificationServer.clearApp(modelData.appName)
+                onTipped: text => panel.tip = text
+                // The open row grows: keep all of it in view
+                onHeightChanged: if (current && list.moving === false)
+                    list.positionViewAtIndex(index, ListView.Contain)
+            }
+        }
+
+        // The log fades out at the foot
+        Rectangle {
+            visible: list.visible
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 40
+
+            gradient: Gradient {
+                GradientStop {
+                    position: 0
+                    color: Qt.alpha(Colors.background, 0)
+                }
+                GradientStop {
+                    position: 1
+                    color: Style.card
+                }
+            }
+        }
+
+        // Nothing to show
+        Column {
+            visible: list.count === 0
+            anchors.centerIn: parent
+            spacing: 10
+
+            Txt {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: panel.query.trim() !== "" ? Icons.search : (NotificationServer.doNotDisturb ? Icons.bellOff : Icons.bell)
+                color: NotificationServer.doNotDisturb ? Colors.accent : Colors.muted
+                opacity: NotificationServer.doNotDisturb ? 1 : 0.6
+                font.pixelSize: 26
+            }
+
+            Txt {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: panel.query.trim() !== "" ? "Nothing matches" : (panel.tab === "snoozed" ? "Nothing snoozed" : (panel.tab === "urgent" ? "Nothing urgent" : (panel.tab === "fresh" ? "Nothing new" : "Nothing to see")))
+                color: Colors.foreground
+                opacity: 0.85
+                font.pixelSize: Style.fontBase
+            }
+
+            Txt {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: panel.query.trim() === "" && panel.tab === "all"
+                text: panel.dndText
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                width: Math.min(implicitWidth, 260)
+                color: Colors.muted
+                font.pixelSize: Style.fontSm
+            }
+
+            TextButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: NotificationServer.doNotDisturb && panel.query.trim() === "" && panel.tab === "all"
+                compact: true
+                primary: true
+                text: "turn do not disturb off"
+                onClicked: NotificationServer.toggleDnd()
+            }
+        }
+    }
+
+    Rectangle {
+        visible: panel.showHelp
+        x: panel.colX + (1 - panel.reveal) * 40
+        y: panel.listTop
+        width: panel.cardW - 38
+        height: Math.min(helpGrid.height + 32, panel.height - panel.listTop - panel.footH - panel.edge)
+        radius: Style.radiusXl + 2
         color: Style.card
         border.width: 1
         border.color: Style.outline
         opacity: panel.reveal
-        scale: 0.97 + 0.03 * panel.reveal
-        transformOrigin: Item.Top
 
         EdgeLight {}
 
-        // A click on the gaps between things stays on the card (and takes the keys
-        // back from the search) instead of falling through to the dim, which would
-        // close the panel
-        MouseArea {
-            anchors.fill: parent
-            onClicked: panel.leaveInput()
-        }
+        Grid {
+            id: helpGrid
 
-        Column {
-            id: col
+            anchors.centerIn: parent
+            columns: 2
+            columnSpacing: 20
+            rowSpacing: 7
+            flow: Grid.TopToBottom
+            rows: Math.ceil(panel.keyHelp.length / 2)
 
-            x: panel.pad
-            y: panel.pad
-            width: panel.innerW
-            spacing: 0
+            Repeater {
+                model: panel.keyHelp
 
-            // ---- What is new, and the switches ---------------------------------
-            Item {
-                width: parent.width
-                height: panel.headH
+                delegate: Item {
+                    required property var modelData
 
-                Row {
-                    id: tally
-
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 6
-                    spacing: 12
-
-                    Txt {
-                        id: numeral
-
-                        text: String(panel.counts.fresh)
-                        color: panel.counts.fresh > 0 ? Colors.foreground : Colors.muted
-                        font.pixelSize: 52
-                        font.weight: Font.Light
-                        font.letterSpacing: -2
-                        lineHeight: 0.9
-                    }
-
-                    Column {
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 4
-                        spacing: 2
-
-                        Txt {
-                            text: panel.counts.fresh > 0 ? "new" : "all quiet"
-                            color: panel.counts.fresh > 0 ? Colors.accent : Colors.muted
-                            font.pixelSize: Style.fontMd
-                        }
-
-                        Txt {
-                            text: panel.counts.fresh > 0 ? (NotificationServer.newSince > 0 ? "since " + Qt.formatTime(new Date(NotificationServer.newSince), "HH:mm") : "") : "nothing new"
-                            visible: text !== ""
-                            color: Colors.muted
-                            font.pixelSize: Style.fontSm
-                        }
-                    }
-                }
-
-                // Click the count to see only the new ones
-                MouseArea {
-                    x: 0
-                    y: 0
-                    width: tally.width
-                    height: parent.height
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        panel.tab = panel.tab === "fresh" ? "all" : "fresh";
-                        panel.leaveInput();
-                    }
-                    onContainsMouseChanged: panel.tip = containsMouse ? (panel.tab === "fresh" ? "Show everything" : "Show only the new ones") : ""
-                }
-
-                Rectangle {
-                    visible: panel.tab === "fresh"
-                    x: 0
-                    y: parent.height - 2
-                    width: tally.width
-                    height: 2
-                    radius: 1
-                    color: Colors.accent
-                }
-
-                Row {
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 4
-                    spacing: 4
-
-                    TextButton {
-                        compact: true
-                        raised: NotificationServer.doNotDisturb
-                        primary: NotificationServer.doNotDisturb
-                        glyph: NotificationServer.doNotDisturb ? Icons.bellOff : Icons.bell
-                        text: NotificationServer.doNotDisturb ? (NotificationServer.dndUntil > 0 ? "silent until " + Qt.formatTime(new Date(NotificationServer.dndUntil), "HH:mm") : "silent") : "do not disturb"
-                        onClicked: NotificationServer.toggleDnd()
-                        onHoveredChanged: panel.tip = hovered ? "Do not disturb (d)  ·  an hour (Shift+D)" : ""
-                    }
-
-                    TextButton {
-                        visible: NotificationServer.history.length > 0
-                        compact: true
-                        danger: panel.clearArmed
-                        armed: panel.clearArmed
-                        text: panel.clearArmed ? "press again" : "clear all"
-                        onClicked: panel.clearPressed()
-                        onHoveredChanged: panel.tip = hovered ? "Clear everything" : ""
-                    }
-                }
-            }
-
-            // ---- The day, as a ruler ------------------------------------------
-            Item {
-                id: day
-
-                width: parent.width
-                height: panel.dayH + 14
-
-                // Where the notifications arrived
-                Item {
-                    y: 14
-                    width: parent.width
-                    height: 44
-
-                    Repeater {
-                        model: panel.pips
-
-                        delegate: Item {
-                            id: pip
-
-                            required property var modelData
-                            readonly property bool sel: modelData.key === panel.cursorKey
-                            readonly property color dot: modelData.crit ? Colors.critical : (modelData.fresh ? Colors.accent : Qt.alpha(Colors.foreground, 0.3))
-
-                            x: modelData.m / 1440 * day.width
-                            y: 22
-                            width: 0
-                            height: 0
-
-                            Rectangle {
-                                visible: pip.sel || pip.modelData.crit
-                                anchors.centerIn: parent
-                                width: pip.sel ? 24 : 18
-                                height: width
-                                radius: width / 2
-                                color: Qt.alpha(pip.modelData.crit ? Colors.critical : Colors.accent, pip.sel ? 0.18 : 0.12)
-                            }
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: pip.sel ? 11 : 6
-                                height: width
-                                radius: width / 2
-                                color: pip.dot
-                                z: pip.sel ? 1 : 0
-
-                                Behavior on width {
-                                    NumberAnimation {
-                                        duration: Style.baseMs
-                                        easing.type: Style.easeMove
-                                    }
-                                }
-                            }
-
-                            // A click on a dot goes to that notification
-                            MouseArea {
-                                x: -8
-                                y: -8
-                                width: 16
-                                height: 16
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: panel.rowClicked(pip.modelData.key, false)
-                            }
-                        }
-                    }
-                }
-
-                // A tick every quarter hour, long by the hour and the six hours,
-                // lit up to now
-                Repeater {
-                    model: 97
-
-                    delegate: Rectangle {
-                        required property int index
-                        readonly property bool six: index % 24 === 0
-                        readonly property bool hour: index % 4 === 0
-                        readonly property bool past: index * 15 <= panel.nowMin
-
-                        x: index * 15 / 1440 * day.width
-                        y: 14 + 46 - height
-                        width: 1
-                        height: six ? 13 : (hour ? 7 : 4)
-                        color: past ? Qt.alpha(Colors.accent, six || hour ? 0.55 : 0.4) : Qt.alpha(Colors.foreground, 0.12)
-                    }
-                }
-
-                // Now
-                Rectangle {
-                    x: panel.nowMin / 1440 * day.width - 5
-                    y: 14 + 30 - 4
-                    width: 11
-                    height: 24
-                    radius: 5.5
-                    color: Qt.alpha(Colors.accent, 0.14)
-                }
-                Rectangle {
-                    x: panel.nowMin / 1440 * day.width - 1
-                    y: 14 + 30
-                    width: 2
-                    height: 16
-                    radius: 1
-                    color: Colors.accent
-                }
-
-                Repeater {
-                    model: ["00", "06", "12", "18", "24"]
-
-                    delegate: Txt {
-                        required property string modelData
-                        required property int index
-
-                        x: index * 6 / 24 * day.width - width / 2
-                        y: 14 + 52
-                        text: modelData
-                        color: Colors.muted
-                        opacity: 0.7
-                        font.pixelSize: 9
-                    }
-                }
-            }
-
-            // ---- Tabs, and search ---------------------------------------------
-            Item {
-                width: parent.width
-                height: panel.tabsH + 4
-
-                Row {
-                    id: tabRow
-
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    spacing: 18
-
-                    Repeater {
-                        model: panel.shownTabs
-
-                        delegate: Item {
-                            id: tabItem
-
-                            required property var modelData
-                            readonly property int n: panel.counts[modelData.id] || 0
-                            readonly property bool on: panel.tab === modelData.id
-
-                            width: tabLabel.width
-                            height: 30
-
-                            Row {
-                                id: tabLabel
-
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
-
-                                Txt {
-                                    text: tabItem.modelData.label
-                                    color: tabItem.on ? Colors.foreground : Colors.muted
-                                    font.pixelSize: Style.fontMd
-                                }
-
-                                Txt {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.verticalCenterOffset: 1
-                                    text: String(tabItem.n)
-                                    color: Colors.muted
-                                    opacity: 0.8
-                                    font.pixelSize: Style.fontXs
-                                }
-                            }
-
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                width: parent.width
-                                height: 1
-                                color: tabItem.on ? Colors.foreground : "transparent"
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    panel.tab = tabItem.modelData.id;
-                                    panel.leaveInput();
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // The hairline under the tabs
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 0
-                    width: parent.width
-                    height: 1
-                    z: -1
-                    color: Qt.alpha(Colors.foreground, 0.07)
-                }
-
-                // Search: a quiet label until you use it
-                Item {
-                    id: searchSlot
-
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    width: 210
-                    height: panel.tabsH
+                    width: (panel.cardW - 38 - 32 - 20) / 2
+                    height: 22
 
                     Row {
-                        visible: !(panel.searching || panel.query !== "")
-                        anchors.right: parent.right
-                        anchors.rightMargin: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.verticalCenterOffset: -3
-                        spacing: 6
-
-                        Txt {
-                            text: Icons.search
-                            color: Colors.muted
-                            font.pixelSize: Style.fontMd
-                        }
-
-                        Txt {
-                            text: "search"
-                            color: Colors.muted
-                            font.pixelSize: Style.fontSm
-                        }
-
-                        HoverHandler {
-                            cursorShape: Qt.PointingHandCursor
-                        }
-                        TapHandler {
-                            onTapped: panel.openSearch()
-                        }
-                    }
-
-                    SearchField {
-                        id: searchField
-
-                        visible: panel.searching || panel.query !== ""
-                        anchors.fill: parent
-                        placeholder: "Search  ( / )"
-                        fontSize: Style.fontMd
-                        badge: panel.query.trim() !== "" ? String(panel.entryRows.length) : ""
-                        onTextChanged: panel.query = text
-                        onAccepted: panel.leaveInput()
-                        Keys.onEscapePressed: {
-                            if (text !== "")
-                                text = "";
-                            panel.searching = false;
-                            panel.leaveInput();
-                        }
-                        Keys.onDownPressed: {
-                            panel.moveCursor(1);
-                            panel.leaveInput();
-                        }
-                        Keys.onUpPressed: {
-                            panel.moveCursor(-1);
-                            panel.leaveInput();
-                        }
-                    }
-                }
-            }
-
-            // ---- The log, or the keys --------------------------------------------
-            Item {
-                id: body
-
-                width: parent.width
-                height: panel.bodyH + 8
-
-                Item {
-                    id: listArea
-
-                    y: 8
-                    width: parent.width
-                    height: panel.bodyH
-                    visible: !panel.showHelp
-
-                    ListView {
-                        id: list
-
-                        anchors.fill: parent
-                        visible: count > 0
-                        clip: true
-                        spacing: 2
-                        boundsBehavior: Flickable.StopAtBounds
-                        cacheBuffer: 300
-                        currentIndex: panel.cursorIndex
-                        onCurrentIndexChanged: if (currentIndex >= 0)
-                            positionViewAtIndex(currentIndex, ListView.Contain)
-
-                        model: ScriptModel {
-                            values: panel.shownRows
-                            objectProp: "key"
-                        }
-
-                        // A dismissed row fades and its neighbours close the gap
-                        remove: Transition {
-                            ParallelAnimation {
-                                NumberAnimation {
-                                    property: "opacity"
-                                    to: 0
-                                    duration: Style.baseMs
-                                }
-                                NumberAnimation {
-                                    property: "scale"
-                                    to: 0.92
-                                    duration: Style.baseMs
-                                }
-                            }
-                        }
-
-                        displaced: Transition {
-                            NumberAnimation {
-                                properties: "y"
-                                duration: Style.moveMs
-                                easing.type: Style.easeMove
-                            }
-                        }
-
-                        delegate: NotificationRow {
-                            width: list.width
-                            current: modelData.key === panel.cursorKey
-                            ticked: panel.ticked[modelData.key] === true
-                            nowMs: clock.date.getTime()
-                            actions: current ? panel.curActions : []
-                            onClicked: ctrl => panel.rowClicked(modelData.key, ctrl)
-                            onActionClicked: id => panel.runAction(id)
-                            onCopyClicked: panel.copyEntry(modelData, false)
-                            onCopyTextClicked: panel.copyEntry(modelData, true)
-                            onLinkClicked: panel.openLink(modelData)
-                            onSnoozeClicked: {
-                                if (modelData.snoozeUntil > 0)
-                                    NotificationServer.unsnooze([modelData]);
-                                else
-                                    NotificationServer.snooze([modelData], 10);
-                            }
-                            onDismissClicked: NotificationServer.dismissEntries([modelData])
-                            onGroupClearClicked: NotificationServer.clearApp(modelData.appName)
-                            onTipped: text => panel.tip = text
-                            // The open row grows: keep all of it in view
-                            onHeightChanged: if (current && list.moving === false)
-                                list.positionViewAtIndex(index, ListView.Contain)
-                        }
-                    }
-
-                    // The log fades out at the foot
-                    Rectangle {
-                        visible: list.visible
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 34
-
-                        gradient: Gradient {
-                            GradientStop {
-                                position: 0
-                                color: Qt.alpha(Colors.background, 0)
-                            }
-                            GradientStop {
-                                position: 1
-                                color: Style.card
-                            }
-                        }
-                    }
-
-                    // Nothing to show
-                    Column {
-                        visible: list.count === 0
-                        anchors.centerIn: parent
-                        spacing: 10
-
-                        Txt {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: panel.query.trim() !== "" ? Icons.search : (NotificationServer.doNotDisturb ? Icons.bellOff : Icons.bell)
-                            color: NotificationServer.doNotDisturb ? Colors.accent : Colors.muted
-                            opacity: NotificationServer.doNotDisturb ? 1 : 0.6
-                            font.pixelSize: 26
-                        }
-
-                        Txt {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: panel.query.trim() !== "" ? "Nothing matches" : (panel.tab === "snoozed" ? "Nothing snoozed" : (panel.tab === "urgent" ? "Nothing urgent" : (panel.tab === "fresh" ? "Nothing new" : "Nothing to see")))
-                            color: Colors.foreground
-                            opacity: 0.85
-                            font.pixelSize: Style.fontBase
-                        }
-
-                        Txt {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: panel.query.trim() === "" && panel.tab === "all"
-                            text: panel.dndText
-                            color: Colors.muted
-                            font.pixelSize: Style.fontSm
-                        }
-
-                        TextButton {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: NotificationServer.doNotDisturb && panel.query.trim() === "" && panel.tab === "all"
-                            compact: true
-                            primary: true
-                            text: "turn do not disturb off"
-                            onClicked: NotificationServer.toggleDnd()
-                        }
-                    }
-                }
-
-                // ---- The keys ----------------------------------------------------
-                Item {
-                    id: help
-
-                    y: 8
-                    width: parent.width
-                    height: panel.bodyH
-                    visible: panel.showHelp
-
-                    Grid {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        columns: 2
-                        columnSpacing: 28
-                        rowSpacing: 7
-                        flow: Grid.TopToBottom
-                        rows: Math.ceil(panel.keyHelp.length / 2)
+                        spacing: 3
+                        width: 70
 
                         Repeater {
-                            model: panel.keyHelp
+                            model: modelData.k
 
-                            delegate: Item {
-                                required property var modelData
+                            delegate: KeyCap {
+                                required property string modelData
 
-                                width: (help.width - 28) / 2
-                                height: 22
-
-                                Row {
-                                    spacing: 3
-                                    width: 80
-
-                                    Repeater {
-                                        model: modelData.k
-
-                                        delegate: KeyCap {
-                                            required property string modelData
-
-                                            label: modelData
-                                        }
-                                    }
-                                }
-
-                                Txt {
-                                    x: 84
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 84
-                                    text: modelData.d
-                                    color: Colors.foreground
-                                    opacity: 0.8
-                                    font.pixelSize: Style.fontSm
-                                    elide: Text.ElideRight
-                                }
+                                label: modelData
                             }
                         }
-                    }
-                }
-            }
-
-            // ---- What the keys do right now ----------------------------------------
-            Item {
-                width: parent.width
-                height: panel.footH
-
-                Row {
-                    id: hints
-
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 16
-                    visible: panel.tip === "" && panel.tickedCount === 0
-
-                    Repeater {
-                        model: [["j k", "move"], ["x", "dismiss"], ["z", "snooze"], ["/", "search"]]
-
-                        delegate: Row {
-                            required property var modelData
-
-                            spacing: 6
-
-                            KeyCap {
-                                anchors.verticalCenter: parent.verticalCenter
-                                label: parent.modelData[0]
-                            }
-
-                            Txt {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData[1]
-                                color: Colors.muted
-                                font.pixelSize: Style.fontSm
-                            }
-                        }
-                    }
-                }
-
-                // The tip for what the pointer is over, or what is ticked
-                Txt {
-                    anchors.left: parent.left
-                    anchors.right: more.left
-                    anchors.rightMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !hints.visible
-                    text: panel.tip !== "" ? panel.tip : panel.tickedCount + " ticked  ·  x dismisses them  ·  z snoozes  ·  Esc unticks"
-                    color: Colors.muted
-                    font.pixelSize: Style.fontSm
-                    elide: Text.ElideRight
-                }
-
-                Row {
-                    id: more
-
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-
-                    KeyCap {
-                        anchors.verticalCenter: parent.verticalCenter
-                        label: "?"
                     }
 
                     Txt {
+                        x: 74
                         anchors.verticalCenter: parent.verticalCenter
-                        text: panel.showHelp ? "back" : "all keys"
-                        color: Colors.muted
+                        width: parent.width - 74
+                        text: modelData.d
+                        color: Colors.foreground
+                        opacity: 0.8
                         font.pixelSize: Style.fontSm
-                    }
-
-                    HoverHandler {
-                        cursorShape: Qt.PointingHandCursor
-                    }
-                    TapHandler {
-                        onTapped: panel.showHelp = !panel.showHelp
+                        elide: Text.ElideRight
                     }
                 }
             }
         }
     }
 
-    // ---- Feedback, above the card -------------------------------------------
+    // ---- What the keys do right now ---------------------------------------------------
+    Item {
+        id: foot
+
+        x: panel.colX
+        y: panel.height - panel.edge - panel.footH
+        width: panel.cardW - 38
+        height: panel.footH
+        opacity: panel.reveal
+
+        // The tip for what the pointer is over, or what is ticked
+        Txt {
+            anchors.left: parent.left
+            anchors.right: more.left
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            visible: panel.tip !== "" || panel.tickedCount > 0
+            horizontalAlignment: Text.AlignRight
+            text: panel.tip !== "" ? panel.tip : panel.tickedCount + " ticked  \u00b7  x dismisses them  \u00b7  z snoozes  \u00b7  Esc unticks"
+            color: Colors.muted
+            font.pixelSize: Style.fontSm
+            elide: Text.ElideLeft
+        }
+
+        Row {
+            id: more
+
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            KeyCap {
+                anchors.verticalCenter: parent.verticalCenter
+                label: "?"
+            }
+
+            Txt {
+                anchors.verticalCenter: parent.verticalCenter
+                text: panel.showHelp ? "back" : "keys"
+                color: Colors.muted
+                font.pixelSize: Style.fontSm
+            }
+
+            HoverHandler {
+                cursorShape: Qt.PointingHandCursor
+            }
+            TapHandler {
+                onTapped: panel.showHelp = !panel.showHelp
+            }
+        }
+    }
+
+    // ---- Feedback ---------------------------------------------------------------------
     Rectangle {
-        anchors.horizontalCenter: card.horizontalCenter
-        anchors.bottom: card.top
-        anchors.bottomMargin: 10
-        width: Math.min(panel.cardW, toastText.implicitWidth + 32)
+        anchors.horizontalCenter: foot.horizontalCenter
+        anchors.bottom: foot.top
+        anchors.bottomMargin: 8
+        width: Math.min(panel.cardW - 60, toastText.implicitWidth + 32)
         height: 30
         radius: 15
         color: Style.card
@@ -1512,7 +1262,7 @@ PanelWindow {
             id: toastText
 
             anchors.centerIn: parent
-            width: Math.min(implicitWidth, panel.cardW - 40)
+            width: Math.min(implicitWidth, panel.cardW - 92)
             text: panel.note
             color: panel.noteIsError ? Colors.critical : Colors.foreground
             font.pixelSize: Style.fontMd
