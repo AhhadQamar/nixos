@@ -99,7 +99,28 @@
         "home-manager": "home-manager",
         "nix-index-database": "nix-index-database",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstable": "nixpkgs-unstable"
+        "nixpkgs-unstable": "nixpkgs-unstable",
+        "windscribe": "windscribe"
+      }
+    },
+    "windscribe": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791274682,
+        "narHash": "sha256-uxVaHr0Pltt84WDbXzoasX+JUJ4m/66xOyV/3MDR3zE=",
+        "owner": "ParkerrDev",
+        "repo": "nixpkgs-windscribe",
+        "rev": "706cebc8f36fd8273dccd7996d24171b8038431f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ParkerrDev",
+        "repo": "nixpkgs-windscribe",
+        "type": "github"
       }
     }
   },

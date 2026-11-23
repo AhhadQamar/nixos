@@ -16,6 +16,10 @@
       url = "github:nix-community/nix-index-database";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    windscribe = {
+      url = "github:ParkerrDev/nixpkgs-windscribe";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs = {
     nixpkgs,
@@ -23,6 +27,7 @@
     home-manager,
     agenix,
     nix-index-database,
+    windscribe,
     ...
   } @ inputs: let
     system = "x86_64-linux";
@@ -69,6 +74,7 @@
         agenix.nixosModules.default
         nix-index-database.nixosModules.nix-index
         home-manager.nixosModules.home-manager
+        windscribe.nixosModules.windscribe
         {
           nixpkgs.overlays = [
             (_final: _prev: {

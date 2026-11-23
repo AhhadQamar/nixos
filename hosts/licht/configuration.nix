@@ -12,6 +12,7 @@
     ./system/desktop.nix
     ./system/greeter
     ./system/updater.nix
+    ./system/windscribe.nix
   ];
 
   programs.zsh.enable = true;
