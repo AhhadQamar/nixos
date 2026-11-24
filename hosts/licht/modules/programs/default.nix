@@ -6,7 +6,6 @@
     ./kitty
     ./mpv
     ./nvim
-    ./vscodium
     ./yt-dlp
     ./obsidian
   ];
