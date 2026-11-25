@@ -11,7 +11,6 @@
     vesktop
     playerctl
     github-copilot-cli
-    bluetui
     unstable.bombsquad
   ];
 
