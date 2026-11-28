@@ -9,6 +9,7 @@
 # when that works it hands greetd your real session and exits, and cage goes
 # with it.
 {
+  inputs,
   config,
   lib,
   pkgs,
@@ -27,7 +28,7 @@
   # (LockStage needs the buttons, the field and the glass, for one): QML only
   # finds a component that sits in the same folder, and a missing one stops
   # the whole greeter from loading.
-  shellDir = ../../modules/desktop/quickshell/config;
+  shellDir = "${inputs.quickshell-configs}/config";
   shared = [
     # Tokens and primitives
     "Style.qml"
@@ -67,7 +68,7 @@
   );
 
   # Used when the greeter may not read your palette (see the ACLs below)
-  fallbackColors = ../../modules/desktop/quickshell/WalColors.fallback.qml;
+  fallbackColors = "${inputs.quickshell-configs}/WalColors.fallback.qml";
 
   # Starts Hyprland directly (no UWSM); the greeter hands it to greetd.
   # start-hyprland is the wrapper Hyprland itself recommends. systemd-cat sends
