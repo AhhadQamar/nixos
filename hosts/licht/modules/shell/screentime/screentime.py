@@ -249,7 +249,7 @@ CATEGORIES = [
         ("discord", "vesktop", "telegram", "signal", "whatsapp", "element", "slack"),
     ),
     ("Reading", ("zathura", "okular", "evince", "obsidian", "libreoffice", "calibre")),
-    ("Files", ("thunar", "nautilus", "dolphin", "nemo", "yazi", "pcmanfm")),
+    ("Files", ("luciole", "thunar", "nautilus", "dolphin", "nemo", "yazi", "pcmanfm")),
 ]
 OTHER = "Other"
 SESSION_GAP = 300  # idle longer than this ends a session

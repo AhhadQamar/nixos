@@ -2,7 +2,7 @@
 ---- PROGRAMS ----
 -------------------------------
 local terminal = "kitty"
-local fileManager = "nautilus"
+local fileManager = "luciole"
 local browser = "librewolf"
 
 -------------------------------

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Recolor the Papirus folder icons to match the wallpaper accent.
 #
-#   recolor-icons           run by hand after `wal -i`: always re-applies, then asks Nautilus to quit
+#   recolor-icons           run by hand after `wal -i`: always re-applies (Luciole picks up icon changes by itself)
 #   recolor-icons --quiet   run by Home Manager on every switch: silent, and does nothing when
 #                           neither the wallpaper accent nor the Papirus package has changed
 #
@@ -179,6 +179,5 @@ done
 echo "$preset" >"$preset_stamp"
 
 if [ "$quiet" -eq 0 ]; then
-  nautilus -q 2>/dev/null || true
   echo "Done."
 fi

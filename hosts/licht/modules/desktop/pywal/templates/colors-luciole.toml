@@ -1,0 +1,37 @@
+# Luciole palette, from the same wallpaper colours as the GTK 4 template.
+# `wal -i` writes this to ~/.cache/wal/colors-luciole.toml and the wallpaper
+# switcher copies it to ~/.config/luciole/colors.toml, which Luciole reloads live.
+[colors]
+primary = "{color4}"
+on_primary = "{background}"
+primary_container = "{color8}"
+on_primary_container = "{foreground}"
+
+secondary = "{color5}"
+on_secondary = "{background}"
+secondary_container = "{color8}"
+on_secondary_container = "{foreground}"
+
+tertiary = "{color6}"
+on_tertiary = "{background}"
+tertiary_container = "{color8}"
+on_tertiary_container = "{foreground}"
+
+error = "{color1}"
+on_error = "{background}"
+error_container = "{color0}"
+on_error_container = "{color1}"
+
+surface = "{background}"
+on_surface = "{foreground}"
+on_surface_variant = "{color7}"
+surface_container_low = "{background}"
+surface_container = "{color0}"
+surface_container_high = "{color8}"
+surface_container_highest = "{color8}"
+outline_variant = "{color8}"
+
+shadow = "#000000"
+scrim = "#000000"
+hover = "{color4}"
+on_hover = "{background}"

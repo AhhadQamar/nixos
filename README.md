@@ -181,7 +181,7 @@ All of these need `NH_FLAKE=/home/licht/nixos` (set by `programs.nh.flake` in `s
 | Keys | Action |
 | --- | --- |
 | `Super+Return` | kitty |
-| `Super+E` / `B` | nautilus / librewolf |
+| `Super+E` / `B` | luciole / librewolf |
 | `Super+Q` | close window |
 | `Super+h j k l` or arrows | move focus |
 | `Super+Shift+arrows` | swap window |

@@ -20,6 +20,10 @@
       url = "github:ParkerrDev/nixpkgs-windscribe";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Deliberately no `inputs.nixpkgs.follows`: Luciole needs nixos-unstable
+    # (wayland-protocols >= 1.49, our 26.05 has 1.48). The `cachix` branch is
+    # always a commit CI has built, so it comes from the Noctalia cache.
+    luciole.url = "github:noctalia-dev/luciole/cachix";
   };
   outputs = {
     nixpkgs,

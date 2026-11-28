@@ -8,5 +8,6 @@
     ./nvim
     ./yt-dlp
     ./obsidian
+    ./luciole
   ];
 }

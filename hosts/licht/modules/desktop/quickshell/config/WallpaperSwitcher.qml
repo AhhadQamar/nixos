@@ -200,7 +200,7 @@ PanelWindow {
         applyingPath = entry.path;
         // The path is passed as an argument ($1), never pasted into the script,
         // so odd characters in a file name can't break the command.
-        Quickshell.execDetached(["bash", "-c", "wal -i \"$1\" -n; ln -sf \"$1\" \"$2/.current_wallpaper\"; awww img \"$1\" --transition-type simple --transition-fps 30; hyprctl reload", "_", entry.path, wallpaperDir]);
+        Quickshell.execDetached(["bash", "-c", "wal -i \"$1\" -n; mkdir -p \"$HOME/.config/luciole\"; cp \"$HOME/.cache/wal/colors-luciole.toml\" \"$HOME/.config/luciole/colors.toml\"; ln -sf \"$1\" \"$2/.current_wallpaper\"; awww img \"$1\" --transition-type simple --transition-fps 30; hyprctl reload", "_", entry.path, wallpaperDir]);
         currentPath = entry.path; // move the "current" check straight away
         appliedTimer.restart();
         if (closeOnApply)
