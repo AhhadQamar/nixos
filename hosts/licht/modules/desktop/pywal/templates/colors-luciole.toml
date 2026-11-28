@@ -1,19 +1,20 @@
-# Luciole palette, from the same wallpaper colours as the GTK 4 template.
-# `wal -i` writes this to ~/.cache/wal/colors-luciole.toml and the wallpaper
-# switcher copies it to ~/.config/luciole/colors.toml, which Luciole reloads live.
+# Luciole palette. `wal -i` writes this to ~/.cache/wal/colors-luciole.toml;
+# `luciole-palette` then fills in @ACCENT@ and @ON_ACCENT@ (the same accent the
+# shell and the folder icons use) and writes ~/.config/luciole/colors.toml,
+# which Luciole reloads live.
 [colors]
-primary = "{color4}"
-on_primary = "{background}"
+primary = "@ACCENT@"
+on_primary = "@ON_ACCENT@"
 primary_container = "{color8}"
 on_primary_container = "{foreground}"
 
-secondary = "{color5}"
-on_secondary = "{background}"
+secondary = "@ACCENT@"
+on_secondary = "@ON_ACCENT@"
 secondary_container = "{color8}"
 on_secondary_container = "{foreground}"
 
-tertiary = "{color6}"
-on_tertiary = "{background}"
+tertiary = "@ACCENT@"
+on_tertiary = "@ON_ACCENT@"
 tertiary_container = "{color8}"
 on_tertiary_container = "{foreground}"
 
@@ -33,5 +34,5 @@ outline_variant = "{color8}"
 
 shadow = "#000000"
 scrim = "#000000"
-hover = "{color4}"
-on_hover = "{background}"
+hover = "@ACCENT@"
+on_hover = "@ON_ACCENT@"
