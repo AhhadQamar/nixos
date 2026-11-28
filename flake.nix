@@ -105,7 +105,7 @@
             programs.licht-quickshell = {
               enable = true;
               liveReload = false; # set to true to edit in place
-              liveReloadPath = "/home/licht/Projects/personal/quickshell-configs/config";
+              liveReloadPath = "/home/licht/Projects/personal/quickshell-config/config";
             };
           };
         }
