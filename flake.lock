@@ -125,6 +125,26 @@
         "type": "github"
       }
     },
+    "quickshell-configs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1795861552,
+        "narHash": "sha256-jLoXuNzdSPo6nRf4Q9gFcXq+A7xVD8dX5M+wDgIbLms=",
+        "owner": "ahhadqamar",
+        "repo": "quickshell-configs",
+        "rev": "cabcfa7b655a9eafb6dce6d646e411cc7ff1b275",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ahhadqamar",
+        "repo": "quickshell-configs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "agenix": "agenix",
@@ -133,6 +153,7 @@
         "nix-index-database": "nix-index-database",
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-unstable": "nixpkgs-unstable",
+        "quickshell-configs": "quickshell-configs",
         "windscribe": "windscribe"
       }
     },

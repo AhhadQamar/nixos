@@ -20,6 +20,10 @@
       url = "github:ParkerrDev/nixpkgs-windscribe";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    quickshell-configs = {
+      url = "github:ahhadqamar/quickshell-configs";
+      inputs.nixpkgs.follows = "nixpkgs"; # harmless: the flake only uses it for its devShell
+    };
     # Deliberately no `inputs.nixpkgs.follows`: Luciole needs nixos-unstable
     # (wayland-protocols >= 1.49, our 26.05 has 1.48). The `cachix` branch is
     # always a commit CI has built, so it comes from the Noctalia cache.
@@ -93,7 +97,14 @@
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.extraSpecialArgs = {inherit inputs;};
-          home-manager.users.licht = import ./hosts/licht/home.nix;
+          home-manager.users.licht = {
+            imports = [
+              ./hosts/licht/home.nix
+              inputs.quickshell-configs.homeManagerModules.default
+            ];
+            programs.licht-quickshell.enable = true;
+            # programs.licht-quickshell.liveReload = true;
+          };
         }
       ];
     };
