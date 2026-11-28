@@ -2,16 +2,17 @@
 
 NixOS flake for my laptop, **`licht`**: Hyprland desktop, a custom Quickshell shell, Pywal theming, Home Manager, and `agenix` secrets. Everything is declarative and rebuilds with one command.
 
-| | |
-| --- | --- |
-| **Channel** | `nixos-26.05` + Home Manager `release-26.05` |
-| **Host** | `licht` (x86_64, Intel graphics) |
-| **User** | `licht` |
-| **Desktop** | Hyprland (Lua config), started straight from a Quickshell login screen (greetd + cage) |
-| **Shell** | Quickshell (QML), zsh + starship, kitty, tmux, neovim |
-| **Secrets** | `agenix` (keys: `licht` and `recovery`) |
-| **Repo path** | `~/nixos` (not `/etc/nixos`) |
-| **Repo** | public on GitHub: `AhhadQamar/nixos`. A fresh install can clone it without logging in; the login is only needed later, to push |
+|                       |                                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Channel**           | `nixos-26.05` + Home Manager `release-26.05`                                                                                                                                                                       |
+| **Host**              | `licht` (x86_64, Intel graphics)                                                                                                                                                                                   |
+| **User**              | `licht`                                                                                                                                                                                                            |
+| **Desktop**           | Hyprland (Lua config), started straight from a Quickshell login screen (greetd + cage)                                                                                                                             |
+| **Shell**             | Quickshell (QML), zsh + starship, kitty, tmux, neovim                                                                                                                                                              |
+| **Quickshell config** | its own repo, [`AhhadQamar/quickshell-configs`](https://github.com/AhhadQamar/quickshell-configs), used here as a flake input                                                                                      |
+| **Secrets**           | `agenix` (keys: `licht` and `recovery`)                                                                                                                                                                            |
+| **Repo path**         | `~/nixos` (not `/etc/nixos`)                                                                                                                                                                                       |
+| **Repo**              | public on GitHub: `AhhadQamar/nixos`. A fresh install can clone it without logging in; the login is only needed later, to push. The Quickshell repo must stay public too, because the build fetches it from GitHub |
 
 **Jump to:** [Install](#install) · [Daily use](#daily-use) · [Key bindings](#key-bindings) · [Customise](#customise) · [Secrets](#secrets) · [Troubleshooting](#troubleshooting) · [Layout](#repository-layout)
 
@@ -133,14 +134,14 @@ u
 
 This repo is tailored to one laptop. Before the first build on something else, review:
 
-| Item | File |
-| --- | --- |
-| Username `licht` and home path | `flake.nix`, `hosts/licht/configuration.nix`, `home.nix`, `programs/aria2/config/aria2.conf` |
-| Intel-only bits (`iHD`, `intel-media-driver`, `thermald`, microcode) | `system/hardware.nix`, `system/desktop.nix` |
-| Monitor names (`eDP-1`, `DP-1`) | `modules/desktop/hypr/config/modules/monitors.lua` (list yours with `hyprctl monitors`) |
-| Timezone and keyboard layout | `system/networking.nix` |
-| Git name, email, SSH keys | `modules/shell/git/default.nix` |
-| Mail accounts and their secrets | `modules/programs/aerc/default.nix`, `secrets/`, `configuration.nix` |
+| Item                                                                 | File                                                                                         |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Username `licht` and home path                                       | `flake.nix`, `hosts/licht/configuration.nix`, `home.nix`, `programs/aria2/config/aria2.conf` |
+| Intel-only bits (`iHD`, `intel-media-driver`, `thermald`, microcode) | `system/hardware.nix`, `system/desktop.nix`                                                  |
+| Monitor names (`eDP-1`, `DP-1`)                                      | `modules/desktop/hypr/config/modules/monitors.lua` (list yours with `hyprctl monitors`)      |
+| Timezone and keyboard layout                                         | `system/networking.nix`                                                                      |
+| Git name, email, SSH keys                                            | `modules/shell/git/default.nix`                                                              |
+| Mail accounts and their secrets                                      | `modules/programs/aerc/default.nix`, `secrets/`, `configuration.nix`                         |
 
 ---
 
@@ -148,16 +149,16 @@ This repo is tailored to one laptop. Before the first build on something else, r
 
 All of these need `NH_FLAKE=/home/licht/nixos` (set by `programs.nh.flake` in `system/nix.nix`).
 
-| Command | What it does |
-| --- | --- |
-| `u` | **Main command.** Format, stage, scan for secrets, `nh os switch`, commit, push |
-| `ut` | Activate now without making it the boot default |
-| `ub` | Build for next boot only |
-| `uu` | Update every flake input, then `u` |
-| `nhc` | Garbage-collect old generations |
-| `nhs <name>` | Search nixpkgs |
-| `i <pkg>` | Try a package in a throwaway shell |
-| `rmconf` | Edit `home.nix` |
+| Command      | What it does                                                                    |
+| ------------ | ------------------------------------------------------------------------------- |
+| `u`          | **Main command.** Format, stage, scan for secrets, `nh os switch`, commit, push |
+| `ut`         | Activate now without making it the boot default                                 |
+| `ub`         | Build for next boot only                                                        |
+| `uu`         | Update every flake input (including `quickshell-config`), then `u`              |
+| `nhc`        | Garbage-collect old generations                                                 |
+| `nhs <name>` | Search nixpkgs                                                                  |
+| `i <pkg>`    | Try a package in a throwaway shell                                              |
+| `rmconf`     | Edit `home.nix`                                                                 |
 
 **What `u` runs** (`./rebuild`), stopping at the first failure:
 
@@ -178,42 +179,42 @@ All of these need `NH_FLAKE=/home/licht/nixos` (set by `programs.nh.flake` in `s
 
 `Super` is the main modifier. Defined in `hypr/config/modules/binds.lua` and `workspaces.lua`.
 
-| Keys | Action |
-| --- | --- |
-| `Super+Return` | kitty |
-| `Super+E` / `B` | luciole / librewolf |
-| `Super+Q` | close window |
-| `Super+h j k l` or arrows | move focus |
-| `Super+Shift+arrows` | swap window |
-| `Super+Alt+h j k l` | resize |
-| `Super+F` / `Shift+F` | fullscreen / maximise |
-| `Super+Shift+V` | toggle floating |
-| `Super+1..0` | workspace slot on this monitor |
-| `Super+Shift+1..0` | send window to slot and follow |
-| `Super+Alt+1..0` | slot on the other monitor's block |
-| `Super+,` / `.` | focus previous / next monitor |
-| `Super+S` / `Shift+S` | scratch workspace / send window there |
-| `Super+Shift+T` | drop-down terminal |
-| `Super+Shift+L` | lock |
-| `Print` / `Shift+Print` | screenshot region / window to clipboard |
-| `Super+F12` / `Shift+F12` | save screenshot (screen / region) |
+| Keys                      | Action                                  |
+| ------------------------- | --------------------------------------- |
+| `Super+Return`            | kitty                                   |
+| `Super+E` / `B`           | luciole / librewolf                     |
+| `Super+Q`                 | close window                            |
+| `Super+h j k l` or arrows | move focus                              |
+| `Super+Shift+arrows`      | swap window                             |
+| `Super+Alt+h j k l`       | resize                                  |
+| `Super+F` / `Shift+F`     | fullscreen / maximise                   |
+| `Super+Shift+V`           | toggle floating                         |
+| `Super+1..0`              | workspace slot on this monitor          |
+| `Super+Shift+1..0`        | send window to slot and follow          |
+| `Super+Alt+1..0`          | slot on the other monitor's block       |
+| `Super+,` / `.`           | focus previous / next monitor           |
+| `Super+S` / `Shift+S`     | scratch workspace / send window there   |
+| `Super+Shift+T`           | drop-down terminal                      |
+| `Super+Shift+L`           | lock                                    |
+| `Print` / `Shift+Print`   | screenshot region / window to clipboard |
+| `Super+F12` / `Shift+F12` | save screenshot (screen / region)       |
 
 **Quickshell panels:**
 
-| Keys | Panel |
-| --- | --- |
-| `Super+Space` | launcher |
-| `Super+Shift+Space` | Nix package search |
-| `Super+V` | clipboard history |
-| `Super+A` / `Shift+A` | notifications / do-not-disturb |
-| `Super+W` | wallpaper switcher |
-| `Super+N` / `Shift+N` | night light panel / on-off |
-| `Super+T` | screen time |
-| `Super+D` | downloads (aria2) |
-| `Super+I` | capture |
-| `Super+U` / `Shift+U` | system updates / check now |
+| Keys                           | Panel                                    |
+| ------------------------------ | ---------------------------------------- |
+| `Super+Space`                  | launcher                                 |
+| `Super+Shift+Space`            | Nix package search                       |
+| `Super+V`                      | clipboard history                        |
+| `Super+A` / `Shift+A`          | notifications / do-not-disturb           |
+| `Super+W`                      | wallpaper switcher                       |
+| `Super+N` / `Shift+N`          | night light panel / on-off               |
+| `Super+T`                      | screen time                              |
+| `Super+D`                      | downloads (aria2)                        |
+| `Super+I`                      | capture                                  |
+| `Super+U` / `Shift+U`          | system updates / check now               |
 | `Super+P`, `Shift+P`, `[`, `]` | music player, play/pause, previous, next |
-| `Super+M` | power menu |
+| `Super+M`                      | power menu                               |
 
 Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the second 11..20. With one screen connected, `Super+Alt+1..0` reaches the second block.
 
@@ -221,22 +222,51 @@ Workspaces are per-monitor blocks of 10: the first monitor owns 1..10, the secon
 
 ## Customise
 
-| I want to… | Edit |
-| --- | --- |
-| Add a user app | `hosts/licht/home.nix` → `home.packages` |
-| Change a system service | `hosts/licht/system/*.nix` |
-| Add or change key bindings | `modules/desktop/hypr/config/modules/binds.lua` |
-| Change monitors | `monitors.lua` (keep `slots` equal to `slotsPerMonitor` in `quickshell/config/SlotLayout.qml`) |
-| Change the bar or panels | `modules/desktop/quickshell/config/*.qml` |
-| Edit QML without rebuilding | set `liveReload = true` in `quickshell/default.nix`, rebuild once; saves then reload instantly |
-| Change aliases | `modules/shell/zsh/config/.zshrc` (`zshrc`) |
-| Change browser policies, extensions or prefs | `modules/programs/librewolf/default.nix` |
-| Change Tridactyl keys or the browser look | `modules/programs/librewolf/config/` (`tridactylrc`, `userChrome.css`) |
-| Change the login screen | `system/greeter/` (`Greeter.qml`, `default.nix`) |
+| I want to…                                   | Edit                                                                                                                                                             |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a user app                               | `hosts/licht/home.nix` → `home.packages`                                                                                                                         |
+| Change a system service                      | `hosts/licht/system/*.nix`                                                                                                                                       |
+| Add or change key bindings                   | `modules/desktop/hypr/config/modules/binds.lua`                                                                                                                  |
+| Change monitors                              | `monitors.lua` (keep `slots` equal to `slotsPerMonitor` in `SlotLayout.qml`, in the [quickshell-configs](https://github.com/AhhadQamar/quickshell-configs) repo) |
+| Change the bar or panels                     | `config/*.qml` in the `quickshell-configs` repo, then see [Working on the Quickshell config](#working-on-the-quickshell-config)                                  |
+| Edit QML without rebuilding                  | set `programs.licht-quickshell.liveReload = true` in `flake.nix` (see below), rebuild once; saves then reload instantly                                          |
+| Change aliases                               | `modules/shell/zsh/config/.zshrc` (`zshrc`)                                                                                                                      |
+| Change browser policies, extensions or prefs | `modules/programs/librewolf/default.nix`                                                                                                                         |
+| Change Tridactyl keys or the browser look    | `modules/programs/librewolf/config/` (`tridactylrc`, `userChrome.css`)                                                                                           |
+| Change the login screen                      | `system/greeter/` (`Greeter.qml`, `default.nix`). It also uses shared files from the quickshell-configs repo, so update that input to bring them in              |
 
 After any edit: `ut` to test, `u` to keep it.
 
 **Theming:** colours come from Pywal. Changing the wallpaper (`Super+W`) regenerates the palette and updates Quickshell, Hyprland, GTK 3/4, kitty, tmux, Obsidian and the browsers (Pywalfox). Papirus folder icons are recoloured to the same accent by `recolor-icons`.
+
+### Working on the Quickshell config
+
+The shell lives in its own repo, [`AhhadQamar/quickshell-configs`](https://github.com/AhhadQamar/quickshell-configs), and this config pulls it in as the `quickshell-config` flake input. `flake.nix` imports its Home Manager module and enables it:
+
+```nix
+home-manager.users.licht = {
+  imports = [
+    ./hosts/licht/home.nix
+    inputs.quickshell-config.homeManagerModules.default
+  ];
+  programs.licht-quickshell = {
+    enable = true;
+    liveReload = false; # true = edit the QML in place, no rebuild
+    liveReloadPath = "/home/licht/Projects/personal/quickshell-configs/config";
+  };
+};
+```
+
+The login screen (`system/greeter/default.nix`) reads its shared QML files from the same input, so the lock screen, the bar and the greeter always match.
+
+| I want to…                         | Do this                                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Edit the shell with instant reload | Set `liveReload = true`, run `u` once, then edit `.qml` files in `~/Projects/personal/quickshell-configs/config`. Quickshell reloads on every save |
+| Ship a shell change to the system  | Commit and push in the quickshell-configs repo, then in `~/nixos` run `nix flake update quickshell-config` and `u`                                 |
+| Test an unpushed change            | `sudo nixos-rebuild switch --flake ~/nixos#licht --override-input quickshell-config path:$HOME/Projects/personal/quickshell-configs`               |
+| Turn live reload off again         | Set `liveReload = false` and run `u` once. The system then uses the pinned copy from the input                                                     |
+
+With `liveReload` off, the system uses the commit pinned in `flake.lock`, so unpushed edits do not show up.
 
 **New tab and new window (LibreWolf):** it shows the "very minimal new tab" extension (id `newtab@licht.local`, [AMO page](https://addons.mozilla.org/en-US/firefox/addon/very-minimal-new-tab/)). It is installed declaratively through the `ExtensionSettings` policy in `librewolf/default.nix`. Nothing in the Nix config may set a home page, or it would fight the extension.
 
@@ -248,10 +278,10 @@ After any edit: `ut` to test, `u` to keep it.
 
 Managed with [`agenix`](https://github.com/ryantm/agenix). Encrypted files live in `secrets/` and are declared in `secrets.nix` and `configuration.nix`.
 
-| Secret | Used by |
-| --- | --- |
-| `aria2-rpc-secret.age` | `aria2` user service (injected at start) |
-| `<account>-gmail.age` (8 files) | `aerc` mail accounts (app passwords) |
+| Secret                          | Used by                                  |
+| ------------------------------- | ---------------------------------------- |
+| `aria2-rpc-secret.age`          | `aria2` user service (injected at start) |
+| `<account>-gmail.age` (8 files) | `aerc` mail accounts (app passwords)     |
 
 Both keys in `secrets.nix` can decrypt everything:
 
@@ -288,26 +318,29 @@ Commit and push the changed `.age` files.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-| --- | --- |
-| `u` says `NH_FLAKE is not set` | Log out and back in (`environment.variables` is only read at login) |
-| `sudo nixos-rebuild` can't find a config | It defaults to `/etc/nixos`. Use `u`/`ut`/`ub`, or pass `--flake ~/nixos#licht` |
-| `u` stops at the gitleaks step | It found something that looks like a secret. Remove it from the staged files, then rerun |
-| Build can't see a new file | Flakes ignore untracked files. `u` stages for you; with plain commands run `git add -A` first |
-| Bar is blank or uncoloured after install | Run `wal -i <image>` or press `Super+W` and pick a wallpaper |
-| Cannot log in after a fresh install | The `licht` password was never set. Boot the installer, mount the system at `/mnt`, run `nixos-enter --root /mnt -c 'passwd licht'`, then reboot |
-| Secrets or aria2 fail after first boot | The age key is missing or wrong at `/var/lib/agenix/key.txt` |
-| `git push` fails after install | Remote is still HTTPS. Run the `remote set-url` command from [Install](#fresh-machine) step 8 |
-| `Repository not found` when cloning | Check the owner and name in the URL: the repo is public, so `git clone https://github.com/AhhadQamar/nixos` needs no login |
-| `u` ends with `Permission denied (publickey)` | The SSH key is not on GitHub. Check `gh ssh-key list`; add it with `gh ssh-key add ~/.ssh/id_ed25519_personal.pub` |
-| Hyprland errors | `hyprlog` shows the last 50 lines of the log |
+| Symptom                                       | Fix                                                                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `u` says `NH_FLAKE is not set`                | Log out and back in (`environment.variables` is only read at login)                                                                              |
+| `sudo nixos-rebuild` can't find a config      | It defaults to `/etc/nixos`. Use `u`/`ut`/`ub`, or pass `--flake ~/nixos#licht`                                                                  |
+| `u` stops at the gitleaks step                | It found something that looks like a secret. Remove it from the staged files, then rerun                                                         |
+| Build can't see a new file                    | Flakes ignore untracked files. `u` stages for you; with plain commands run `git add -A` first                                                    |
+| Bar is blank or uncoloured after install      | Run `wal -i <image>` or press `Super+W` and pick a wallpaper                                                                                     |
+| Cannot log in after a fresh install           | The `licht` password was never set. Boot the installer, mount the system at `/mnt`, run `nixos-enter --root /mnt -c 'passwd licht'`, then reboot |
+| Secrets or aria2 fail after first boot        | The age key is missing or wrong at `/var/lib/agenix/key.txt`                                                                                     |
+| `git push` fails after install                | Remote is still HTTPS. Run the `remote set-url` command from [Install](#fresh-machine) step 8                                                    |
+| `Repository not found` when cloning           | Check the owner and name in the URL: the repo is public, so `git clone https://github.com/AhhadQamar/nixos` needs no login                       |
+| `u` ends with `Permission denied (publickey)` | The SSH key is not on GitHub. Check `gh ssh-key list`; add it with `gh ssh-key add ~/.ssh/id_ed25519_personal.pub`                               |
+| Hyprland errors                               | `hyprlog` shows the last 50 lines of the log                                                                                                     |
+| Quickshell change does not show up            | Without `liveReload`, the system uses the pinned input. Push the change, run `nix flake update quickshell-config`, then `u`                      |
+| Build says `liveReload needs liveReloadPath`  | Set `programs.licht-quickshell.liveReloadPath` in `flake.nix` to the absolute path of your quickshell-configs `config/` folder                   |
+| Build fails fetching `quickshell-config`      | The GitHub repo is private or the name is wrong. It must be public, or use `git+ssh://git@github.com/AhhadQamar/quickshell-configs`              |
 
 ---
 
 ## Repository layout
 
 ```text
-flake.nix            inputs and the licht host
+flake.nix            inputs (including quickshell-config) and the licht host
 flake.lock
 rebuild              the script behind `u`
 secrets/             agenix files and secrets.nix
@@ -317,14 +350,16 @@ hosts/licht/
   home.nix           Home Manager entry and user packages
   system/            boot, nix, networking, hardware, desktop, greeter, updater, windscribe
   modules/
-    desktop/         hypr, quickshell, pywal, theme, cava
+    desktop/         hypr, pywal, theme, cava
     shell/           zsh, starship, fzf, cli-tools, tmux, git, fetch, screentime
     programs/        aerc, aria2, librewolf, kitty, mpv, nvim, vscodium, yt-dlp
 ```
 
+The Quickshell config is no longer in this repo. It comes from the `quickshell-config` flake input ([`AhhadQamar/quickshell-configs`](https://github.com/AhhadQamar/quickshell-configs)).
+
 **Notes**
 
 - `mpv` and `nvim` configs are symlinked straight into the repo, so edits there apply without a rebuild.
-- `WalColors.qml` inside the Quickshell config is generated at activation and git-ignored.
+- `WalColors.qml` inside the Quickshell config is generated at activation. In the quickshell-configs repo it is git-ignored.
 - GTK 4 / libadwaita ignores theme names, so theming works by overriding named CSS variables in a Pywal template.
 - No licence file is present.
