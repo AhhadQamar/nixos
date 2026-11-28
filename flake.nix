@@ -102,8 +102,11 @@
               ./hosts/licht/home.nix
               inputs.quickshell-configs.homeManagerModules.default
             ];
-            programs.licht-quickshell.enable = true;
-            # programs.licht-quickshell.liveReload = true;
+            programs.licht-quickshell = {
+              enable = true;
+              liveReload = false; # set to true to edit in place
+              liveReloadPath = "/home/licht/Projects/personal/quickshell-configs/config";
+            };
           };
         }
       ];
