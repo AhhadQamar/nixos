@@ -1,4 +1,8 @@
-{pkgs, ...}: {
+{
+  inputs,
+  pkgs,
+  ...
+}: {
   programs.hyprland.enable = true;
   security.pam.services.qs-lock = {};
 
@@ -17,7 +21,19 @@
     extraPortals = [
       pkgs.xdg-desktop-portal-hyprland
       pkgs.xdg-desktop-portal-gtk
+      # Luciole as the Open/Save dialog. Registering it is not enough; the
+      # FileChooser preference below selects it.
+      inputs.luciole.packages.${pkgs.stdenv.hostPlatform.system}.default
     ];
+    # Hyprland sessions read hyprland-portals.conf, which takes precedence over
+    # the generic portals.conf (config.common), so the preference goes here.
+    # default and Secret restate what the Hyprland and keyring packages already
+    # chose, because a configuration file is used as a whole.
+    config.hyprland = {
+      default = ["hyprland" "gtk"];
+      "org.freedesktop.impl.portal.FileChooser" = ["luciole" "gtk"];
+      "org.freedesktop.impl.portal.Secret" = ["gnome-keyring"];
+    };
   };
 
   services.gnome.gnome-keyring.enable = true;

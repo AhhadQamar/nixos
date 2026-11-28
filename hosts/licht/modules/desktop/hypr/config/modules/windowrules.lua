@@ -168,7 +168,7 @@ hl.window_rule({
 -- File pickers get room to browse in
 hl.window_rule({
 	name = "float-portal-file-dialogs",
-	match = { class = "^(xdg-desktop-portal-gtk|xdg-desktop-portal-hyprland)$" },
+	match = { class = "^(xdg-desktop-portal-gtk|xdg-desktop-portal-hyprland|dev\\.noctalia\\.luciole-chooser)$" },
 
 	float = true,
 	center = true,
