@@ -57,7 +57,11 @@
 
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
-    tmp.write_text(template.replace("@ACCENT@", accent).replace("@ON_ACCENT@", on_accent))
+    text = template.replace("@ACCENT@", accent).replace("@ON_ACCENT@", on_accent)
+    # color_scheme = "auto" reads [colors], "dark" reads [dark] and "light"
+    # reads [light]; a wal palette is one scheme, so all three get the same colours.
+    body = text.split("[colors]\n", 1)[1]
+    tmp.write_text(text + "\n[dark]\n" + body + "\n[light]\n" + body)
     os.replace(tmp, out)
   '';
 in {
